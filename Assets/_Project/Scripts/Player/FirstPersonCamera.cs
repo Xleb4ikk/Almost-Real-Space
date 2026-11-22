@@ -779,7 +779,7 @@ namespace Galilego.Universe
         /// <summary>Local up (from the double world, via the bridge).</summary>
         private Vector3 ComputeLocalUp()
         {
-            if (Runner == null || Runner.Ship == null || Runner.DominantBody == null)
+            if (Runner == null || Runner.Ship == null || Runner.CameraBody == null)
             {
                 return Vector3.up;
             }
@@ -814,7 +814,7 @@ namespace Galilego.Universe
                 return evaUp;
             }
 
-            OrbitingBody body = Runner.DominantBody;
+            OrbitingBody body = Runner.CameraBody;
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
             Vector3d outward = Runner.PlayerPosition - bodyPos;
             double magnitude = outward.Magnitude;
@@ -892,12 +892,16 @@ namespace Galilego.Universe
         private void UpdateClipPlanes()
         {
             Camera camera = GetComponent<Camera>();
-            if (camera == null || Runner == null || Runner.DominantBody == null)
+            if (camera == null || Runner == null || Runner.CameraBody == null)
             {
                 return;
             }
 
-            OrbitingBody body = Runner.DominantBody;
+            // CameraBody, not DominantBody: near/far answer "what can THIS eye see from
+            // where it stands". With the ship's body, standing on the Moon after flying
+            // there in noclip produced Terra's horizon (89 000 km) as far — 50 000:1
+            // near/far at the lunar surface and z-fighting on every crater.
+            OrbitingBody body = Runner.CameraBody;
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPos, out _);
             Vector3d relative = Runner.PlayerPosition - bodyPos;
             double radius = body.Radius;
@@ -943,6 +947,17 @@ namespace Galilego.Universe
 
             double horizon = SkyPhysics.MaxSightDistance(radius, cameraHeight, peakHeight);
             double far = System.Math.Max((horizon * 1.1d) + 1e3d, 20000d);
+
+            // The near plane has to grow with the far one above the atmosphere.
+            // Measured over Artemis in EVA: far = the horizon = 1 200 km with near = 0.1 m
+            // and the whole terrain failed to rasterise — the Moon was BLACK at 660 km and
+            // visible at 700 km, and the only change that brought it back was near >= 1 m.
+            // Below 10 km the mode's near (a few cm in the cabin, at the feet on the ground)
+            // is kept: only the altitude case has a far plane this large.
+            if (altitude > 10000d)
+            {
+                near = System.Math.Max(near, far * 2.5e-6d);
+            }
 
             // far is NOT stretched for the atmosphere: it is drawn as a
             // camera-centered dome and always fits the frustum. Otherwise

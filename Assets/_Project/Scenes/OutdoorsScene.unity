@@ -2328,9 +2328,9 @@ MonoBehaviour:
   MaxEvictionsPerFrame: 4
   TerrainShadowDepthBand: 3
   AsyncChunkBuild: 1
-  MaxChunkJobsInFlight: 12
+  MaxChunkJobsInFlight: 24
   ChunkFinalizeBudgetMs: 3
-  MaxChunkQueueAgeFrames: 6
+  MaxChunkQueueAgeFrames: 16
   EnableQualityTiers: 1
   TierFastSpeed: 1000
   TierExtremeSpeed: 1200
@@ -2468,8 +2468,11 @@ MonoBehaviour:
   PlayerCamera: {fileID: 1823688466}
   FarFraction: 0.28
   MinScreenRadiusPixels: 11
+  HandoverRadii: 1.6
+  FadeStartRadii: 4
+  HandoverCoverage: 0.98
   MinEnergyScale: 1
-  Brightness: 14
+  Brightness: 24
   LimbDarkening: 0.25
   Albedo: {r: 0.5, g: 0.49, b: 0.47, a: 1}
   UseTerrainPalette: 1

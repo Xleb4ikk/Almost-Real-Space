@@ -14,9 +14,12 @@ namespace Galilego.Universe
     /// looks like the real one without touching near/far (near/far ≈ 3·10^6 is what
     /// Doc/SkyDomes.md warns about).
     ///
-    /// Same contract as GasGiantView's far disc: the cloud tops/surface switch it off
-    /// as soon as they fit inside the far plane, and the material is premultiplied so
-    /// it covers the star field without an extra opaque depth pass.
+    /// Same contract as GasGiantView's far disc: the cloud tops/surface take the body over
+    /// as soon as they fit inside the far plane, and the material is premultiplied so it
+    /// covers the star field without an extra opaque depth pass. The hand-over itself is a
+    /// FADE, not a cut (see the Hand-over block in LateUpdate): a hard swap between the flat
+    /// quad and the real sphere reads as a flash, and if the chunks of that view are still
+    /// building it reads as a hole.
     /// </summary>
     [UnityEngine.DefaultExecutionOrder(-60)]
     public sealed class BodyFarDiscView : MonoBehaviour
@@ -35,6 +38,24 @@ namespace Galilego.Universe
             "и 720p — это 5 px, точка. Пол включается плавно по мере удаления и гаснет к моменту, " +
             "когда подхватывают настоящие чанки. 0 = строго физический размер.")]
         public float MinScreenRadiusPixels = 11f;
+
+        [Tooltip("Расстояние до ПОВЕРХНОСТИ (в радиусах тела), на котором диск полностью уступает " +
+            "рельефу. Внутри этого радиуса плоский билборд уже физически неверен (параллакс), и его " +
+            "нельзя возвращать даже ради дыр в рельефе. 1.6 = 659 км над Artemis.")]
+        public float HandoverRadii = 1.6f;
+
+        [Tooltip("Расстояние до поверхности (в радиусах тела), с которого начинается плавное " +
+            "растворение диска в рельефе. Между ним и HandoverRadii диск полупрозрачный: игрок не " +
+            "видит переключения низкополигональной подмены на настоящий рельеф, обе картинки " +
+            "смешиваются. 0 = резкая отсечка (старое поведение).")]
+        public float FadeStartRadii = 4f;
+
+        [Tooltip("Доля застроенного вида, начиная с которой рельеф считается готовым принять " +
+            "тело у диска. Меньше единицы — допускаем пару непокрытых дальних узлов (у них есть " +
+            "родитель-затычка). Диск держится, пока вид НЕ покрыт: холодный старт на новом теле " +
+            "иначе показывает половину сферы и дыру вместо неё.")]
+        [Range(0.5f, 1f)]
+        public float HandoverCoverage = 0.98f;
 
         [Tooltip("Компенсация яркости при раздувании диска. 1 = поверхностная яркость сохраняется " +
             "(луна просто крупнее), 0.08 = сохраняется полный поток (крупный диск тускнеет).")]
@@ -66,10 +87,14 @@ namespace Galilego.Universe
         private OrbitingBody star;
         private Transform disc;
         private Material material;
+        private PlanetSurfaceRenderer surface;
         private Vector3d LastBodyPosition;
         private double LastRadius;
         private float LastFar;
         private float LastPixelRadius;
+        private float LastOpacity = 1f;
+        /// <summary>How strongly the disc is held up because the terrain is incomplete.</summary>
+        private float hold;
 
         private void Start()
         {
@@ -96,6 +121,14 @@ namespace Galilego.Universe
             }
 
             star = Runner.SystemState.Root;
+
+            // The surface renderer of the same body: its build progress decides when the
+            // billboard may fade out (see the hand-over block in LateUpdate).
+            surface = GetComponent<PlanetSurfaceRenderer>();
+            if (surface == null || !surface.enabled)
+            {
+                surface = null;
+            }
 
             BodyAuthoring authoring = GetComponent<BodyAuthoring>();
             if (UseTerrainPalette && authoring != null && authoring.TerrainPreset != null
@@ -182,23 +215,65 @@ namespace Galilego.Universe
             LastFar = far;
             LastPixelRadius = pixelRadius;
 
+            // ---- Hand-over to the real chunks -------------------------------------
             // The disc stands in for a body the camera cannot draw OR draws so small that
-            // it reads as a star. It must not depend on `far` alone: the far plane jumps to
-            // the SOI radius in flyby mode, and then "inside far" hid the disc while the
-            // real body was still 5 px - the moon visibly shrank to a speck on approach.
-            // Hand the body over only when the real chunks are both inside the frustum AND
-            // already at least as big as the floor, so the sizes match at the swap.
-            bool chunksCover = nearSurface < (far * 0.95d)
-                && nearSurface < (body.Radius * 1.5d)
-                && pixelRadius >= MinScreenRadiusPixels;
-            if (chunksCover)
+            // it reads as a star, and it must give the body to the terrain WITHOUT a visible
+            // switch. Two independent reasons keep it up:
+            //
+            //  * distance — a flat quad at a fixed depth and the real sphere never match in
+            //    parallax, so inside FadeStartRadii the disc starts blending into the
+            //    terrain and at HandoverRadii it is gone;
+            //  * readiness — chunks of a body arrive asynchronously (its first view is
+            //    hundreds of tiles). If the disc went away on distance alone the player
+            //    would watch the sphere assemble out of a hole. ViewCoverage lets us hold
+            //    it until the surface renderer has the view.
+            float surfaceRendererCoverage = 1f;
+            if (surface != null && surface.isActiveAndEnabled)
+            {
+                surfaceRendererCoverage = surface.ViewCoverage;
+            }
+
+            float handoverMeters = (float)(body.Radius * System.Math.Max(1f, HandoverRadii));
+            float fadeStartMeters = (float)(body.Radius * System.Math.Max(HandoverRadii, FadeStartRadii));
+
+            float opacity;
+            if (nearSurface <= handoverMeters)
+            {
+                // The billboard's flat parallax is plainly wrong this close: the near
+                // terrain is what the player has to see. Never resurrect the disc here,
+                // even if chunks are still missing.
+                opacity = 0f;
+            }
+            else
+            {
+                float distanceFade = Mathf.InverseLerp(handoverMeters, fadeStartMeters, (float)nearSurface);
+
+                // Hold the disc while the terrain for this view is NOT covered by geometry
+                // (no built ancestor at all — a half-arrived sphere, black gaps between
+                // chunks). Released smoothly so the hand-over is a blend, not a cut: rising
+                // is immediate (a hole must never be shown), falling takes ~0.7 s.
+                bool coverReady = surfaceRendererCoverage >= HandoverCoverage;
+                float holdTarget = coverReady ? 0f : 1f;
+                hold = holdTarget > hold
+                    ? holdTarget
+                    : Mathf.MoveTowards(hold, holdTarget, Time.deltaTime * 1.5f);
+
+                opacity = Mathf.Clamp01(Mathf.Max(distanceFade, hold));
+            }
+
+            // The quad must sit IN FRONT of the body it represents, or the near terrain
+            // slices it (far*0.28 lands inside a body at low altitude). The 0.55 cap also
+            // keeps the billboard in front when `far` is the horizon of ANOTHER body.
+            float discDistance = Mathf.Min(far * FarFraction, (float)(nearSurface * 0.55d));
+            if (opacity <= 0.002f || discDistance < 1f)
             {
                 SetActive(false);
                 return;
             }
 
+            LastOpacity = opacity;
+
             Vector3 simDirection = AstroFrame.ToSimulation(toBody / distance);
-            float discDistance = Mathf.Max(1f, far * FarFraction);
             Vector3 cameraPosition = camera.transform.position;
             disc.position = cameraPosition + (simDirection * discDistance);
 
@@ -239,6 +314,7 @@ namespace Galilego.Universe
             material.SetFloat("_BFD_LimbDarkening", LimbDarkening);
             material.SetTexture("_BFD_Map", SurfaceMap);
             material.SetFloat("_BFD_MapStrength", SurfaceMap != null ? SurfaceMapStrength : 0f);
+            material.SetFloat("_BFD_Opacity", opacity);
             material.SetMatrix("_BFD_BodyToWorld", Matrix4x4.TRS(Vector3.zero, bodyRotation, Vector3.one));
 
             SetActive(true);
@@ -253,7 +329,9 @@ namespace Galilego.Universe
                     + " | alt=" + (((Runner.PlayerPosition - LastBodyPosition).Magnitude - LastRadius) / 1000d).ToString("F0")
                     + " km far=" + (LastFar / 1000f).ToString("F0")
                     + " km pxR=" + LastPixelRadius.ToString("F2")
-                    + " floor=" + MinScreenRadiusPixels.ToString("F1"));
+                    + " floor=" + MinScreenRadiusPixels.ToString("F1")
+                    + " handover=" + HandoverRadii.ToString("F2")
+                    + "R opacity=" + LastOpacity.ToString("F2"));
             }
         }
 

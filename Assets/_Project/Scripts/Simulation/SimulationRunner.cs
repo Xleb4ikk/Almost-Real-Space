@@ -119,7 +119,7 @@ namespace Galilego.Universe
         /// </summary>
         private void LogSurfacePosition()
         {
-            if (PlayerMode != PlayerMode.OnSurface || DominantBody == null)
+            if (PlayerMode != PlayerMode.OnSurface || PlayerBody == null)
             {
                 return;
             }
@@ -130,7 +130,7 @@ namespace Galilego.Universe
             }
 
             lastPosLogSeconds = TimeSeconds;
-            OrbitingBody body = DominantBody;
+            OrbitingBody body = PlayerBody;
             body.SurfaceLatLonAt(PlayerPosition, TimeSeconds, out double latDeg, out double lonDeg);
             Debug.Log(string.Format(
                 "[Walk] {0}: lat={1:F2}�, lon={2:F2}�, relief={3:F0} �",
@@ -313,7 +313,7 @@ namespace Galilego.Universe
 
             // Leaving noclip: drop the cheat speed, the player stays still relative to the frame.
             PlayerVelocity = LocalFrameVelocity(TimeSeconds);
-            OrbitingBody body = DominantBody;
+            OrbitingBody body = PlayerBody;
             if (body == null)
             {
                 return;
@@ -331,10 +331,10 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Direction from the dominant body centre to the player (zenith).</summary>
+        /// <summary>Direction from the player's body centre to the player (zenith).</summary>
         private Vector3d OutwardFromBody()
         {
-            OrbitingBody body = DominantBody;
+            OrbitingBody body = PlayerBody;
             if (body == null)
             {
                 return new Vector3d(0d, 0d, 1d);
@@ -353,6 +353,56 @@ namespace Galilego.Universe
 
         /// <summary>Body the ship currently lives relative to (floating origin, SOI).</summary>
         public OrbitingBody DominantBody => step != null ? step.DominantBody : null;
+
+        /// <summary>
+        /// Body whose SURFACE the camera is over — the view-side counterpart of
+        /// <see cref="DominantBody"/>.
+        ///
+        /// DominantBody follows the SHIP: it is the frame of the craft's physics (drag,
+        /// landing, the contact zone). The camera can be a whole SOI away from it — in
+        /// noclip/EVA free flight the player leaves the craft and crosses to the Moon
+        /// while the ship stays parked at Terra. Every view that answers "which ground
+        /// is underneath" used DominantBody, so 1 800 km above Artemis the Moon's own
+        /// surface renderer hid its chunks and Terra's camera clip planes were in force.
+        /// Artemis' far disc then handed the body over to chunks that were not drawn,
+        /// and the Moon vanished exactly when the player flew up to it.
+        ///
+        /// Same rule as FindDominantBody (deepest body whose SOI contains the point),
+        /// only on the player instead of the ship. Cached per frame: the lookup walks
+        /// the body list and the views ask for it from four components.
+        /// </summary>
+        public OrbitingBody CameraBody
+        {
+            get
+            {
+                if (cameraBodyFrame != Time.frameCount)
+                {
+                    cameraBodyFrame = Time.frameCount;
+                    cameraBody = SystemState != null
+                        ? SystemState.FindDominantBody(PlayerPosition, TimeSeconds)
+                        : null;
+                }
+
+                return cameraBody;
+            }
+        }
+
+        private OrbitingBody cameraBody;
+        private int cameraBodyFrame = int.MinValue;
+
+        /// <summary>
+        /// Body the PLAYER stands on and falls toward — the same answer as
+        /// <see cref="CameraBody"/>, under the name the physics code reads.
+        ///
+        /// The player's own step (EVA frame, up vector, ground height, landing, swimming)
+        /// used the SHIP's body. Off the craft that is a different world: noclip to the
+        /// Moon and the EVA frame stayed Terra's, so station-keeping dragged the player
+        /// along at Terra's ~1 km/s relative speed ("the Moon runs away"), the up vector
+        /// pointed away from Terra instead of up from the Moon, and the terrain contact
+        /// check compared the distance to TERRA — the player flew into the lunar surface
+        /// at a kilometre per second and passed straight through it.
+        /// </summary>
+        public OrbitingBody PlayerBody => CameraBody;
 
         /// <summary>
         /// Debug/eval hook: force the body used for local gravity, frame
@@ -2131,7 +2181,7 @@ namespace Galilego.Universe
             north = Vector3.forward;
             up = Vector3.up;
 
-            OrbitingBody body = DominantBody;
+            OrbitingBody body = PlayerBody;
             if (!ContactZoneHost.Active || body == null)
             {
                 return false;
@@ -2355,7 +2405,7 @@ namespace Galilego.Universe
 
             playerAirborne = true;
             Vector3d normal = new Vector3d(0d, 0d, 1d);
-            OrbitingBody body = DominantBody;
+            OrbitingBody body = PlayerBody;
             if (body != null)
             {
                 body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
@@ -2478,6 +2528,16 @@ namespace Galilego.Universe
                 return LocalFrameVelocity(t);
             }
 
+            // The craft is the reference only while the player is actually with it. In free
+            // flight the player can cross to another body (noclip/EVA to the Moon) while the
+            // craft stays parked at Terra: the craft's velocity there is a frame the player
+            // has nothing to do with, and holding it dragged the player along at Terra's
+            // relative speed — the Moon simply ran away.
+            if (CameraBody != DominantBody)
+            {
+                return LocalFrameVelocity(t);
+            }
+
             if (ContactZoneHost.Active
                 && (PlayerPosition - Ship.Position).SqrMagnitude <= VesselEvaFrameRadiusMeters * VesselEvaFrameRadiusMeters
                 && TryZoneVesselVelocityAt(PlayerPosition, t, out Vector3d zoneVelocityAtPlayer))
@@ -2559,7 +2619,11 @@ namespace Galilego.Universe
         /// </summary>
         private Vector3d LocalFrameVelocity(double t)
         {
-            OrbitingBody body = DominantBody;
+            // The body the PLAYER is over, not the craft's: noclip/EVA can cross to another
+            // body while the craft is parked, and the cheat/reference velocity must follow
+            // the ground the player is flying over — otherwise the Moon recedes at its
+            // ~1 km/s orbital speed and cannot be held.
+            OrbitingBody body = PlayerBody;
             if (body == null)
             {
                 return Vector3d.Zero;
@@ -2841,7 +2905,7 @@ namespace Galilego.Universe
             }
 
             platformCarry.Reset();
-            OrbitingBody body = DominantBody;
+            OrbitingBody body = PlayerBody;
             if (body != null && PlayerMode == PlayerMode.OnSurface && !ShouldUseSurfaceController(body, TimeSeconds))
             {
                 PlayerMode = PlayerMode.EVA;
@@ -2937,7 +3001,7 @@ namespace Galilego.Universe
 
         private void StepPlayerEva(double t, double dt)
         {
-            if (ShouldUseSurfaceController(DominantBody, t))
+            if (ShouldUseSurfaceController(PlayerBody, t))
             {
                 PlayerMode = PlayerMode.OnSurface;
                 playerAirborne = true;
@@ -2948,7 +3012,7 @@ namespace Galilego.Universe
 
             UpdateEvaCrouch(t);
 
-            OrbitingBody body = DominantBody;
+            OrbitingBody body = PlayerBody;
             Vector3d up = UpdateEvaUp(body, t, dt);
 
             Vector3d previousPosition = PlayerPosition;
@@ -3154,7 +3218,7 @@ namespace Galilego.Universe
                     }
                 }
 
-                return RadialUpAstro(DominantBody, TimeSeconds);
+                return RadialUpAstro(PlayerBody, TimeSeconds);
             }
         }
 
@@ -3605,7 +3669,7 @@ namespace Galilego.Universe
         /// </summary>
         private void StepPlayerSwimming(double t, double dt)
         {
-            OrbitingBody body = DominantBody;
+            OrbitingBody body = PlayerBody;
             if (body == null || body.Terrain == null || !WaterQuery.HasOcean(body))
             {
                 PlayerMode = PlayerMode.EVA;
@@ -3736,7 +3800,7 @@ namespace Galilego.Universe
                 }
             }
 
-            OrbitingBody body = DominantBody;
+            OrbitingBody body = PlayerBody;
             if (body == null)
             {
                 return;

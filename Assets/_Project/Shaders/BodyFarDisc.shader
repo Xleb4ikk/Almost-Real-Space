@@ -17,6 +17,7 @@ Shader "Galilego/BodyFarDisc"
         [HideInInspector] _BFD_DiscDistance("Disc Distance", Float) = 1000
         [HideInInspector] _BFD_LimbDarkening("Limb Darkening", Float) = 0.35
         [HideInInspector] _BFD_Ambient("Ambient", Float) = 0.015
+        [HideInInspector] _BFD_Opacity("Opacity", Float) = 1
     }
 
     SubShader
@@ -53,6 +54,7 @@ Shader "Galilego/BodyFarDisc"
             float _BFD_DiscDistance;
             float _BFD_LimbDarkening;
             float _BFD_Ambient;
+            float _BFD_Opacity;
 
             struct Attributes
             {
@@ -108,7 +110,7 @@ Shader "Galilego/BodyFarDisc"
 
                 // One-pixel feather: a 6 px disc stepped hard reads as a square.
                 float edge = max(1e-5, fwidth(r2) * 1.5);
-                float alpha = saturate((1.0 - r2) / edge);
+                float alpha = saturate((1.0 - r2) / edge) * _BFD_Opacity;
 
                 return float4(color * alpha, alpha);
             }

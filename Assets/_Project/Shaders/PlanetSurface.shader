@@ -477,6 +477,15 @@ Shader "Galilego/PlanetSurface"
                 float3 sunDir = normalize(_TerrainSunDir);
                 float ndl = saturate(dot(normal, sunDir));
 
+                // NOTE: a far-side clip was tried here (a per-fragment test that would drop
+                // the FAR half of a chunk straddling the limb, which `Cull Off` paints as a
+                // dark shell at altitude). Both formulations cut a razor-straight line across
+                // the GROUND: `positionWS` in this pass is not in the space that
+                // _TerrainBodyCenterWS lives in, so any absolute test taken from them is
+                // offset by the camera/floating-origin delta and removes near-side terrain.
+                // Kept out until it can be done in one explicit space (or by making the
+                // skirts double-sided and switching to Cull Back).
+
                 // HDRP shadow (PCSS/PCF) from trees/rocks/terrain; attenuates only
                 // the sun term — ambient remains, shadowed areas are not black.
                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, normal, sunDir);

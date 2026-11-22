@@ -330,6 +330,64 @@ namespace Galilego.Universe
         public int ResolutionHalveEveryLevels = 4;
 
         /// <summary>
+        /// Share of the desired nodes that have SOME built geometry above them (0..1),
+        /// read by <see cref="BodyFarDiscView"/> to hold the billboard until the real
+        /// sphere is there.
+        ///
+        /// Not a node COUNT and not a solid angle: the question is whether the screen has
+        /// a hole, and the quadtree answers it exactly — the traversal's parents are drawn
+        /// as hole plugs, so a desired node whose ancestor is built is covered at a coarser
+        /// LOD, while a node with no built ancestor at all is a black gap. Right after the
+        /// camera arrives at a new body the cache holds only the near cap, the far side of
+        /// the visible hemisphere has no ancestor yet, and this reports the truth (the
+        /// count/area metrics both claimed "full" then and uncovered a half-built sphere).
+        ///
+        /// Only evaluated where it matters — the disc fades out between 4 R and 1.6 R of
+        /// altitude, and the desired sets out there are tens of nodes, not thousands.
+        /// </summary>
+        private float ComputeViewCoverage(Vector3 cameraPosition)
+        {
+            if (body == null || desired.Count == 0)
+            {
+                return 1f;
+            }
+
+            double camRadius = (cameraPosition - bodyRenderPosition).magnitude;
+            if (camRadius > body.Radius * 5d || camRadius < body.Radius * 1.5d)
+            {
+                return 1f;
+            }
+
+            int covered = 0;
+            for (int i = 0; i < desired.Count; i++)
+            {
+                Node n = desired[i];
+                int depth = n.Depth;
+                int ix = n.Ix;
+                int iy = n.Iy;
+                while (true)
+                {
+                    if (chunks.ContainsKey(NodeId(n.Face, depth, ix, iy)))
+                    {
+                        covered++;
+                        break;
+                    }
+
+                    if (depth == 0)
+                    {
+                        break;
+                    }
+
+                    depth--;
+                    ix >>= 1;
+                    iy >>= 1;
+                }
+            }
+
+            return (float)covered / desired.Count;
+        }
+
+        /// <summary>
         /// Periodic geometry budget report: chunks actually visible, their triangle
         /// count and depth distribution (twice a second, to the console).
         /// </summary>
@@ -997,10 +1055,35 @@ namespace Galilego.Universe
         /// </summary>
         private bool initialFillDone;
 
+        /// <summary>
+        /// Share of the LOD nodes for the current view that are already built and drawn
+        /// (0..1). Read by <see cref="BodyFarDiscView"/> of the same body: the billboard
+        /// refuses to fade out while the real chunks are still arriving, so the
+        /// disc → terrain hand-over never uncovers a hole.
+        /// </summary>
+        public float ViewCoverage { get; private set; } = 1f;
+
+        /// <summary>True while this body is the one the camera is over.</summary>
+        private bool viewIsLive;
+
         /// <summary>Frame until which the chunk finalize budget is raised (see ClearChunkCache).</summary>
         private int coldRefillUntilFrame;
         private const int ColdRefillFrames = 900;
         private const float ColdRefillBudgetMs = 12f;
+
+        /// <summary>
+        /// Finalize budget while the view is far from built (ms). The steady 3 ms is a
+        /// smoothness value: it keeps the frame free when the camera drifts slowly. It is
+        /// also ~2 chunks per frame, and at ground level the LOD wants ~2 000 of them, so
+        /// landing from orbit put the player in front of a coarse "melted sheet" for tens of
+        /// seconds while the fine tiles trickled in. While less than <see cref="CatchUpShare"/>
+        /// of the desired nodes is built, upload four times faster; it drops back as soon as
+        /// the view is complete.
+        /// </summary>
+        private const float CatchUpBudgetMs = 25f;
+        private const float CatchUpShare = 0.9f;
+        /// <summary>Built share of the desired nodes from the last traversal (0..1).</summary>
+        private float viewBuiltShare = 1f;
         private int diagnosticChunksLogged;
         private float decorAllocLogTime;
         private readonly float[] decorProbeNext = new float[16];
@@ -1090,7 +1173,21 @@ namespace Galilego.Universe
             // Scene/Domain) private component fields can survive the previous run while
             // their chunks are already destroyed. initialFillDone included: a stale true
             // would skip the synchronous first build and start the run with holes.
-            initialFillDone = false;
+            //
+            // The synchronous first frame is for the body the player STARTS on: the world
+            // must be ready before he sees it. A body he flies to later must not build its
+            // whole view in one frame — at 200 km above Artemis that is hundreds of
+            // 129×129 chunks, i.e. seconds of freeze — so there it goes through the async
+            // path and the far disc holds until the chunks arrive.
+            //
+            // Decided by DISTANCE, not by CameraBody: at Start the position cache of the
+            // system may still be cold (a body at the origin claims the SOI test), and a
+            // wrong answer here would leave the spawn point empty.
+            body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d startBodyPos, out _);
+            bool cameraStartsHere = (Runner.PlayerPosition - startBodyPos).Magnitude <= body.Radius * 2d;
+            initialFillDone = !cameraStartsHere;
+            viewIsLive = false;
+            ViewCoverage = 0f;
             ClearChunkCache();
             paramsAlive = true;
             EnsureHdrpWaterPatch();
@@ -1747,11 +1844,40 @@ namespace Galilego.Universe
                 SurfacePerf.EndFrame(perfAllocBefore);
                 return;
             }
-            if (Runner.DominantBody != body)
+
+            // The surface belongs to the CAMERA, not to the ship (Runner.CameraBody, see
+            // its doc): the player can fly a whole SOI away from the parked craft. Gating
+            // on the ship's DominantBody made the Moon vanish on approach — its far disc
+            // handed the body over to chunks this renderer had switched off every frame.
+            //
+            // The proximity test is a safety net, not a second rule: two radii (one radius
+            // of altitude) from the centre the camera unambiguously hangs over THIS body,
+            // so a half-initialised system that puts a body at the origin and hands the
+            // point to it cannot hide the ground under the player.
+            if (Runner.CameraBody != body)
             {
-                SetAllInvisible();
-                SurfacePerf.EndFrame(perfAllocBefore);
-                return;
+                body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyNow, out _);
+                if ((Runner.PlayerPosition - bodyNow).Magnitude > body.Radius * 2d)
+                {
+                    ViewCoverage = 0f;
+                    viewIsLive = false;
+                    SetAllInvisible();
+                    SurfacePerf.EndFrame(perfAllocBefore);
+                    return;
+                }
+            }
+
+            if (!viewIsLive)
+            {
+                // First frame on this body: the chunks of OTHER bodies are per-renderer, so
+                // nothing of this view is in the cache yet. Refill on the cold budget while
+                // it is still empty, otherwise the far disc's fade uncovers a half-built
+                // sphere (a CRATERED planet with a smooth dark hole in the middle).
+                viewIsLive = true;
+                if (chunks.Count == 0)
+                {
+                    coldRefillUntilFrame = Time.frameCount + ColdRefillFrames;
+                }
             }
 
             body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPosition, out _);
@@ -1869,6 +1995,7 @@ namespace Galilego.Universe
             // upload of the finished buffer remains.
             var buildClock = System.Diagnostics.Stopwatch.StartNew();
             int visibleNow = 0;
+            int builtNow = 0;
             int terrainTrisNow = 0;
             for (int i = 0; i < desired.Count; i++)
             {
@@ -1882,6 +2009,7 @@ namespace Galilego.Universe
                     }
 
                     visibleNow++;
+                    builtNow++;
                     terrainTrisNow += ChunkTriangleCount(wanted.Depth);
                     continue;
                 }
@@ -1899,6 +2027,7 @@ namespace Galilego.Universe
 
                     BuildChunk(wanted);
                     built++;
+                    builtNow++;
                 }
                 else
                 {
@@ -1909,6 +2038,9 @@ namespace Galilego.Universe
                 visibleNow++;
                 terrainTrisNow += ChunkTriangleCount(wanted.Depth);
             }
+
+            // Built share of the view: drives the finalize catch-up in PumpChunkBuilds.
+            viewBuiltShare = desired.Count > 0 ? (float)builtNow / desired.Count : 1f;
 
                 PumpChunkBuilds();
                 EnqueuePrefetchChunks(cameraPosition);
@@ -1998,6 +2130,13 @@ namespace Galilego.Universe
                         fresh.LastKeepTime = Time.unscaledTime;
                     }
                 }
+
+                // Share of the view that has terrain under it, for the far disc's hand-over.
+                // HERE, after the keep pass: earlier, chunks already hidden this frame would
+                // still count as coverage and a hole would read as filled.
+                ViewCoverage = desired.Count == 0 || builtNow == desired.Count
+                    ? 1f
+                    : ComputeViewCoverage(cameraPosition);
 
                 // [PHASE 2.5] keep size and DesiredInKeep are computed HERE in one pass, not
                 // inside EvictIfNeeded: when eviction exits early (cache under the limit) the
@@ -2907,9 +3046,19 @@ namespace Galilego.Universe
             }
 
             long startTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            float finalizeBudgetMs = Time.frameCount < coldRefillUntilFrame
-                ? Mathf.Max(ChunkFinalizeBudgetMs, ColdRefillBudgetMs)
-                : ChunkFinalizeBudgetMs;
+            float finalizeBudgetMs = ChunkFinalizeBudgetMs;
+            if (Time.frameCount < coldRefillUntilFrame)
+            {
+                finalizeBudgetMs = Mathf.Max(finalizeBudgetMs, ColdRefillBudgetMs);
+            }
+            else if (viewBuiltShare < CatchUpShare)
+            {
+                // Landing on a body, a noclip jump, the first frames after an SOI change: the
+                // view is mostly unbuilt and 3 ms would trickle ~2 chunks per frame against
+                // thousands wanted. Pay a temporary frame spike instead of showing the player
+                // a coarse sheet (or a hole) for half a minute.
+                finalizeBudgetMs = Mathf.Max(finalizeBudgetMs, CatchUpBudgetMs);
+            }
 
             // Stale entry filtering. A node that entered desired a couple of frames ago and
             // has since moved behind the camera is pointless to build: by the time its turn

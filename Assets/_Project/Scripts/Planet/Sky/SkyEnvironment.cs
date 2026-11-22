@@ -219,13 +219,18 @@ namespace Galilego.Universe
                 return;
             }
 
-            if (Runner == null || Runner.SystemState == null || Runner.DominantBody == null
+            if (Runner == null || Runner.SystemState == null || Runner.CameraBody == null
                 || Runner.SystemState.Root == null || Runner.Ship == null)
             {
                 return;
             }
 
-            ApplyGlobalsNow(Runner.DominantBody, ObserverPosition(), Runner.TimeSeconds);
+            // The body under the CAMERA, not under the ship: ambient, sun transmittance
+            // and _TerrainBodyCenterWS must describe the ground the eye is over. With the
+            // ship's body every one of them described Terra while the player stood above
+            // Artemis — the lunar relief was lit by the wrong centre (dayLocal) and the
+            // airless body got an atmosphere's worth of ambient.
+            ApplyGlobalsNow(Runner.CameraBody, ObserverPosition(), Runner.TimeSeconds);
         }
 
         /// <summary>
