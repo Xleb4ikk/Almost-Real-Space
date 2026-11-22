@@ -106,8 +106,9 @@ namespace Galilego.Core
 
         /// <summary>
         /// Physical ratio → scene units. gainEv is the simulated eye's dark
-        /// adaptation: 16 EV turns the game's full moon into ~0.19 of the noon sun,
-        /// a value a tonemapped night can actually show; 0 is the physical night.
+        /// adaptation: 14 EV turns the game's full moon into ~0.036 of the noon sun,
+        /// a dark moonlit night (~4.8 stops below day); 15–16 EV are the brighter
+        /// "cinematic" / long-exposure levels; 0 is the physical (black) night.
         /// </summary>
         public static double SceneIntensity(double irradianceRatioToSun, double gainEv)
         {

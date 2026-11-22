@@ -2848,7 +2848,7 @@ MonoBehaviour:
   MoonName: 
   GeometricAlbedo: 0.136
   MoonlightScale: 1
-  NightAdaptationGainEv: 16
+  NightAdaptationGainEv: 14
   MoonlightTint: {r: 0.78, g: 0.88, b: 1, a: 1}
   MoonSkyAmbient: 0.01
   ShareShadowCascades: 1

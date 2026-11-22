@@ -23,19 +23,30 @@ For Artemis (R = 412 km, a = 90 000 km) full moon is **2.85·10⁻⁶ of the sta
 real Moon/Earth ratio. That ratio is independent of the star: a brighter star lights
 both the Moon and Terra more.
 
-## Why 16 EV is applied
+## Why 14 EV is applied
 
 A moonlit landscape is ~2.9·10⁻⁶ of daylight. On a display calibrated for day it is
 black, which is why every game boosts it. Here the boost is **one explicit number**:
 
-* `MoonlightPhysics.SceneIntensity(ratio, 16)` — the simulated eye's dark adaptation;
+* `MoonlightPhysics.SceneIntensity(ratio, 14)` — the simulated eye's dark adaptation;
 * `SkyEnvironment.MoonlightExposureBoost` (0.5 EV) — the camera exposure follows the
   same light, a little, so the night is visible without becoming dusk.
 
-With 16 EV a full moon is ~0.15 of the noon sun in the scene's `albedo·ndl` scale
-(0.19 before Sol's warm peak and the air column); 2.4 lux physically. Quarter moon is
-1/11 of that; the phase is never flattened.
-`NightAdaptationGainEv = 0` restores the strictly physical (black) night.
+With 14 EV a full moon is ~0.036 of the noon sun in the scene's `albedo·ndl` scale
+(~0.048 before Sol's warm peak and the air column) — 4.8 stops below day, the darkest
+level that still reads as a lit landscape; 2.4 lux physically. 15 EV (0.071) is the
+classic day-for-night grade, 16 EV (0.14) is the exposure of a long-time photograph
+and reads as an overcast day. Quarter moon is 1/11 of the full; the phase is never
+flattened. `NightAdaptationGainEv = 0` restores the strictly physical (black) night.
+
+Measured on the pad at `t = 24 000 s` (Game view, sRGB of the VAB wall / asphalt):
+
+| `NightAdaptationGainEv` | wall | asphalt |
+|---|---|---|
+| 16 | 133 | 13 |
+| 15 | 86 | 5 |
+| **14** | **51** | **1** |
+| 13 | 28 | 0 |
 
 ## Sky position, atmosphere, horizon
 
@@ -122,7 +133,7 @@ Expected diagnostics:
 | `PhaseAngleDeg` | 8.6° (99.4 % lit) |
 | `EclipseVisibility` | 1 |
 | `IrradianceRatioToSun` | 2.82·10⁻⁶ |
-| `SceneIntensity` | 0.14 (gain 16; the peak of Sol's warm vector and T) |
+| `SceneIntensity` | 0.035 (gain 14; the peak of Sol's warm vector and T) |
 | `IlluminanceLux` | 2.4 lx |
 | `SunElevationDeg` | −88.7° |
 
@@ -140,7 +151,7 @@ the 11 px `BodyFarDiscView` floor at long range.
 | Field | Default | Effect |
 |---|---|---|
 | `GeometricAlbedo` | 0.136 | real regolith; 0 disables the light |
-| `NightAdaptationGainEv` | 16 | the one perceptual gain; 0 = physical black night |
+| `NightAdaptationGainEv` | 14 | the one perceptual gain; 0 = physical black night |
 | `MoonlightScale` | 1 | global artistic multiplier |
 | `MoonlightTint` | (0.78, 0.88, 1) | slight Purkinje blue; the reflected spectrum is nearly neutral |
 | `MoonSkyAmbient` | 0.01 | fraction of direct light used as sky fill |
