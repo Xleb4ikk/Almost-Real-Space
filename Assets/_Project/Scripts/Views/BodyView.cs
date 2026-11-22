@@ -57,7 +57,18 @@ namespace Galilego.Universe
                 flatRoot = new GameObject("BodyViewsRoot").transform;
             }
 
+            // The scene hierarchy is only organisational: a moon is authored as a child of
+            // its planet, and every body's scale in the scene is its DIAMETER (the unit
+            // sphere mesh × scale), not a fraction of the parent. Reparenting with
+            // worldPositionStays=true keeps the WORLD scale, which multiplies the moon by
+            // the planet's radius (Артемида: 824 000 × Terra: 2 286 000 ≈ 1.9e12). Its
+            // SphereCollider follows that scale: an invisible sphere whose surface is a
+            // billion kilometres away, so every PhysX body near the site is "deep inside"
+            // it and gets depenetrated at maxDepenetrationVelocity — the vessel jumps off
+            // the pad at ~10 m/s. Keep the body's OWN authored scale.
+            Vector3 ownScale = transform.localScale;
             transform.SetParent(flatRoot, true);
+            transform.localScale = ownScale;
 
             // Register in the view registry so ShipView finds the dominant body by name.
             if (Runner.SystemView == null)

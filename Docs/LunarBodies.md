@@ -54,3 +54,33 @@ timescale, which makes the baked ephemeris meaningless. 90 000 km is 0.298 R_H.
   procedural palette; the lunar field itself comes from the vertex data.
 * **`MinCraterDiameterMeters = 24`**: smaller craters exist in physics but alias in the
   mesh at maximum LOD. Each halving adds a crater level — the expensive knob.
+* **A body's scale is its DIAMETER and must never inherit its parent's.** The scene nests
+  `Артемида` under `Terra` for organisation, and `Terra`'s transform is scaled by 2 286 000.
+  `BodyView` reparents every body to a flat runtime root; keeping the *world* scale
+  multiplied the moon by Terra (824 000 × 2 286 000 ≈ 1.9e12), and its `SphereCollider`
+  with it — a sphere 1e12 m across, invisible from the inside, whose "penetration" pushed
+  every PhysX body near the site out at `maxDepenetrationVelocity` (the rocket on the pad
+  left at ≈10 m/s the moment physics was switched on). The view now restores the body's
+  own authored scale after the reparent.
+
+## Why you cannot see it: the far plane is 300 km
+
+`FirstPersonCamera.UpdateClipPlanes` sets `far` from the physical horizon, not from the
+content: standing on Terra that is **319 km**, and at 200 km altitude it is still under
+1 000 km. Artemis orbits at 82 000 km — **262× beyond the far plane** — so the cube-sphere
+chunks are clipped away and the body is not in the frame at all. Raising `far` is not an
+option (`near/far` would hit 10^8; see [SkyDomes.md](SkyDomes.md)).
+
+`BodyFarDiscView` (`Scripts/Views/`) is the answer, the same one `GasGiantView` and
+`SunBillboard` already use for the gas giant and the star: a camera-facing quad at
+`0.28·far` (a quarter of the far plane keeps it ahead of the depth-precision cliff), sized
+to the body's **exact angular radius**, shaded with a Lambert phase from the real sun
+direction plus limb darkening. The real chunks take over as soon as the surface fits
+inside `0.95·far`, so the switch is invisible.
+
+At the camera's 83° vertical FOV, 0.566° is **5.6 px**: that is the size of the real Moon
+in our sky (0.52°), and it is small on purpose — the radius and the orbit are what they
+are. For comparison the star is 1.47° at 0.369 AU, 2.6× wider, which is why the moon reads
+as a dot next to a big sun. A larger disc means a smaller orbit (32 100 km would make it
+exactly the sun's size, still 0.106 R_H) or a bigger body.
+
