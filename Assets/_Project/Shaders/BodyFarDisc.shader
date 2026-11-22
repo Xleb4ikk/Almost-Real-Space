@@ -6,6 +6,8 @@ Shader "Galilego/BodyFarDisc"
     // keeps the same angular size and the correct phase, like GasGiantView's far disc.
     Properties
     {
+        [HideInInspector] _BFD_Map("Surface Map", 2D) = "white" {}
+        [HideInInspector] _BFD_MapStrength("Map Strength", Float) = 0
         [HideInInspector] _BFD_Albedo("Albedo", Color) = (0.5, 0.49, 0.47, 1)
         [HideInInspector] _BFD_SunDirWS("Sun Direction", Vector) = (1, 0, 0, 0)
         [HideInInspector] _BFD_RightWS("Screen Right", Vector) = (1, 0, 0, 0)
@@ -40,6 +42,10 @@ Shader "Galilego/BodyFarDisc"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
 
             float4 _BFD_Albedo;
+            TEXTURE2D(_BFD_Map);
+            SAMPLER(s_linear_clamp_sampler);
+            float _BFD_MapStrength;
+            float4x4 _BFD_BodyToWorld;
             float4 _BFD_SunDirWS;
             float4 _BFD_RightWS;
             float4 _BFD_UpWS;
@@ -87,7 +93,17 @@ Shader "Galilego/BodyFarDisc"
 
                 float ndl = saturate(dot(normalWS, _BFD_SunDirWS.xyz));
                 float limb = 1.0 - (_BFD_LimbDarkening * (1.0 - nz));
-                float3 color = _BFD_Albedo.rgb * (ndl + _BFD_Ambient) * limb * _BFD_IntensityScale;
+                // Body-fixed albedo map (maria / highlands) so a 20 px disc still reads as
+                // THIS moon and not as a featureless ball. Same lat/lon convention as
+                // LunarRelief: dir = (cos lat cos lon, cos lat sin lon, sin lat).
+                float3 nb = mul(normalWS, (float3x3)_BFD_BodyToWorld);
+                float lat = asin(clamp(nb.z, -1.0, 1.0));
+                float lon = atan2(nb.y, nb.x);
+                float2 uvMap = float2((lon * 0.15915494) + 0.5, (lat * 0.31830989) + 0.5);
+                float mapValue = SAMPLE_TEXTURE2D(_BFD_Map, s_linear_clamp_sampler, uvMap).r;
+                float3 albedo = _BFD_Albedo.rgb * lerp(1.0, mapValue, _BFD_MapStrength);
+
+                float3 color = albedo * (ndl + _BFD_Ambient) * limb * _BFD_IntensityScale;
 
                 // One-pixel feather: a 6 px disc stepped hard reads as a square.
                 float edge = max(1e-5, fwidth(r2) * 1.5);

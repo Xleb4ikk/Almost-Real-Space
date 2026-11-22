@@ -55,6 +55,13 @@ namespace Galilego.Universe
         [Tooltip("Взять альбедо из BodyAuthoring.TerrainPreset (палитра Snow).")]
         public bool UseTerrainPalette = true;
 
+        [Tooltip("Карта альбедо в телесных координатах (maria/нагорья). Без неё диск — ровный шар.")]
+        public Texture2D SurfaceMap;
+
+        [Range(0f, 1f)]
+        [Tooltip("Сила карты альбедо.")]
+        public float SurfaceMapStrength = 1f;
+
         private OrbitingBody body;
         private OrbitingBody star;
         private Transform disc;
@@ -156,9 +163,26 @@ namespace Galilego.Universe
 
             float far = Mathf.Max(1f, camera.farClipPlane);
             double nearSurface = distance - body.Radius;
-            if (!(distance > 1d) || nearSurface < far * 0.95d)
+            if (!(distance > 1d))
             {
-                // Inside the far plane the real chunks draw it; the disc must not double it.
+                SetActive(false);
+                return;
+            }
+
+            float angularRadius = Mathf.Atan2((float)body.Radius, (float)distance);
+            float fovRadians = Mathf.Max(0.01f, camera.fieldOfView) * Mathf.Deg2Rad;
+            float pixelRadius = angularRadius / Mathf.Tan(fovRadians * 0.5f) * (Screen.height * 0.5f);
+            float floorPixels = Mathf.Max(pixelRadius, MinScreenRadiusPixels);
+
+            // The disc stands in for a body the camera cannot draw OR draws so small that
+            // it reads as a star. It must not depend on `far` alone: the far plane jumps to
+            // the SOI radius in flyby mode, and then "inside far" hid the disc while the
+            // real body was still 5 px - the moon visibly shrank to a speck on approach.
+            // Hand the body over only when the real chunks are both inside the frustum AND
+            // already at least as big as the floor, so the sizes match at the swap.
+            bool chunksCover = nearSurface < (far * 0.95d) && pixelRadius >= MinScreenRadiusPixels;
+            if (chunksCover)
+            {
                 SetActive(false);
                 return;
             }
@@ -181,26 +205,19 @@ namespace Galilego.Universe
 
             disc.rotation = Quaternion.LookRotation(simDirection, up.normalized);
 
-            float angularRadius = Mathf.Atan2((float)body.Radius, (float)distance);
             float size = discDistance * 2f * Mathf.Tan(angularRadius) * 1.02f;
 
-            // A 0.5-degree moon is 5 px at 900p / 83 deg FOV: physically a disc, on
-            // screen a star. The floor keeps it readable, but it is blended in with
-            // distance so that near the switch-over - where the real chunks appear -
-            // the disc has already shrunk back to its true angular size and nothing pops.
-            float fovRadians = Mathf.Max(0.01f, camera.fieldOfView) * Mathf.Deg2Rad;
-            float pixelRadius = angularRadius / Mathf.Tan(fovRadians * 0.5f) * (Screen.height * 0.5f);
-            float distanceRatio = far > 1f ? (float)(nearSurface / far) : 1f;
-            float boost = Mathf.Clamp01((distanceRatio - 1f) / 3f);
-            float floorPixels = Mathf.Lerp(pixelRadius, MinScreenRadiusPixels, boost);
-            float pixelScale = (floorPixels > 0f && pixelRadius > 1e-6f)
-                ? Mathf.Max(1f, floorPixels / pixelRadius)
-                : 1f;
+            // Subpixel discs flicker; the floor keeps them readable, and MinEnergyScale
+            // decides whether the extra area costs surface brightness or total flux.
+            float pixelScale = pixelRadius > 1e-6f ? Mathf.Max(1f, floorPixels / pixelRadius) : 1f;
             disc.localScale = new Vector3(size * pixelScale, size * pixelScale, 1f);
             float energyScale = Mathf.Max(MinEnergyScale, 1f / (pixelScale * pixelScale));
 
             star.EvaluateWorldState(Runner.TimeSeconds, out Vector3d starPos, out _);
             Vector3 sunDirection = AstroFrame.ToSimulation((starPos - bodyPos).Normalized);
+
+            Runner.SystemState.GetVisualFrame(body, Runner.TimeSeconds, out _, out _, out QuaternionD orientation);
+            Quaternion bodyRotation = AstroFrame.ToSimulation(orientation);
 
             material.SetColor("_BFD_Albedo", Albedo);
             material.SetVector("_BFD_SunDirWS", ToVec(sunDirection));
@@ -210,6 +227,9 @@ namespace Galilego.Universe
             material.SetFloat("_BFD_IntensityScale", Brightness * energyScale);
             material.SetFloat("_BFD_DiscDistance", discDistance);
             material.SetFloat("_BFD_LimbDarkening", LimbDarkening);
+            material.SetTexture("_BFD_Map", SurfaceMap);
+            material.SetFloat("_BFD_MapStrength", SurfaceMap != null ? SurfaceMapStrength : 0f);
+            material.SetMatrix("_BFD_BodyToWorld", Matrix4x4.TRS(Vector3.zero, bodyRotation, Vector3.one));
 
             SetActive(true);
         }
