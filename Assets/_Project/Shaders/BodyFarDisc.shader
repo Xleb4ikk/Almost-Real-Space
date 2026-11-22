@@ -43,7 +43,6 @@ Shader "Galilego/BodyFarDisc"
 
             float4 _BFD_Albedo;
             TEXTURE2D(_BFD_Map);
-            SAMPLER(s_linear_clamp_sampler);
             float _BFD_MapStrength;
             float4x4 _BFD_BodyToWorld;
             float4 _BFD_SunDirWS;
