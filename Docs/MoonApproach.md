@@ -44,7 +44,10 @@ built**, because the traversal already keeps parents as hole plugs. Distance/are
 both lied here — the missing part was the far half of the visible cap, which is a large
 share of the screen but a small share of the solid angle.
 
-`Brightness` was raised 14 → 24 so the disc matches the terrain it becomes.
+`Brightness` is now a multiplier on the scene's sunlit-surface scale (see
+[MoonLook.md](MoonLook.md#the-daytime-moon-looked-like-a-moon-with-no-atmosphere)):
+`1` makes the disc exactly as bright as the Moon's own terrain, which is what the 14 → 24
+raise was reaching for.
 
 ## 3. near = 0.1 m against far = 1 200 km renders NOTHING
 

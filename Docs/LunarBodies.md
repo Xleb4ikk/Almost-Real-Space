@@ -101,8 +101,10 @@ honest place for it: the *body* keeps its real radius and orbit, only the stand-
 scaled. The floor is blended by distance (`nearSurface / far`), so as the real chunks come
 within reach the disc shrinks back to its true angular size and the switch stays invisible.
 `MinEnergyScale = 1` keeps the surface brightness (the disc gets bigger, not dimmer);
-`MinScreenRadiusPixels = 0` restores the strictly physical size. Whether the disc lands as
-white or mid-grey is settled by HDRP auto-exposure, not by `Brightness` — the shader value
-only decides it relative to the rest of the frame.
+`MinScreenRadiusPixels = 0` restores the strictly physical size. `Brightness` is a
+multiplier on the scene's sunlit-surface scale (1 = the Moon's own terrain, which makes the
+hand-over seamless); by day the disc then goes through the same air the sky does, so it is
+the atmosphere — not the exposure — that decides how washed out it looks. See
+[MoonLook.md](MoonLook.md#the-daytime-moon-looked-like-a-moon-with-no-atmosphere).
 
 

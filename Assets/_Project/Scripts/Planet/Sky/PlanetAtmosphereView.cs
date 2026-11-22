@@ -130,6 +130,8 @@ namespace Galilego.Universe
 
         private void OnDestroy()
         {
+            Shader.SetGlobalFloat("_AtmActive", 0f);
+
             if (shell != null)
             {
                 Destroy(shell.gameObject);
@@ -238,6 +240,19 @@ namespace Galilego.Universe
             // in the inspector takes effect immediately.
             Shader.SetGlobalFloat("_AtmIgnoreCockpitDepth", IgnoreCockpitDepth ? 1f : 0f);
 
+            // Whether the air exists FOR THIS OBSERVER. Everything drawn after the dome
+            // that stands behind the air (BodyFarDisc) reads it and treats a 0 as
+            // "vacuum": T = 1, no in-scatter. Set to 0 here and raised below only when
+            // the dome really renders, so a stale dome never veils anything.
+            Shader.SetGlobalFloat("_AtmActive", 0f);
+
+            // The star's photosphere, luminance 1, published even when no dome is drawn:
+            // a body lit by the star (the Moon's far disc in space) needs the star's
+            // colour, not the observer's sky.
+            Vector3d starLinear = SkyEnvironment.PhotosphereLinear;
+            Shader.SetGlobalVector("_AtmSunColor",
+                new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z));
+
             if (Runner == null || Runner.SystemState == null || Runner.SystemState.Root == null
                 || body == null || profile == null || shell == null)
             {
@@ -310,13 +325,6 @@ namespace Galilego.Universe
                 }
             }
 
-            // Photosphere color (~5772 K) for the scattering contribution:
-            // single source shared with StarRenderer/SkyEnvironment
-            // (SkyEnvironment.PhotosphereLinear).
-            Vector3d starLinear = SkyEnvironment.PhotosphereLinear;
-            Shader.SetGlobalVector("_AtmSunColor",
-                new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z));
-
             // Tints are just multipliers on top of physics (1 = unchanged).
             Color rayleighTint = profile.RayleighColor;
             Color mieTint = profile.MieColor;
@@ -362,6 +370,10 @@ namespace Galilego.Universe
                 Shader.SetGlobalTexture("_AtmMultiScatterTex", multiScatterLut);
             }
 
+            // Everything downstream of the dome (the Moon's far disc) is allowed to
+            // use the air only now that the globals and both LUTs are this frame's.
+            Shader.SetGlobalFloat("_AtmActive", 1f);
+
             if (!loggedOnce)
             {
                 loggedOnce = true;
@@ -371,6 +383,13 @@ namespace Galilego.Universe
                     coeff.RayleighScaleHeight, coeff.MieScaleHeight, profile.Intensity,
                     Runner.DominantBody != null ? Runner.DominantBody.Name : "null"));
             }
+        }
+
+        private void OnDisable()
+        {
+            // A disabled dome publishes nothing: whatever drew after it (the Moon's
+            // disc) must fall back to vacuum instead of last frame's air.
+            Shader.SetGlobalFloat("_AtmActive", 0f);
         }
 
         private static Mesh BuildSphereMesh(float radius, int latSegments, int lonSegments)

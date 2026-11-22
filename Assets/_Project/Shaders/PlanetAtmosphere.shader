@@ -48,27 +48,14 @@ Shader "Galilego/PlanetAtmosphere"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
 
-            // --- Camera/body/sun ---
-            float3 _AtmCameraWS;
-            float3 _AtmCameraForwardWS;
-            float3 _AtmBodyCenterWS;
-            float3 _AtmSunDirWS;
-            float3 _AtmSunColor;
+            // Shared with Galilego/BodyFarDisc: the camera/body/sun uniforms, the
+            // optics uniforms, the two CPU LUTs and the march itself. One copy,
+            // because the Moon's far disc must add the SAME air this dome does —
+            // a second implementation drifts and leaves a circle at the disc edge.
+            #include "GalilegoAtmosphereAir.hlsl"
 
-            // --- Geometry and optics (m⁻¹) from AtmosphereOptics ---
-            float _AtmPlanetRadius;
-            float _AtmRadius;
-            float _AtmAtmDepth;
-            float3 _AtmBetaRayleigh;
-            float3 _AtmBetaMie;
-            float3 _AtmBetaOzone;
-            float _AtmHr;
-            float _AtmHm;
-            float _AtmOzoneCenter;
-            float _AtmOzoneWidth;
-            float _AtmMieG;
-            float _AtmIntensity;
-            float _AtmStepCount;
+            // Dome-only state: no other consumer of the air needs it.
+            float3 _AtmCameraForwardWS;
             float _AtmPlanetOcclusion;
             float _AtmHorizonFade;
             float4 _AtmGroundColor;
@@ -78,23 +65,12 @@ Shader "Galilego/PlanetAtmosphere"
             // ignored. Off by default: an opaque cockpit wall must keep its own colour.
             float _AtmIgnoreCockpitDepth;
 
-            // CPU LUTs: Sun transmittance and multiple scattering.
-            TEXTURE2D(_AtmTransmittanceTex);
-            SAMPLER(sampler_AtmTransmittanceTex);
-            TEXTURE2D(_AtmMultiScatterTex);
-            SAMPLER(sampler_AtmMultiScatterTex);
-
-            #define ATM_PI 3.14159265358979
-
             // Closer than this, a non-sky depth is the observer's own craft (hull,
             // hatch frame, canopy) and must still occlude the atmosphere; farther,
             // while the camera is above the shell, it is the planet — whose depth is
             // quantized by the screen-space projection and replaced by the analytic
             // sphere.
             #define ATM_NEAR_OCCLUDER_M 1000.0
-
-            // Scene radiance calibration applied on top of Intensity.
-            #define ATM_RADIANCE_SCALE 5.0
 
             struct Attributes
             {
@@ -115,157 +91,6 @@ Shader "Galilego/PlanetAtmosphere"
                 return output;
             }
 
-            bool RaySphere(float3 ro, float3 rd, float radius, out float t0, out float t1)
-            {
-                float safeRadius = max(abs(radius), 1e-4);
-                float3 safeDirection = rd * rsqrt(max(dot(rd, rd), 1e-8));
-                float3 normalizedOrigin = ro / safeRadius;
-                float b = dot(normalizedOrigin, safeDirection);
-                float c = dot(normalizedOrigin, normalizedOrigin) - 1.0;
-                float h = (b * b) - c;
-                if (h < -1e-7)
-                {
-                    t0 = 0.0;
-                    t1 = 0.0;
-                    return false;
-                }
-
-                h = sqrt(max(h, 0.0));
-                t0 = (-b - h) * safeRadius;
-                t1 = (-b + h) * safeRadius;
-                return true;
-            }
-
-            float RayleighPhase(float c)
-            {
-                return (3.0 / (16.0 * ATM_PI)) * (1.0 + (c * c));
-            }
-
-            // Cornette-Shanks phase (normalised): haze/glow around the Sun.
-            float MiePhase(float c, float g)
-            {
-                float g2 = g * g;
-                float num = 3.0 * (1.0 - g2) * (1.0 + (c * c));
-                float den = 8.0 * ATM_PI * (2.0 + g2) * pow(max(1e-4, 1.0 + g2 - (2.0 * g * c)), 1.5);
-                return num / den;
-            }
-
-            float3 AtmExtinction(float height)
-            {
-                float dR = exp(-height / max(1.0, _AtmHr));
-                float dM = exp(-height / max(1.0, _AtmHm));
-                float dO = saturate(1.0 - abs((height - _AtmOzoneCenter) / max(1.0, _AtmOzoneWidth)));
-                return (_AtmBetaRayleigh * dR) + (_AtmBetaMie * dM) + (_AtmBetaOzone * dO);
-            }
-
-            float3 AtmScattering(float height)
-            {
-                float dR = exp(-height / max(1.0, _AtmHr));
-                float dM = exp(-height / max(1.0, _AtmHm));
-                return (_AtmBetaRayleigh * dR) + (_AtmBetaMie * dM);
-            }
-
-            float3 SampleTransmittance(float height, float cosTheta)
-            {
-                float2 uv = float2(cosTheta * 0.5 + 0.5, saturate(height / max(1e-3, _AtmAtmDepth)));
-                return SAMPLE_TEXTURE2D_LOD(_AtmTransmittanceTex, sampler_AtmTransmittanceTex, uv, 0).rgb;
-            }
-
-            float3 SampleMultiScatter(float height, float cosTheta)
-            {
-                float2 uv = float2(cosTheta * 0.5 + 0.5, saturate(height / max(1e-3, _AtmAtmDepth)));
-                return SAMPLE_TEXTURE2D_LOD(_AtmMultiScatterTex, sampler_AtmMultiScatterTex, uv, 0).rgb;
-            }
-
-            // Analytic integral over a homogeneous segment:
-            // transmittance · (S − S·transSeg) / sigmaE.
-            float3 IntegrateOverSegment(float3 S, float3 transSeg, float3 transmittance, float3 sigmaE)
-            {
-                return transmittance * (S - (S * transSeg)) / max(sigmaE, 1e-12);
-            }
-
-            // One raymarch from tStart to tEnd. Returns in-scatter; outTransmittance
-            // is the transmittance at the end of the path.
-            //
-            // Samples are the midpoints of N equal segments (offset 0.5),
-            // i.e. stratified sampling. With 48 segments and Hr ≈ 8.5 km the
-            // midpoint error is smooth and produces no flicker or banding, so
-            // no step jitter is needed.
-            float3 IntegrateAtmosphere(float3 ro, float3 rd, float3 sunDir,
-                float tStart, float tEnd, out float3 outTransmittance)
-            {
-                int maxSteps = clamp((int)_AtmStepCount, 2, 128);
-
-                // Empty (or inverted) segment: no atmosphere between the observer and the
-                // surface. Must be explicit: tStart is now the shell entry, and a cockpit
-                // wall can be NEARER than it — a negative ds would turn exp(-sigma·ds)
-                // into a bright artifact instead of "nothing".
-                if (tEnd <= tStart)
-                {
-                    outTransmittance = 1.0;
-                    return 0.0;
-                }
-
-                // Number of steps depends on PATH LENGTH, not always the max.
-                //
-                // The density profile is exponential with scale Hr and is
-                // resolved when ds = L/N is much smaller than Hr. Requiring
-                // ds <= Hr/16 (density change per step <= 6 %) gives
-                // N = 16·L/Hr; the midpoint integral error is then ~0.4 %,
-                // below the visibility threshold.
-                //
-                // Sky paths are hundreds of km, so N reaches maxSteps and the
-                // sky image is unchanged. Terrain paths are metres, where a few
-                // long steps integrate the exponential accurately and 48 fixed
-                // steps were pure overhead.
-                //
-                // round, not ceil: step-count steps between L changes produce
-                // no visible seam — only the integration error changes.
-                int steps = clamp((int)round((16.0 * (tEnd - tStart)) / max(1.0, _AtmHr)), 1, maxSteps);
-                float ds = (tEnd - tStart) / (float)steps;
-
-                float cosA = dot(rd, sunDir);
-                float phaseR = RayleighPhase(cosA);
-                float phaseM = MiePhase(cosA, clamp(_AtmMieG, -0.9, 0.9));
-
-                float3 inScatter = 0.0;
-                float3 transmittance = 1.0;
-
-                for (int i = 0; i < 128; i++)
-                {
-                    if (i >= steps)
-                    {
-                        break;
-                    }
-
-                    float t = tStart + ((i + 0.5) * ds);
-                    float3 p = ro + (rd * t);
-                    float r = length(p);
-                    float height = max(0.0, r - _AtmPlanetRadius);
-                    float3 n = p / max(r, 1e-3);
-
-                    float3 sigmaE = AtmExtinction(height);
-                    float3 scattering = AtmScattering(height);
-                    float3 transSeg = exp(-sigmaE * ds);
-
-                    float cosSun = dot(n, sunDir);
-                    float3 sunT = SampleTransmittance(height, cosSun);
-                    float3 ms = SampleMultiScatter(height, cosSun);
-
-                    float3 rayleighScatter = _AtmBetaRayleigh * exp(-height / max(1.0, _AtmHr));
-                    float3 mieScatter = _AtmBetaMie * exp(-height / max(1.0, _AtmHm));
-                    float3 phaseScatter = (rayleighScatter * phaseR) + (mieScatter * phaseM);
-
-                    float3 S = (sunT * phaseScatter) + (ms * scattering);
-
-                    inScatter += IntegrateOverSegment(S, transSeg, transmittance, sigmaE);
-                    transmittance *= transSeg;
-                }
-
-                outTransmittance = transmittance;
-                return inScatter;
-            }
-
             float4 Frag(Varyings input) : SV_Target
             {
                 float3 rd = normalize(input.dir);
@@ -274,7 +99,7 @@ Shader "Galilego/PlanetAtmosphere"
 
                 float a0;
                 float a1;
-                if (!RaySphere(ro, rd, _AtmRadius, a0, a1))
+                if (!AtmRaySphere(ro, rd, _AtmRadius, a0, a1))
                 {
                     discard;
                 }
@@ -318,7 +143,7 @@ Shader "Galilego/PlanetAtmosphere"
                 float p1;
                 bool hitPlanet = false;
                 float tPlanet = 1e30;
-                if (RaySphere(ro, rd, _AtmPlanetRadius, p0, p1) && p1 > 0.0)
+                if (AtmRaySphere(ro, rd, _AtmPlanetRadius, p0, p1) && p1 > 0.0)
                 {
                     hitPlanet = true;
                     tPlanet = max(p0, 0.0);
@@ -386,11 +211,11 @@ Shader "Galilego/PlanetAtmosphere"
                         float3 hp = ro + (rd * tPlanet);
                         float3 N = hp / max(length(hp), 1e-3);
                         float cosSunG = dot(N, sunDir);
-                        float3 sunG = SampleTransmittance(0.0, cosSunG);
+                        float3 sunG = AtmSampleTransmittance(0.0, cosSunG);
                         groundBg = _AtmGroundColor.rgb * saturate(cosSunG) * sunG;
                     }
 
-                    float3 groundScatter = IntegrateAtmosphere(ro, rd, sunDir, tAtmStart, tGround, groundT);
+                    float3 groundScatter = AtmIntegrate(ro, rd, sunDir, tAtmStart, tGround, groundT);
                     groundColor = (groundBg * groundT) + (groundScatter * radianceScale);
                 }
 
@@ -403,7 +228,7 @@ Shader "Galilego/PlanetAtmosphere"
                 float3 skyColor = 0.0;
                 if (!hasTerrain && !planetOccludes)
                 {
-                    float3 skyScatter = IntegrateAtmosphere(ro, rd, sunDir, tAtmStart, tAtm, skyT);
+                    float3 skyScatter = AtmIntegrate(ro, rd, sunDir, tAtmStart, tAtm, skyT);
                     skyColor = (bgRaw * skyT) + (skyScatter * radianceScale);
                 }
 
@@ -429,14 +254,14 @@ Shader "Galilego/PlanetAtmosphere"
                             float ha1;
                             float tAtmHor = tAtm;
                             float tHorStart = tAtmStart;
-                            if (RaySphere(ro, dirHor, _AtmRadius, ha0, ha1))
+                            if (AtmRaySphere(ro, dirHor, _AtmRadius, ha0, ha1))
                             {
                                 tAtmHor = max(ha1, 0.0);
                                 tHorStart = max(ha0, 0.0);
                             }
 
                             float3 horT;
-                            float3 horScatter = IntegrateAtmosphere(ro, dirHor, sunDir, tHorStart, tAtmHor, horT);
+                            float3 horScatter = AtmIntegrate(ro, dirHor, sunDir, tHorStart, tAtmHor, horT);
                             float3 skyHorizonColor = (bgRaw * horT) + (horScatter * radianceScale);
                             color = lerp(groundColor, skyHorizonColor, horizon);
                         }
@@ -479,7 +304,7 @@ Shader "Galilego/PlanetAtmosphere"
                     if (_AtmDebugMode < 6.5)
                     {
                         float3 dbgT;
-                        float3 dbgScatter = IntegrateAtmosphere(ro, rd, sunDir, tAtmStart,
+                        float3 dbgScatter = AtmIntegrate(ro, rd, sunDir, tAtmStart,
                             hasGround ? tGround : tAtm, dbgT);
                         return float4(dbgScatter * radianceScale, 1.0);
                     }
@@ -488,7 +313,7 @@ Shader "Galilego/PlanetAtmosphere"
                     {
                         float3 hp = ro + (rd * min(hasGround ? tGround : tAtm, 1000.0));
                         float3 N = hp / max(length(hp), 1e-3);
-                        return float4(SampleTransmittance(max(0.0, length(hp) - _AtmPlanetRadius), dot(N, sunDir)), 1.0);
+                        return float4(AtmSampleTransmittance(max(0.0, length(hp) - _AtmPlanetRadius), dot(N, sunDir)), 1.0);
                     }
 
                     if (_AtmDebugMode < 8.5)

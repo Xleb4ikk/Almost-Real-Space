@@ -45,6 +45,15 @@ Shader "Galilego/BodyFarDisc"
             #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
             #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
 
+            // The same atmosphere march the sky dome runs. The disc is drawn AFTER
+            // the dome (queue Transparent+4 vs Transparent), so the frame behind it
+            // is already a finished sky: the disc must not paint over that sky as if
+            // there were no air. `T` is the transmittance of the whole column to
+            // space, `air` the in-scattered radiance of that column — the disc
+            // composites as `T·body + air`, which is what makes a daytime Moon a
+            // pale blue disc instead of a white lamp on a blue sky.
+            #include "GalilegoAtmosphereAir.hlsl"
+
             float4 _BFD_Albedo;
             TEXTURE2D(_BFD_Map);
             float _BFD_MapStrength;
@@ -61,6 +70,17 @@ Shader "Galilego/BodyFarDisc"
             float _BFD_Ambient;
             float _BFD_Opacity;
             float _BFD_Eclipse;
+            // The star's photosphere (luminance 1) and the scene's albedo·ndl → radiance
+            // factor. Both come from BodyFarDiscView, so the disc is lit by the star and
+            // shares the terrain's scale even when no atmosphere is drawn.
+            float4 _BFD_SunColor;
+            float _BFD_SunScale;
+            // How much of the air in front of the disc to apply. 1 = the dome's own
+            // physics, 0 = the old vacuum look. Keep 1: the veil in front of the Moon
+            // IS the sky behind it, so thinning it makes the unlit half darker than
+            // the sky and the disc reads as a night moon again. "Less haze" is tuned
+            // with the disc's brightness, not here.
+            float _BFD_Haze;
 
             struct Attributes
             {
@@ -139,8 +159,31 @@ Shader "Galilego/BodyFarDisc"
                 float eclipseGain = 0.002 + (0.998 * eclipse);
                 float3 eclipseTint = lerp(float3(0.62, 0.16, 0.07), float3(1.0, 1.0, 1.0), eclipse);
 
-                float3 color = albedo * eclipseTint * (ndl + _BFD_Ambient)
-                    * limb * _BFD_IntensityScale * eclipseGain;
+                // Surface radiance in SCENE units: the same "sunlit albedo·ndl"
+                // scale the terrain and the decor use, so the disc has the same
+                // brightness as the body's own relief under it at the hand-over.
+                // _BFD_SunColor is the star's photosphere, luminance 1, with no
+                // atmosphere in it: the disc is lit by the star, not by the
+                // observer's sky.
+                float3 sunlit = _BFD_SunColor.rgb * _BFD_SunScale;
+                float3 radiance = albedo * eclipseTint * (ndl + _BFD_Ambient)
+                    * limb * sunlit * _BFD_IntensityScale * eclipseGain;
+
+                // Aerial perspective. The moon is behind the observer's whole air
+                // column: T dims and warms it, `air` is the daylight scattered in
+                // front of it. At night air ≈ 0 and T ≈ 1, so the night moon is
+                // untouched by this; by day the added blue is what makes it read
+                // as a moon behind an atmosphere rather than one in vacuum.
+                //
+                // HazeStrength interpolates between vacuum (0) and the dome's own
+                // column (1) — the same fraction of the veil and of the dimming, so
+                // 1 stays exactly the physics the sky is drawn with.
+                float haze = saturate(_BFD_Haze);
+                float3 atmosphereTransmittance;
+                float3 airlight = AtmSkyRadiance(normalize(-_BFD_ViewWS.xyz), atmosphereTransmittance);
+                float3 veil = airlight * haze;
+                float3 transmittance = saturate(1.0 - ((1.0 - atmosphereTransmittance) * haze));
+                float3 color = (radiance * transmittance) + veil;
 
                 // One-pixel feather: a 6 px disc stepped hard reads as a square.
                 float edge = max(1e-5, fwidth(r2) * 1.5);

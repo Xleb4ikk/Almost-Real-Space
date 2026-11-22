@@ -21,11 +21,15 @@ namespace Galilego.Universe
     /// quad and the real sphere reads as a flash, and if the chunks of that view are still
     /// building it reads as a hole.
     /// </summary>
-    [UnityEngine.DefaultExecutionOrder(-60)]
+    [UnityEngine.DefaultExecutionOrder(-30)]
     public sealed class BodyFarDiscView : MonoBehaviour
     {
         [Tooltip("SimulationRunner сцены.")]
         public SimulationRunner Runner;
+
+        [Tooltip("Рендерер звезды сцены: даёт цвет поверхности светила для света диска. " +
+            "Пусто — ищется в сцене при старте.")]
+        public StarRenderer Star;
 
         [Tooltip("Камера игрока. Пусто = Camera.main.")]
         public Camera PlayerCamera;
@@ -61,9 +65,24 @@ namespace Galilego.Universe
             "(луна просто крупнее), 0.08 = сохраняется полный поток (крупный диск тускнеет).")]
         public float MinEnergyScale = 1f;
 
-        [Tooltip("Яркость диска относительно альбедо (подгоняется глазами: диск должен " +
-            "читаться как освещённая поверхность, а не как лампа).")]
-        public float Brightness = 14f;
+        [Tooltip("Яркость диска в масштабе сцены (albedo·ndl·_TerrainRadianceScale) — том же, в " +
+            "котором считает рельеф. 1 = диск так же ярок, как собственный рельеф тела под ним: " +
+            "переход диска в чанки не меняет яркость, а диск освещён тем же светилом.")]
+        public float Brightness = 1f;
+
+        [Range(1f, 64f)]
+        [Tooltip("Ночной перцептивный подъём диска, множитель. Физический диск ночью — " +
+            "правильная яркость, но сцена живёт в 14 EV лунной адаптации (MoonlightSystem), и " +
+            "на её фоне он читается тусклой монетой. Включается по высоте Солнца: днём 1. " +
+            "1 = диск строго физически и днём, и ночью.")]
+        public float NightBrightness = 24f;
+
+        [Range(0f, 1f)]
+        [Tooltip("Доля атмосферы МЕЖДУ глазом и диском: 1 = ровно тот воздух, которым " +
+            "нарисовано небо (физика), 0 = вакуум. Держать 1: дымка перед Луной — это и есть " +
+            "небо за ней, поэтому ослабление делает неосвещённую половину темнее неба, и диск " +
+            "снова выглядит ночным. «Меньше дымки» настраивается яркостью (Brightness).")]
+        public float HazeStrength = 1f;
 
         [Range(0f, 1f)]
         [Tooltip("Затемнение к краю: у безатмосферного тела лимб не чёрный, но и не плоский.")]
@@ -103,6 +122,9 @@ namespace Galilego.Universe
         private Transform disc;
         private Material material;
         private PlanetSurfaceRenderer surface;
+        private static readonly int TerrainRadianceScaleId = Shader.PropertyToID("_TerrainRadianceScale");
+        private static readonly int SkySunDirId = Shader.PropertyToID("_SkySunDir");
+        private static readonly int SkyUpId = Shader.PropertyToID("_SkyUp");
         private Vector3d LastBodyPosition;
         private double LastRadius;
         private float LastFar;
@@ -136,6 +158,11 @@ namespace Galilego.Universe
             }
 
             star = Runner.SystemState.Root;
+
+            if (Star == null)
+            {
+                Star = FindFirstObjectByType<StarRenderer>();
+            }
 
             // The surface renderer of the same body: its build progress decides when the
             // billboard may fade out (see the hand-over block in LateUpdate).
@@ -336,7 +363,19 @@ namespace Galilego.Universe
             material.SetVector("_BFD_RightWS", disc.right);
             material.SetVector("_BFD_UpWS", disc.up);
             material.SetVector("_BFD_ViewWS", ToVec(-simDirection));
-            material.SetFloat("_BFD_IntensityScale", Brightness * energyScale);
+            material.SetFloat("_BFD_IntensityScale", Brightness * NightGain() * energyScale);
+
+            // The disc is lit by the STAR, not by the observer's sky: its sunlight
+            // crossed no atmosphere the observer can see (the Moon is 83 000 km up),
+            // and the ray from the observer to the disc carries the air separately in
+            // the shader. _TerrainRadianceScale is the scene's "albedo·ndl → radiance"
+            // factor, so the disc and the body's own relief share a scale.
+            Vector3d starLinear = Star != null && Star.IsReady ? Star.LightColorLinear : new Vector3d(1d, 1d, 1d);
+            float terrainScale = Shader.GetGlobalFloat(TerrainRadianceScaleId);
+            material.SetVector("_BFD_SunColor",
+                new Vector4((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z, 0f));
+            material.SetFloat("_BFD_SunScale", terrainScale > 0f ? terrainScale : 1f);
+            material.SetFloat("_BFD_Haze", Mathf.Clamp01(HazeStrength));
             material.SetFloat("_BFD_DiscDistance", discDistance);
             material.SetFloat("_BFD_LimbDarkening", LimbDarkening);
             material.SetFloat("_BFD_Ambient", Ambient);
@@ -369,6 +408,28 @@ namespace Galilego.Universe
         private static Vector4 ToVec(Vector3 v)
         {
             return new Vector4(v.x, v.y, v.z, 0f);
+        }
+
+        /// <summary>
+        /// Perceptual gain for the dark half of the day. Daylight is physical: the disc
+        /// is a sunlit airless surface and the atmosphere in front of it does the rest.
+        /// At night the scene is NOT physical — MoonlightSystem lifts the ground by
+        /// 14 EV because a strictly physical moonlit landscape is black — so the same
+        /// physical disc would be the only object at its true brightness and would
+        /// read as a dim coin.
+        ///
+        /// The signal is the SUN's elevation, not the sky's brightness: on an airless
+        /// body (or in flight) the sky is black at noon too, and _StarVisibility there
+        /// says "vacuum", not "night". The ramp sits below civil twilight, where the
+        /// sky still lights the ground and the disc is a real silhouette in it.
+        /// </summary>
+        private float NightGain()
+        {
+            Vector3 sunDir = Shader.GetGlobalVector(SkySunDirId);
+            Vector3 up = Shader.GetGlobalVector(SkyUpId);
+            float sinElevation = Vector3.Dot(sunDir, up);
+            float night = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(-0.10f, -0.21f, sinElevation));
+            return Mathf.Lerp(1f, Mathf.Max(1f, NightBrightness), night);
         }
 
         /// <summary>Unit quad centred on the origin, UV 0..1 — the disc is cut in the shader.</summary>

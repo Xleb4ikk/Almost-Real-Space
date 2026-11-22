@@ -125,7 +125,82 @@ approach because that is where the disc and the terrain overlap.
 
 For an airless body the floor is wrong: there is no atmosphere to scatter light into the
 shadow. `BodyFarDiscView.Ambient` is now exposed and **0**, the shader default matches, and
-the dark half is black — measured at 848 km / 75° phase, the boundary is clean.
+the dark half is black — measured at 848 km / 75° phase, the boundary is clean. (On Terra
+that dark half is no longer black by day: the air in front of the disc lights it — see the
+next section.)
+
+## The daytime Moon looked like a Moon with no atmosphere
+
+Report: *"the Moon in the daytime looks as if Terra had no atmosphere — it should be sort of
+bluish because of the air, but it looks like night."* By day the disc was a white lamp with
+a hard terminator on a blue sky; it looked the same at 44° solar elevation as at midnight.
+
+**Root cause is draw order, not shading.** `Galilego/PlanetAtmosphere` is a screen-space
+pass at queue `Transparent` that *replaces* the frame with `background·T + in-scatter`.
+Everything that must appear *behind* the air but draws later is composited on top of a
+finished sky: the sun disc (`Transparent+2`, which at least multiplies by
+`_SunTransmittance`) and the Moon's far disc (`Transparent+4`, which knew nothing about the
+air at all). At night nobody notices — the air between the eye and the Moon scatters almost
+nothing once the Sun is down — and by day the Moon is painted as if seen in vacuum.
+
+**Fix: one atmosphere for the dome and for the sky objects.**
+`GalilegoAtmosphereAir.hlsl` now holds the raymarch (uniforms, both CPU LUTs, the march
+itself); `PlanetAtmosphere.shader` and `BodyFarDisc.shader` both include it. The disc
+composites as
+
+```hlsl
+float3 air = AtmSkyRadiance(normalize(-_BFD_ViewWS.xyz), atmosphereTransmittance);
+color = (radiance * atmosphereTransmittance) + air;   // T·body + in-scatter
+```
+
+which is *the dome's own T and its own in-scatter* for that direction, not an approximation
+of them — a second implementation that drifts by a few percent shows a circle where the
+disc edge meets the sky. `PlanetAtmosphereView` publishes `_AtmActive` (1 only on a frame
+where the dome really rendered, after its LUTs are this frame's), so in vacuum the disc
+falls back to `T = 1`, no air.
+
+`BodyFarDiscView.HazeStrength` (`_BFD_Haze`) scales that column from vacuum (0) to the
+dome's own physics (1), applied to the veil and to the dimming alike. It is **1** in the
+scene, and it must stay there: the veil in front of the Moon *is* the sky behind it, so
+dimming it makes the unlit half darker than the sky and the disc starts to read as a night
+moon again. The same reasoning rules out "just brighten the disc to make it less hazy": at
+`Brightness` 1.6 the sky's share of the Moon's colour drops from 29 % to 20 %, but the disc
+is then 60 % above its own physical radiance. `1` / `1` is the realistic composite.
+
+**The disc's brightness had to become physical too.** `Brightness` used to be a raw
+multiplier on an arbitrary albedo (`24` in the scene); at that value the disc was ~10×
+brighter than the Moon's own terrain, so even with the air it stayed a lamp. It is now a
+multiplier on the *scene's* sunlit-surface radiance —
+`albedo · ndl · limb · _BFD_SunColor · _TerrainRadianceScale` — i.e. `1` is a sunlit airless
+surface of that albedo, lit by the star (no observer air in the illumination) and sharing
+the terrain's scale. That also makes the 4 R → 1.6 R hand-over match in brightness, which
+within one scale it never did before. It stays at **1**: raising it (1.6 was tried, to make
+the disc read harder at 22 px) is +0.7 EV above its own physical radiance and only pretends
+to be "less haze" — the veil is the sky and does not shrink, the disc just gets brighter.
+
+The night keeps the old, deliberately non-physical look through one explicit number,
+`NightBrightness = 24`, faded in by the Sun's elevation (`_SkySunDir`·`_SkyUp`, full gain
+below −12°): `MoonlightSystem` lifts the moonlit ground by 14 EV, so a strictly physical
+disc would be the only object at its true brightness and would read as a dim coin. The
+signal is the Sun, not the sky's brightness — on an airless body, and in flight, the sky
+is black at noon too.
+
+Measured on the pad at sun 43.9°, Moon at 29.3° / phase 73°, Game view sRGB:
+
+| | disc (lit) | sky beside it | veil share of the disc's luminance |
+|---|---|---|---|
+| before (`Brightness` 24) | 1.00 white, bloom halo | 0.086, 0.176, 0.314 | — (no air at all) |
+| **shipped (`Brightness` 1)** | **0.216, 0.259, 0.357** | **0.086, 0.176, 0.314** | **29 %** |
+| brighter trial (`Brightness` 1.6) | 0.290, 0.314, 0.392 | 0.086, 0.176, 0.314 | 20 % |
+
+The lit disc is ~1.5–2.5× the sky (red channel 2.5×, blue 1.1×) — a pale, *warmer than
+the sky* disc, which is what a real daytime Moon looks like; the unlit half is exactly the
+sky colour, so the body has no visible edge there. In linear radiance (read back with the
+tonemapper off and a fixed exposure) the disc's brightest point is **0.128** against
+**0.076–0.119** for the sky around it — a ratio of **1.1–1.7**, which is the low contrast a
+photograph of a gibbous Moon actually shows. That faintness is the result, not a bug:
+`Brightness` 1.6 gives 1.8–2.7 and is still inside the range real photographs cover, but it
+is no longer the body's radiance.
 
 ## The Moon that was not in the sky
 
@@ -152,6 +227,11 @@ between faces** — most likely the two edge surfaces meeting within a pixel of 
 alternating in the depth test. Removing it properly needs either a stitched edge (parent
 edge rendered as a hole plug under the children) or a shared normal rule across faces.
 
+The gas giant far disc (`GasGiantDisc.shader`, also `Transparent+N`) has the same draw-order
+problem this write-up fixes for the Moon, and does not use `GalilegoAtmosphereAir.hlsl` yet.
+From Terra it is a 2 px dot, so it is not visible; near Aeolus the same `T·body + air`
+composite is what it needs.
+
 ## Measured result
 
 | Altitude | Before | After |
@@ -160,5 +240,6 @@ edge rendered as a hole plug under the children) or a shared normal rule across 
 | 1 000–300 km | maria = vertex blobs, detail factor 0, no relief | map albedo + map normal, full weight |
 | 30 km | unchanged (map fades out below ~1 texel/px) | unchanged |
 | 700 km | black crack hairlines at LOD junctions | surface-coloured (unshadowed skirt) |
+| from Terra, day | white lamp, no air | `T·body + in-scatter`, pale warm-grey disc |
 
 Memory: two 2048×1024 BC7 maps ≈ 5.3 MB + mips each (~7 MB together).
