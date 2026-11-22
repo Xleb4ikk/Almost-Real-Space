@@ -2469,8 +2469,8 @@ MonoBehaviour:
   FarFraction: 0.28
   MinScreenRadiusPixels: 11
   MinEnergyScale: 1
-  Brightness: 6
-  LimbDarkening: 0.35
+  Brightness: 14
+  LimbDarkening: 0.25
   Albedo: {r: 0.5, g: 0.49, b: 0.47, a: 1}
   UseTerrainPalette: 1
   SurfaceMap: {fileID: 2800000, guid: 9fd4d5acec2217540ab4eac279dfaa6b, type: 3}

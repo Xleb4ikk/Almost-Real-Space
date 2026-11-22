@@ -99,7 +99,9 @@ Shader "Galilego/BodyFarDisc"
                 float lat = asin(clamp(nb.z, -1.0, 1.0));
                 float lon = atan2(nb.y, nb.x);
                 float2 uvMap = float2((lon * 0.15915494) + 0.5, (lat * 0.31830989) + 0.5);
-                float mapValue = SAMPLE_TEXTURE2D(_BFD_Map, s_linear_clamp_sampler, uvMap).r;
+                // The baked map stores factor/2 (0..1 in an 8-bit texture), so the albedo
+                // multiplier is read back at its true 0.28..1.8 range.
+                float mapValue = SAMPLE_TEXTURE2D(_BFD_Map, s_linear_clamp_sampler, uvMap).r * 2.0;
                 float3 albedo = _BFD_Albedo.rgb * lerp(1.0, mapValue, _BFD_MapStrength);
 
                 float3 color = albedo * (ndl + _BFD_Ambient) * limb * _BFD_IntensityScale;
