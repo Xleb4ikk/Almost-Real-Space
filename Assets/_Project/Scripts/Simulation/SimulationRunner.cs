@@ -280,13 +280,31 @@ namespace Galilego.Universe
                     TryExitShip(exitDirection.SqrMagnitude > 1e-12d ? exitDirection.Normalized : OutwardFromBody(), 1d);
                 }
 
+                // A cheat exit must not keep the camera welded to the seat.
+                PlayerSeated = false;
                 PlayerMode = PlayerMode.EVA;
                 playerAirborne = true;
                 JetpackActive = false;
                 PlayerHoverActive = false;
+
+                // Freeze the input/camera vertical NOW (see noclipUpAstro): PlayerUpAstro
+                // is the same axis the camera used a frame ago, so the view does not jump,
+                // and from here on no planet rotation can re-aim it.
+                Vector3d up = PlayerUpAstro;
+                noclipUpAstro = up.SqrMagnitude > 1e-12d ? up.Normalized : new Vector3d(0d, 0d, 1d);
+                noclipUpValid = true;
                 return;
             }
 
+            // Hand the frozen noclip vertical over to EVA: UpdateEvaUp then eases it back
+            // to the planet radial, so leaving the cheat does not snap-roll the view.
+            if (noclipUpValid)
+            {
+                evaUpAstro = noclipUpAstro;
+                evaUpValid = true;
+            }
+
+            noclipUpValid = false;
             PlayerMode = PlayerMode.EVA;
             playerAirborne = true;
             JetpackActive = false;
@@ -479,6 +497,16 @@ namespace Galilego.Universe
         private bool evaCollisionUpValid;
         private bool evaAlignedToVessel;
         private float evaCapsuleDistance = float.MaxValue;
+
+        // Noclip camera/input vertical, FROZEN when the cheat is enabled. Noclip is a
+        // straight-line flight: with a live vertical the camera reference is the planet
+        // radial, and FirstPersonCamera transports the look with it every frame (horizon
+        // stays level). At noclip speeds that rotates the aim by degrees per second —
+        // 100 km/s at the surface is ~0.9 deg/s — so the "free" flight bends and dives
+        // back into the terrain. A frozen up makes the look, and therefore the velocity,
+        // rectilinear: exactly what a noclip is supposed to be.
+        private Vector3d noclipUpAstro;
+        private bool noclipUpValid;
 
         /// <summary>Distance to the capsule (m) below which the COLLISION body follows the capsule axis.</summary>
         private const float EvaAlignEnterMeters = 30f;
@@ -1731,6 +1759,8 @@ namespace Galilego.Universe
             public Vector3d EvaRelativeVelocity;
             public bool EvaUpValid;
             public Vector3d EvaUpAstro;
+            public bool NoclipUpValid;
+            public Vector3d NoclipUpAstro;
             public bool EvaCollisionUpValid;
             public Vector3d EvaCollisionUpAstro;
             public bool EvaAlignedToVessel;
@@ -1802,6 +1832,8 @@ namespace Galilego.Universe
                 EvaRelativeVelocity = evaRelativeVelocity,
                 EvaUpValid = evaUpValid,
                 EvaUpAstro = evaUpAstro,
+                NoclipUpValid = noclipUpValid,
+                NoclipUpAstro = noclipUpAstro,
                 EvaCollisionUpValid = evaCollisionUpValid,
                 EvaCollisionUpAstro = evaCollisionUpAstro,
                 EvaAlignedToVessel = evaAlignedToVessel,
@@ -1927,6 +1959,8 @@ namespace Galilego.Universe
             evaRelativeVelocity = snapshot.EvaRelativeVelocity;
             evaUpValid = snapshot.EvaUpValid;
             evaUpAstro = snapshot.EvaUpAstro;
+            noclipUpValid = snapshot.NoclipUpValid;
+            noclipUpAstro = snapshot.NoclipUpAstro;
             evaCollisionUpValid = snapshot.EvaCollisionUpValid;
             evaCollisionUpAstro = snapshot.EvaCollisionUpAstro;
             evaAlignedToVessel = snapshot.EvaAlignedToVessel;
@@ -3101,6 +3135,11 @@ namespace Galilego.Universe
         {
             get
             {
+                if (NoclipActive && noclipUpValid)
+                {
+                    return noclipUpAstro;
+                }
+
                 if (!ContactZoneHost.Active)
                 {
                     if (platformCarry.Active && platformCarry.TryGetUp(out Vector3 carriedUp)
@@ -3129,6 +3168,23 @@ namespace Galilego.Universe
             }
 
             up = AstroFrame.ToSimulation(evaUpAstro).normalized;
+            return true;
+        }
+
+        /// <summary>
+        /// The NOCLIP vertical in render space: frozen at the moment the cheat was enabled
+        /// (see noclipUpAstro). While true the camera must NOT follow the planet radial:
+        /// the horizon-relative transport would bend a fast flight back towards the surface.
+        /// </summary>
+        public bool TryGetNoclipUpRender(out Vector3 up)
+        {
+            if (!NoclipActive || !noclipUpValid)
+            {
+                up = Vector3.up;
+                return false;
+            }
+
+            up = AstroFrame.ToSimulation(noclipUpAstro).normalized;
             return true;
         }
 

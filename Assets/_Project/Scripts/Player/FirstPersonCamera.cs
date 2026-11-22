@@ -784,6 +784,15 @@ namespace Galilego.Universe
                 return Vector3.up;
             }
 
+            // Noclip: the vertical is FROZEN at the moment the cheat was enabled. The live
+            // radial would make TransportLook re-aim the view with the planet's curvature
+            // every frame (the horizon stays level), so a fast noclip flight bends by
+            // degrees per second and dives back into the terrain. Noclip must be straight.
+            if (Runner.TryGetNoclipUpRender(out Vector3 noclipUp))
+            {
+                return noclipUp;
+            }
+
             // Aboard a vessel the vertical is the cabin's: what presses the player to the floor
             // is the thrust along the cabin axis, not the planet's radial. Seated — the seat's
             // up (refreshed by PlayerView before this camera), carried — the platform's up.
