@@ -92,6 +92,12 @@ namespace Galilego.Universe
         [Tooltip("Сила рельефа диска: 1 = нормаль карты целиком, 0 = гладкий шар.")]
         public float NormalStrength = 1f;
 
+        [Range(0f, 0.2f)]
+        [Tooltip("Постоянная подсветка диска (доля яркости). Держать 0: у безатмосферного тела " +
+            "нет чем светить ночную сторону, а ненулевой ambient рисовал на ней светлое альбедо " +
+            "кратеров — «солнце не светит, а участки яркие» в полосе смешивания с рельефом.")]
+        public float Ambient = 0f;
+
         private OrbitingBody body;
         private OrbitingBody star;
         private Transform disc;
@@ -166,6 +172,7 @@ namespace Galilego.Universe
             material = new Material(shader) { name = name + "FarDisc (runtime)" };
             material.SetColor("_BFD_Albedo", Albedo);
             material.SetFloat("_BFD_LimbDarkening", LimbDarkening);
+            material.SetFloat("_BFD_Ambient", Ambient);
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.receiveShadows = false;
@@ -332,6 +339,7 @@ namespace Galilego.Universe
             material.SetFloat("_BFD_IntensityScale", Brightness * energyScale);
             material.SetFloat("_BFD_DiscDistance", discDistance);
             material.SetFloat("_BFD_LimbDarkening", LimbDarkening);
+            material.SetFloat("_BFD_Ambient", Ambient);
             material.SetFloat("_BFD_Eclipse", (float)eclipse);
             material.SetTexture("_BFD_Map", SurfaceMap);
             material.SetFloat("_BFD_MapStrength", SurfaceMap != null ? SurfaceMapStrength : 0f);

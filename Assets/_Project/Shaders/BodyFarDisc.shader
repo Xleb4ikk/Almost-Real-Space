@@ -18,7 +18,7 @@ Shader "Galilego/BodyFarDisc"
         [HideInInspector] _BFD_IntensityScale("Intensity Scale", Float) = 1
         [HideInInspector] _BFD_DiscDistance("Disc Distance", Float) = 1000
         [HideInInspector] _BFD_LimbDarkening("Limb Darkening", Float) = 0.35
-        [HideInInspector] _BFD_Ambient("Ambient", Float) = 0.015
+        [HideInInspector] _BFD_Ambient("Ambient", Float) = 0
         [HideInInspector] _BFD_Opacity("Opacity", Float) = 1
         [HideInInspector] _BFD_Eclipse("Eclipse Visibility", Float) = 1
     }

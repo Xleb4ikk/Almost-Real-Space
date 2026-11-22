@@ -114,6 +114,19 @@ of the wall shows — it rendered as a black hairline ("cracked Moon"). `Extra2.
 skirt vertices and the shader gives them the unshadowed light: the wall is exactly the
 colour of the ground it hides behind.
 
+## Bright craters on the unlit side (the disc's ambient)
+
+Between 4 R and 1.6 R the far disc is *blended* over the real terrain (`_BFD_Opacity`
+19 % at 850 km). The disc shader carried `_BFD_Ambient = 0.015` — a constant floor on the
+Lambert term, multiplied by `_BFD_IntensityScale` (24) — so on the unlit half it painted
+`01.5 % × 24 = 0.36` of the crater albedo onto a surface that receives no light at all.
+That is the "the sun does not reach it but it is bright" report, and it only appears on
+approach because that is where the disc and the terrain overlap.
+
+For an airless body the floor is wrong: there is no atmosphere to scatter light into the
+shadow. `BodyFarDiscView.Ambient` is now exposed and **0**, the shader default matches, and
+the dark half is black — measured at 848 km / 75° phase, the boundary is clean.
+
 ## The Moon that was not in the sky
 
 Artemis' scene elements put `MeanAnomalyAtEpochDegrees = 0`, and at t = 0 that is
