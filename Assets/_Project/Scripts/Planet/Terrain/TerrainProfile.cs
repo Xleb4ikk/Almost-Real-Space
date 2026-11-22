@@ -351,6 +351,14 @@ namespace Galilego.Universe
         [Tooltip("Повторов текстуры на метр (0.04 = тайл 25 м).")]
         public double TextureScale = 0.04d;
 
+        [Header("Лунный рельеф (безатмосферные кратерированные тела)")]
+        [Tooltip("Генератор кратеров, бассейнов и морей. При Enabled заменяет fBm/континенты этого профиля.")]
+        public LunarReliefSettings Lunar = new LunarReliefSettings();
+
+        [Tooltip("Шаг выборки нормали, м. 0 = прежний 1e-4 рад (~170 м на Луне: мелкие кратеры не видны). " +
+            "Для кратерированных тел ставьте 1–5 м.")]
+        public double NormalEpsilonMeters;
+
         public double LowMidBlendStart = 30d;
         public double LowMidBlendEnd = 60d;
         public double MidHighBlendStart = 2500d;
@@ -362,6 +370,7 @@ namespace Galilego.Universe
         {
             TerrainProfile copy = (TerrainProfile)MemberwiseClone();
             copy.Palette = Palette != null ? Palette.Clone() : new TerrainPaletteData();
+            copy.Lunar = Lunar != null ? Lunar.Clone() : new LunarReliefSettings();
             return copy;
         }
 

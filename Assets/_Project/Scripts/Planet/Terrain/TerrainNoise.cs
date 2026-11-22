@@ -289,6 +289,12 @@ namespace Galilego.Universe
         public bool ComputeDetail;
 
         /// <summary>
+        /// Lunar-type relief generator (airless cratered bodies, see LunarRelief). Enabled == 0 keeps
+        /// every other path bit-identical. Cached by HeightfieldTerrain, copied by value here.
+        /// </summary>
+        public LunarParams Lunar;
+
+        /// <summary>
         /// Flat pads at planet points (analogous to KSP PQS FlattenArea).
         /// NativeArray — blittable, so the table passes through this struct and
         /// further into the [BurstCompile] render job without managed references
@@ -421,6 +427,7 @@ namespace Galilego.Universe
                 ColorDetailSeedOffset = terrain.ColorDetailSeedOffset,
                 ComputeMask = terrain.ColorNoiseFrequency > 0d && terrain.ColorNoiseStrength != 0d,
                 ComputeDetail = terrain.ColorDetailFrequency > 0d && terrain.ColorDetailStrength != 0d,
+                Lunar = terrain.LunarParamsCached,
                 Mods = terrain.Mods,
                 DecorExclusions = terrain.DecorExclusions
             };
@@ -477,6 +484,13 @@ namespace Galilego.Universe
 
         public static double SampleHeight(TerrainNoiseParams p, double3 direction)
         {
+            if (p.Lunar.Enabled != 0)
+            {
+                // Lunar generator returns metres; the callers multiply by AmplitudeMeters.
+                double lunarAlbedo;
+                return LunarRelief.Sample(p.Lunar, direction, false, out lunarAlbedo) / p.AmplitudeMeters;
+            }
+
             double gain = EffectiveGain(p.Gain);
             double lacunarity = EffectiveLacunarity(p.Lacunarity);
             if (p.WarpStrength <= 0d && p.RidgedMix <= 0d && p.ContinentFrequency <= 0d
@@ -1906,6 +1920,21 @@ namespace Galilego.Universe
         public void Execute(int index)
         {
             double3 direction = Directions[index];
+            if (Params.Lunar.Enabled != 0)
+            {
+                // One pass yields height and albedo (shared crater work). Albedo goes to the
+                // colour-detail channel: + dark (maria, Soil), - bright (fresh ejecta, Lush).
+                double lunarAlbedo;
+                Heights[index] = LunarRelief.Sample(Params.Lunar, direction, true, out lunarAlbedo) / Params.AmplitudeMeters;
+                ColorMasks[index] = 0f;
+                if (ColorDetails.IsCreated)
+                {
+                    ColorDetails[index] = (float)lunarAlbedo;
+                }
+
+                return;
+            }
+
             Heights[index] = TerrainNoise.SampleHeight(Params, direction);
             ColorMasks[index] = Params.ComputeMask ? (float)TerrainNoise.SampleColorNoise(Params, direction) : 0f;
             if (ColorDetails.IsCreated)

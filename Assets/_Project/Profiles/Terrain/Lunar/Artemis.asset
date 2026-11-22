@@ -1,0 +1,169 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d445d08b279aaf1468ccc32db002e7a2, type: 3}
+  m_Name: Artemis
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.TerrainProfileAsset
+  Profile:
+    AmplitudeMeters: 10000
+    BaseFrequency: 3
+    Octaves: 5
+    SeaLevelMeters: -1e+30
+    Lacunarity: 2
+    Gain: 0.5
+    RidgedMix: 0
+    RidgedMode: 0
+    RidgedSharpness: 2
+    RidgedWeightGain: 2
+    RidgedGamma: 1
+    SlopeDamp: 0
+    SlopeDampMode: 0
+    NoiseStyle: 0
+    MaskNoiseStyle: -1
+    ContinentFrequency: 0
+    ContinentOctaves: 3
+    ContinentThreshold: 0
+    ContinentSharpness: 0.25
+    ContinentDepth: 0.75
+    ContinentGain: 0
+    ContinentWarpStrength: 0
+    ContinentWarpFrequency: 0
+    ContinentWarpOctaves: 3
+    ContinentRidgeMix: 0
+    ContinentRidgeFrequency: 0
+    ContinentRidgeOctaves: 2
+    ContinentLatitudeBias: 0
+    OceanFloorDepth: 0
+    OceanShelfDepth: 0
+    InteriorFloor: 0
+    OrogenyFrequency: 0
+    OrogenyOctaves: 3
+    OrogenyThreshold: 0
+    OrogenySharpness: 0.3
+    OrogenyFloor: 1
+    OrogenyGain: 0
+    PlainMix: 0
+    PlainFrequency: 0
+    PlainOctaves: 2
+    PlainThreshold: 0
+    PlainSharpness: 0.3
+    PlainElevation: 0.1
+    TailKnee: 0
+    TailThreshold: 0
+    DepthKnee: 0
+    DepthThreshold: 0
+    BeachHeightMeters: 0
+    BeachShelfAltitudeMeters: 0
+    BeachShelfWidth: 0
+    BeachShelfWidthMaxScale: 1
+    BeachShelfWidthNoiseFrequency: 0
+    BeachShelfWidthNoiseOctaves: 4
+    BeachShelfSeawardWidth: 0
+    PolarIceLatitudeDeg: 0
+    PolarIceFadeDeg: 1.2
+    PolarIceThicknessMeters: 0
+    PolarIceEdgeAmplitudeDeg: 0
+    PolarIceEdgeFrequency: 0
+    PolarIceEdgeOctaves: 2
+    DetailMix: 0
+    DetailFrequency: 0
+    DetailOctaves: 5
+    WarpStrength: 0
+    WarpFrequency: 1
+    WarpOctaves: 2
+    WarpSeedOffset: 0
+    ColorRockSlopeTan: 0.8
+    ColorRockSlopeWidth: 0.3
+    ColorRockHeightMin: 0
+    ColorSnowSlopeTan: 0
+    ColorNoiseFrequency: 0
+    ColorNoiseOctaves: 3
+    ColorNoiseStrength: 0
+    ColorNoiseSeedOffset: 0
+    ColorDetailFrequency: 600
+    ColorDetailOctaves: 3
+    ColorDetailStrength: 1
+    ColorDetailSeedOffset: 0
+    Palette:
+      Sand: {r: 0.5, g: 0.49, b: 0.47, a: 1}
+      Desert: {r: 0.5, g: 0.49, b: 0.47, a: 1}
+      DryGrass: {r: 0.5, g: 0.49, b: 0.47, a: 1}
+      Grass: {r: 0.5, g: 0.49, b: 0.47, a: 1}
+      Forest: {r: 0.5, g: 0.49, b: 0.47, a: 1}
+      Tundra: {r: 0.5, g: 0.49, b: 0.47, a: 1}
+      Rock: {r: 0.36, g: 0.35, b: 0.34, a: 1}
+      Snow: {r: 0.5, g: 0.49, b: 0.47, a: 1}
+      Sea: {r: 0.17, g: 0.17, b: 0.18, a: 1}
+      Soil: {r: 0.17, g: 0.17, b: 0.18, a: 1}
+      Lush: {r: 0.88, g: 0.87, b: 0.84, a: 1}
+    TextureLow: {fileID: 0}
+    TextureMid: {fileID: 0}
+    TextureHigh: {fileID: 0}
+    TextureSteep: {fileID: 0}
+    TextureOcclusion: {fileID: 0}
+    TextureScale: 0.04
+    Lunar:
+      Enabled: 1
+      RadiusMeters: 412000
+      MeanOffsetMeters: 143.16678378622254
+      GlobalReliefMeters: 1794.5719736599176
+      GlobalFrequency: 1.001231339760698
+      NearFarOffsetMeters: 996.9844298110654
+      NearX: -1
+      NearY: 0
+      NearZ: 0
+      RoughnessMeters: 624.0428147043833
+      RoughnessFrequency: 6
+      RoughnessOctaves: 8
+      RoughnessHurst: 0.8
+      CraterDensity: 0.26757612315359347
+      ProductionSlope: 2.1470725883716124
+      BasinDensityScale: 0.55
+      MaxCraterDiameterMeters: 329600
+      MinCraterDiameterMeters: 24
+      ComplexTransitionMeters: 17945.719736599178
+      FreshnessExponent: 2.191690699228407
+      MareAge: 0.4760261840308207
+      RayDensity: 0.12
+      GiantBasinDiameterMeters: 512250.208870645
+      GiantX: 0.9406289221098749
+      GiantY: -0.06317194298539769
+      GiantZ: 0.3335064264896023
+      GiantDepthScale: 0.8
+      MareCoverage: 0.4788671183708902
+      MareFrequency: 1.1819952375171685
+      MareNearsideBias: 0.9695322493415011
+      MareLevelMeters: -677.5072669878624
+      MareLevelVariationMeters: 448.6429934149794
+      MareUndulationMeters: 34.89445504338729
+      MareShoreSmoothMeters: 40
+      WrinkleRidgeMeters: 109.6682872792172
+      WrinkleRidgeFrequency: 28.275858579331942
+      RilleDepthMeters: 139.57782017354916
+      RilleFrequency: 70
+      RilleAmount: 0.25
+      DomeHeightMeters: 139.57782017354916
+      ScarpHeightMeters: 0
+      ScarpFrequency: 14
+      ScarpAmount: 0.25
+      RegolithMeters: 2.5
+      RegolithFrequency: 412
+      RegolithOctaves: 5
+      MareDarkness: 0.85
+      HighlandVariation: 0.18
+      FreshEjectaBrightness: 1
+    NormalEpsilonMeters: 2
+    LowMidBlendStart: 30
+    LowMidBlendEnd: 60
+    MidHighBlendStart: 2500
+    MidHighBlendEnd: 3500
+    SteepBlendStart: 0.7
+    SteepBlendEnd: 1.4

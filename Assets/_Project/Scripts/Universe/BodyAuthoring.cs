@@ -132,9 +132,18 @@ namespace Galilego.Universe
         /// <summary>Runtime terrain profile from the preset asset; null — smooth sphere.</summary>
         private TerrainProfile ResolveTerrain()
         {
-            return TerrainPreset != null && TerrainPreset.Profile != null
-                ? TerrainPreset.Profile.Clone()
-                : null;
+            if (TerrainPreset == null || TerrainPreset.Profile == null)
+            {
+                return null;
+            }
+
+            TerrainProfile terrain = TerrainPreset.Profile.Clone();
+            if (terrain.Lunar != null && terrain.Lunar.Enabled)
+            {
+                terrain.Lunar.RadiusMeters = Radius;
+            }
+
+            return terrain;
         }
 
         /// <summary>Runtime atmosphere profile from the preset asset; null — no atmosphere.</summary>
@@ -164,6 +173,12 @@ namespace Galilego.Universe
             }
 
             terrain.ApplyProfile(TerrainPreset.Profile, TerrainSeed);
+            if (terrain.Lunar != null && terrain.Lunar.Enabled)
+            {
+                // Crater sizes are metres: always follow the body radius, so the two can never disagree.
+                terrain.Lunar.RadiusMeters = Radius;
+                terrain.RefreshLunar();
+            }
         }
     }
 }

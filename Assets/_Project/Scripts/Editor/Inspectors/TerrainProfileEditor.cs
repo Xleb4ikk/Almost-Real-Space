@@ -21,6 +21,7 @@ namespace Galilego.Universe.EditorTools
         private static bool showWarp;
         private static bool showColor = true;
         private static bool showPalette;
+        private static bool showLunar;
 
         public override void OnInspectorGUI()
         {
@@ -204,6 +205,22 @@ Slider("Profile.ContinentDepth", 0f, 1.5f);
                 Field("Profile.Palette.Sea");
                 Field("Profile.Palette.Soil");
                 Field("Profile.Palette.Lush");
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            showLunar = EditorGUILayout.BeginFoldoutHeaderGroup(showLunar, "Лунный рельеф (кратеры, моря, бассейны)");
+            if (showLunar)
+            {
+                EditorGUI.indentLevel++;
+                SerializedProperty lunar = serializedObject.FindProperty("Profile.Lunar");
+                if (lunar != null)
+                {
+                    EditorGUILayout.PropertyField(lunar, true);
+                }
+
+                Field("Profile.NormalEpsilonMeters");
                 EditorGUI.indentLevel--;
             }
 

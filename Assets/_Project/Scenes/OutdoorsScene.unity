@@ -976,7 +976,8 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 2286000, y: 2286000, z: 2286000}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 1901103273}
   m_Father: {fileID: 230795297}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1081663217
@@ -2179,6 +2180,277 @@ MonoBehaviour:
   LeanFieldOfView: 45
   LeanSensitivityScale: 0.4
   FocusSeconds: 0.4
+--- !u!1 &1901103272
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1901103273}
+  - component: {fileID: 1901103279}
+  - component: {fileID: 1901103278}
+  - component: {fileID: 1901103277}
+  - component: {fileID: 1901103276}
+  - component: {fileID: 1901103275}
+  - component: {fileID: 1901103274}
+  m_Layer: 0
+  m_Name: "\u0410\u0440\u0442\u0435\u043C\u0438\u0434\u0430"
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1901103273
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1901103272}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 824000, y: 824000, z: 824000}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1081663216}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!135 &1901103274
+SphereCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1901103272}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Radius: 0.5
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!33 &1901103275
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1901103272}
+  m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!23 &1901103276
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1901103272}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: 73c176f402d2c2f4d929aa5da7585d17, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_MaskInteraction: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &1901103277
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1901103272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c4f8a1b2d3e64f5a9b0c1d2e3f4a5b6c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetSurfaceRenderer
+  Runner: {fileID: 1332194275}
+  TileResolution: 65
+  MaxDepth: 12
+  SplitFactor: 3.5
+  MergeHysteresis: 1.5
+  SkirtFactor: 0.03
+  WaterSkirtFactor: 0.03
+  ShoreWetMeters: 3
+  ShoreWetTint: {r: 0.42, g: 0.52, b: 0.56, a: 1}
+  BuildsPerFrame: 64
+  DecorBuildsPerFrame: 8
+  DecorBuildBudgetMs: 4
+  DecorRescanCooldownSeconds: 0.2
+  MaxDecorBuildSessions: 8
+  LogDecorAllocation: 0
+  MaxNodes: 12000
+  MaxCachedChunks: 8192
+  MaxEvictionsPerFrame: 4
+  TerrainShadowDepthBand: 3
+  AsyncChunkBuild: 1
+  MaxChunkJobsInFlight: 12
+  ChunkFinalizeBudgetMs: 3
+  MaxChunkQueueAgeFrames: 6
+  EnableQualityTiers: 1
+  TierFastSpeed: 1000
+  TierExtremeSpeed: 1200
+  TierDownDelaySeconds: 1.5
+  TierDepthDropFast: 1
+  TierDepthDropExtreme: 2
+  TierSplitScaleFast: 0.9
+  TierSplitScaleExtreme: 0.8
+  TierAutoRaise: 0
+  TierTargetFrameMs: 22
+  PrefetchEnabled: 1
+  PrefetchSeconds: 1.5
+  PrefetchVelSmoothSeconds: 0.15
+  PrefetchMinLeadMeters: 400
+  MaxPrefetchNodes: 512
+  MaxPrefetchQueued: 256
+  TierHalveResolution: 0
+  DecorPauseSpeed: 120
+  DecorShadowMaxAltitude: 300
+  DecorSpeedSmoothSeconds: 0.25
+  DecorCollisionMaxAltitude: 150
+  DecorScanSpeedGate: 150
+  DecorScanMinInterval: 0.05
+  CullBeyondHorizon: 1
+  HorizonMargin: 1.15
+  MinTileResolution: 9
+  ResolutionHalveEveryLevels: 3
+  LogGeometryStats: 0
+  BlobShadowColor: {r: 0.03, g: 0.035, b: 0.04, a: 0.35}
+  BlobScaleFactor: 1
+  BlobSunOffset: 0.6
+  WaterWaveStrength: 0.35
+  WaterWaveScale: 0.18
+  WaterAmplitudeMeters: 0.25
+  WaterSparkleStrength: 0.12
+  WaterSparkleScale: 8
+  WaterFoamCrest: 0.03
+  WaterShadingFadeFloor: 0.85
+  WaterDetailFadeFloor: 0
+  WaterRippleStrength: 0.2
+  WaterRippleScale: 4
+  WaterRippleSpeed: 2.2
+  WaterFoamSlopeGain: 0
+  WaterFoamDepthMeters: 1.5
+  WaterShoreFadeMeters: 8
+  WaterMinAlpha: 0.93
+  WaterShallowAlphaMeters: 0.35
+  WaterAbsorbShallow: 4.5
+  WaterAbsorbDeep: 28
+  WaterShallowAlpha: 0.5
+  WaterSurfStrength: 0
+  WaterSurfSpeed: 2
+  WaterFresnelStrength: 0.7
+  WaterSpecularIntensity: 0.65
+  WaterSpecularPower: 80
+  WaterNormalA: {fileID: 2800000, guid: 1965f88a815b03f439a4cff8fd8cb711, type: 3}
+  WaterNormalB: {fileID: 2800000, guid: 42b04fe2c4a26bf42b76e10258c76b33, type: 3}
+  WaterNormalStrength: 0.7
+  UseHdrpWaterPatch: 0
+  HdrpWaterPatchSizeMeters: 512
+  UseLitWaterFallback: 0
+  LitWaterColor: {r: 0.06, g: 0.42, b: 0.62, a: 0.82}
+  LitWaterSmoothness: 0.9
+  WaterBobAmplitude: 0
+  WaterBobLength: 28
+  WaterBobSpeed: 1.1
+  WaterBobRadius: 700
+  HitchLogThresholdMs: 0.04
+--- !u!114 &1901103278
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1901103272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7bb586c9cc3da549bc90d89a0c0a345, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyView
+  Runner: {fileID: 1332194275}
+--- !u!114 &1901103279
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1901103272}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d79bac471c083a40bd345864d557347, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
+  StandardGravitationalParameter: 275817025600
+  Radius: 412000
+  CrashToleranceMps: 5
+  J2: 0
+  J2ReferenceRadius: 0
+  SurfaceStaticFrictionMu: 0.7
+  SurfaceKineticFrictionMu: 0.5
+  SemiMajorAxis: 90000000
+  Eccentricity: 0.0824049375671231
+  InclinationDegrees: 5.14
+  LongitudeOfAscendingNodeDegrees: 0
+  ArgumentOfPeriapsisDegrees: 0
+  MeanAnomalyAtEpochDegrees: 0
+  EpochTimeSeconds: 0
+  RotationPeriodSeconds: 2360520
+  TidallyLocked: 1
+  PrimeMeridianOffsetDegrees: 0
+  NorthPoleDirection:
+    X: 0
+    Y: 0
+    Z: 1
+  TerrainPreset: {fileID: 11400000, guid: 46a31dd0a420bdc4d8d36d721d1f18d5, type: 2}
+  AtmospherePreset: {fileID: 0}
+  CloudsPreset: {fileID: 0}
+  GasGiantPreset: {fileID: 0}
+  GroundDecorPreset: {fileID: 0}
+  TerrainSeed: 412
+  TerrainPads: []
 --- !u!1 &1982425599
 GameObject:
   m_ObjectHideFlags: 0

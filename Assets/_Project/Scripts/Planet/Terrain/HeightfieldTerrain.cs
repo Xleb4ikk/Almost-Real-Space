@@ -455,6 +455,9 @@ namespace Galilego.Universe
             ColorDetailStrength = profile.ColorDetailStrength;
             ColorDetailSeedOffset = profile.ColorDetailSeedOffset;
             Palette = profile.Palette ?? new TerrainPaletteData();
+            Lunar = profile.Lunar != null ? profile.Lunar.Clone() : new LunarReliefSettings();
+            NormalEpsilonMeters = profile.NormalEpsilonMeters;
+            RefreshLunar();
             TextureLow = profile.TextureLow;
             TextureMid = profile.TextureMid;
             TextureHigh = profile.TextureHigh;
@@ -506,6 +509,24 @@ namespace Galilego.Universe
 
         /// <summary>Angular neighbour step for the normal (rad): resolves 5 octaves with margin.</summary>
         private const double NormalEpsilonRadians = 1e-4d;
+
+        /// <summary>
+        /// Lunar-type relief generator settings (airless cratered bodies). Disabled by default.
+        /// Edit through ApplyProfile, or call RefreshLunar() after changing them directly.
+        /// </summary>
+        public LunarReliefSettings Lunar = new LunarReliefSettings();
+
+        /// <summary>Burst-ready copy of Lunar; rebuilt only by RefreshLunar (FromTerrain must not allocate).</summary>
+        public LunarParams LunarParamsCached;
+
+        /// <summary>Normal sampling step in metres. 0 = the legacy 1e-4 rad (resolves ~5 octaves).
+        /// Cratered bodies need metres: 1e-4 rad is ~170 m on the Moon.</summary>
+        public double NormalEpsilonMeters;
+
+        public void RefreshLunar()
+        {
+            LunarParamsCached = (Lunar ?? new LunarReliefSettings()).ToParams(Seed);
+        }
 
         /// <summary>
         /// Rebuild the pad table. The old one is released: the table is Persistent and
@@ -576,14 +597,17 @@ namespace Galilego.Universe
             double lat = latDeg * (Math.PI / 180d);
             double lon = lonDeg * (Math.PI / 180d);
 
-            double latUp = Math.Min(lat + NormalEpsilonRadians, 1.5707963267948966d - 1e-9d);
+            double eps = NormalEpsilonMeters > 0d && body.Radius > 1d
+                ? Math.Max(1e-9d, NormalEpsilonMeters / body.Radius)
+                : NormalEpsilonRadians;
+            double latUp = Math.Min(lat + eps, 1.5707963267948966d - 1e-9d);
             double h0 = GetHeightMeters(body, lat, lon);
             double hUp = GetHeightMeters(body, latUp, lon);
-            double hEast = GetHeightMeters(body, lat, lon + NormalEpsilonRadians);
+            double hEast = GetHeightMeters(body, lat, lon + eps);
 
             body.GetSurfaceState(lat * (180d / Math.PI), lon * (180d / Math.PI), h0, timeSeconds, out Vector3d p0, out _);
             body.GetSurfaceState(latUp * (180d / Math.PI), lon * (180d / Math.PI), hUp, timeSeconds, out Vector3d p1, out _);
-            body.GetSurfaceState(lat * (180d / Math.PI), (lon + NormalEpsilonRadians) * (180d / Math.PI), hEast, timeSeconds, out Vector3d p2, out _);
+            body.GetSurfaceState(lat * (180d / Math.PI), (lon + eps) * (180d / Math.PI), hEast, timeSeconds, out Vector3d p2, out _);
 
             Vector3d normal = Vector3d.Cross(p1 - p0, p2 - p0).Normalized;
             if (Vector3d.Dot(normal, relativePosition) < 0d)

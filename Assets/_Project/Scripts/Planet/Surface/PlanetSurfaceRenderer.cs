@@ -1716,6 +1716,7 @@ namespace Galilego.Universe
                 // NativeArray == compares pointers, so an identical set from two builds
                 // would look different.
                 && TerrainModifiers.TableEqual(a.Mods, b.Mods)
+                && a.Lunar.ContentHash == b.Lunar.ContentHash
                 // Decor exclusion zones follow the same rule: rebuilding them must rebuild
                 // decor chunks, otherwise a zone silently drifts from the table contents.
                 && DecorExclusionTable.TableEqual(a.DecorExclusions, b.DecorExclusions);

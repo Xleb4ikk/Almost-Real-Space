@@ -301,6 +301,13 @@ Shader "Galilego/PlanetSurface"
 
                 t = max(t, 0.0);
 
+                // Hard ceiling: airless bodies have no sea, so their profile carries
+                // SeaLevelMeters = -1e30 as the "no water" sentinel and aboveSea/amp blows
+                // up to ~1e26. The rock→snow lerp below then extrapolates past snow instead
+                // of stopping at it (a white HDR disc with a bloom halo). Every band is
+                // defined on t ∈ [0,1] anyway, so clamp once here.
+                t = min(t, 1.0);
+
                 // Sand by height above sea, not erased by the mask: otherwise on
                 // "positive" shores greenery starts at the waterline. Sand is an
                 // absolute shelf at the water (mirrors TerrainPalette.SandWeight
