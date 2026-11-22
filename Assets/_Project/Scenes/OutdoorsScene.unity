@@ -2467,9 +2467,9 @@ MonoBehaviour:
   Runner: {fileID: 1332194275}
   PlayerCamera: {fileID: 1823688466}
   FarFraction: 0.28
-  MinScreenRadiusPixels: 2.5
-  MinEnergyScale: 0.08
-  Brightness: 3.2
+  MinScreenRadiusPixels: 11
+  MinEnergyScale: 1
+  Brightness: 6
   LimbDarkening: 0.35
   Albedo: {r: 0.5, g: 0.49, b: 0.47, a: 1}
   UseTerrainPalette: 1

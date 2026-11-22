@@ -84,3 +84,16 @@ are. For comparison the star is 1.47° at 0.369 AU, 2.6× wider, which is why th
 as a dot next to a big sun. A larger disc means a smaller orbit (32 100 km would make it
 exactly the sun's size, still 0.106 R_H) or a bigger body.
 
+### The size floor (`MinScreenRadiusPixels`)
+
+5.6 px reads as a star, so the far disc is drawn with a floor of **11 px radius** (22 px
+across, ≈2.5° at this FOV). That is a deliberate lie of 4× in size, and it is the only
+honest place for it: the *body* keeps its real radius and orbit, only the stand-in is
+scaled. The floor is blended by distance (`nearSurface / far`), so as the real chunks come
+within reach the disc shrinks back to its true angular size and the switch stays invisible.
+`MinEnergyScale = 1` keeps the surface brightness (the disc gets bigger, not dimmer);
+`MinScreenRadiusPixels = 0` restores the strictly physical size. Whether the disc lands as
+white or mid-grey is settled by HDRP auto-exposure, not by `Brightness` — the shader value
+only decides it relative to the rest of the frame.
+
+

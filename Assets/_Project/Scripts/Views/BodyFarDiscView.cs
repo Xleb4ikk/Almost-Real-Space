@@ -31,12 +31,14 @@ namespace Galilego.Universe
             "солнечным билбордом, 0.28 держит луну за ним (затмение рисует солнце сверху).")]
         public float FarFraction = 0.28f;
 
-        [Tooltip("Меньше этого радиуса диск не рисуется: субпиксельная точка мигает. " +
-            "Площадь сохраняется множителем яркости.")]
-        public float MinScreenRadiusPixels = 2.5f;
+        [Tooltip("Минимальный радиус диска на экране, px. Физика тут бессильна: 0.57° при FOV 83° " +
+            "и 720p — это 5 px, точка. Пол включается плавно по мере удаления и гаснет к моменту, " +
+            "когда подхватывают настоящие чанки. 0 = строго физический размер.")]
+        public float MinScreenRadiusPixels = 11f;
 
-        [Tooltip("Нижний предел компенсации яркости при раздувании субпиксельного диска.")]
-        public float MinEnergyScale = 0.08f;
+        [Tooltip("Компенсация яркости при раздувании диска. 1 = поверхностная яркость сохраняется " +
+            "(луна просто крупнее), 0.08 = сохраняется полный поток (крупный диск тускнеет).")]
+        public float MinEnergyScale = 1f;
 
         [Tooltip("Яркость диска относительно альбедо (подгоняется глазами: диск должен " +
             "читаться как освещённая поверхность, а не как лампа).")]
@@ -182,12 +184,17 @@ namespace Galilego.Universe
             float angularRadius = Mathf.Atan2((float)body.Radius, (float)distance);
             float size = discDistance * 2f * Mathf.Tan(angularRadius) * 1.02f;
 
-            // A 0.5-degree moon is 6 px at 900p: a hard subpixel quad flickers as the
-            // body drifts, so expand to a minimum screen radius and keep the energy.
+            // A 0.5-degree moon is 5 px at 900p / 83 deg FOV: physically a disc, on
+            // screen a star. The floor keeps it readable, but it is blended in with
+            // distance so that near the switch-over - where the real chunks appear -
+            // the disc has already shrunk back to its true angular size and nothing pops.
             float fovRadians = Mathf.Max(0.01f, camera.fieldOfView) * Mathf.Deg2Rad;
             float pixelRadius = angularRadius / Mathf.Tan(fovRadians * 0.5f) * (Screen.height * 0.5f);
-            float pixelScale = (MinScreenRadiusPixels > 0f && pixelRadius > 1e-6f)
-                ? Mathf.Max(1f, MinScreenRadiusPixels / pixelRadius)
+            float distanceRatio = far > 1f ? (float)(nearSurface / far) : 1f;
+            float boost = Mathf.Clamp01((distanceRatio - 1f) / 3f);
+            float floorPixels = Mathf.Lerp(pixelRadius, MinScreenRadiusPixels, boost);
+            float pixelScale = (floorPixels > 0f && pixelRadius > 1e-6f)
+                ? Mathf.Max(1f, floorPixels / pixelRadius)
                 : 1f;
             disc.localScale = new Vector3(size * pixelScale, size * pixelScale, 1f);
             float energyScale = Mathf.Max(MinEnergyScale, 1f / (pixelScale * pixelScale));
