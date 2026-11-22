@@ -116,27 +116,37 @@ Shader "Galilego/GrassBlade"
                 // ---- All lighting here, in the vertex shader ----
                 float3 n = normalize(normalWS);
                 float3 l = normalize(_TerrainSunDir);
+                float3 moonDir = GalilegoMoonDir(l);
                 float oneSided = saturate(dot(n, l));
                 float twoSided = saturate(abs(dot(n, l)));
                 float ndl = lerp(oneSided, twoSided, saturate(_TwoSided));
                 float back = saturate(dot(-n, l)) * _Translucency * lerp(1.0, 0.25, saturate(_TwoSided));
+                float moonOneSided = saturate(dot(n, moonDir));
+                float moonTwoSided = saturate(abs(dot(n, moonDir)));
+                float moonNdl = lerp(moonOneSided, moonTwoSided, saturate(_TwoSided));
+                float moonBack = saturate(dot(-n, moonDir)) * _Translucency * lerp(1.0, 0.25, saturate(_TwoSided));
 
-                // Sun shadow: only world-space tiers, positionSS is unavailable here;
+                // Sun/moon shadow: only world-space tiers, positionSS is unavailable here;
                 // the medium tier gives 0 where grass stands in terrain shadow.
+                // The single cascade atlas follows the sun by day and the moon by night.
+                float3 shadowDir = GalilegoShadowLightDir(l);
                 float shadow = (distance(positionWS, GetCameraPositionWS()) <= _ShadowMediumDistance)
-                    ? GalilegoShadowMedium(positionWS, n, l)
-                    : GalilegoShadowCheap(positionWS, n, l);
+                    ? GalilegoShadowMedium(positionWS, n, shadowDir)
+                    : GalilegoShadowCheap(positionWS, n, shadowDir);
                 shadow = lerp(1.0, shadow, saturate(_ShadowMul));
 
-                float cloudShadow = SampleCloudShadow(positionWS);
+                float cloudShadow = SampleCloudShadowDirection(positionWS, shadowDir);
 
                 float sun = _TerrainSun;
                 float3 radialUp = normalize(positionWS - _TerrainBodyCenterWS);
                 float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, l));
                 float3 light = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + (GalilegoSkyAmbient(n) * _TerrainRadianceScale * dayLocal)
+                    + (GalilegoMoonAmbient(n) * _TerrainRadianceScale)
                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
-                    + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale);
+                    + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale)
+                    + (_MoonLightColor * (sun * moonNdl * shadow * cloudShadow) * _TerrainRadianceScale)
+                    + (_MoonLightColor * (sun * moonBack * shadow * cloudShadow) * _TerrainRadianceScale);
 
                 // Blend to the ground colour: the tone comes from the terrain palette
                 // (_ColGrass, set by the renderer) and goes through the same _GroundTint

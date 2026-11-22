@@ -36,6 +36,13 @@ float _TerrainRadianceScale; // ground HDR boost (set by SkyEnvironment)
 float _NightAmbient;       // night ambient
 float _StarVisibility;     // star visibility 0..1 (0 by day, 1 by night)
 
+// Moonlight (MoonlightSystem), duplicated here because water does not include
+// GalilegoLighting.hlsl.
+float3 _TerrainMoonDir;    // direction TOWARD the moon
+float3 _MoonLightColor;    // reflected light × scene intensity (phase/eclipse/horizon included)
+float3 _MoonAmbientColor;  // night-sky ambient scattered from the moon
+float _MoonShadowActive;   // 1 = the one HDRP cascade map belongs to the moon
+
 // --- Cloud shell geometry for sampling along the refracted ray ------------
 // Declared in GalilegoCloudField.hlsl: _CldBottomRadius, _CldTopRadius,
 // _CldCoverage, _CldBottomFeather, _CldTopFeather, _CldWorldToBody.
@@ -53,22 +60,6 @@ static const float SunAngularRadius = 0.00463;
 // than the veil without blowing out.
 static const float SkyBaseGain = 20.0;
 
-// MOON — EXTENSION POINT. The night window currently shows only stars: there is no
-// moon in the render pipeline (only in the star-system ephemerides, drawn by no render
-// object). When a body with a moon direction exists, plug in the disc and halo like the
-// Sun below:
-//   float3 moonDir = normalize(_UwMoonDirWS);
-//   float3 moon = GalilegoSunDisc(dir, moonDir, _UwMoonRadiance, sigmaAngle)
-//       + GalilegoSunAureole(dir, moonDir, _UwMoonRadiance * 0.06f);
-/// <summary>
-/// Night moon in the Snell window. Zero while no moon body exists, so the night
-/// window rests on the stars. See the block above: this is the disc insertion point.
-/// </summary>
-float3 GalilegoMoonRadiance(float3 dir, float normalSigmaAngle)
-{
-    return 0.0;
-}
-
 /// <summary>
 /// Hemispheric ambient — the same formula as in GalilegoLighting.hlsl. Duplicated
 /// here because water does not include GalilegoLighting.hlsl.
@@ -77,6 +68,25 @@ float3 GalilegoSkyAmbient(float3 normalWS)
 {
     float hemi = saturate((dot(normalWS, _SkyUp) * 0.5) + 0.5);
     return _SkyAmbientColor * (_SkyAmbient * (0.35 + 0.65 * hemi));
+}
+
+// Same contract as GalilegoLighting.hlsl: fallback avoids normalize(0) when no
+// moon exists (other scenes) or it is below the horizon.
+float3 GalilegoMoonDir(float3 fallbackDir)
+{
+    float moonLength = length(_TerrainMoonDir);
+    return moonLength > 1e-5 ? (_TerrainMoonDir / moonLength) : fallbackDir;
+}
+
+float3 GalilegoMoonAmbient(float3 normalWS)
+{
+    float hemi = saturate((dot(normalWS, _SkyUp) * 0.5) + 0.5);
+    return _MoonAmbientColor * (0.35 + 0.65 * hemi);
+}
+
+float3 GalilegoShadowLightDir(float3 sunDir)
+{
+    return _MoonShadowActive > 0.5 ? GalilegoMoonDir(sunDir) : sunDir;
 }
 
 /// <summary>
@@ -122,6 +132,26 @@ float3 GalilegoSunAureole(float3 dir, float3 sunDir, float3 radiance, float sigm
     float theta = sqrt(max(0.0, 2.0 * (1.0 - cosA)));
     float sigma = 0.075 + sigmaAngle;
     return radiance * exp(-theta / sigma);
+}
+
+/// <summary>
+/// Moon in the Snell window, the same disc + halo model as the Sun. Radiance is
+/// scaled far above _MoonLightColor (that is ground illuminance): the moon's own
+/// surface is ~10^5 times brighter than the ground it lights, and the eye is
+/// adapted to the ground, so the disc must read as a bright lamp on the water.
+/// Zero when MoonlightSystem has no moon, so the night window rests on the stars.
+/// </summary>
+float3 GalilegoMoonRadiance(float3 dir, float normalSigmaAngle)
+{
+    if (dot(_MoonLightColor, _MoonLightColor) < 1e-12)
+    {
+        return 0.0;
+    }
+
+    float3 moonDir = GalilegoMoonDir(_TerrainSunDir);
+    float3 disc = GalilegoSunDisc(dir, moonDir, _MoonLightColor * 12.0, normalSigmaAngle);
+    float3 halo = GalilegoSunAureole(dir, moonDir, _MoonLightColor * 0.35, normalSigmaAngle);
+    return disc + halo;
 }
 
 /// <summary>

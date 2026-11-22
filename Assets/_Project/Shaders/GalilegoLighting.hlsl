@@ -28,6 +28,14 @@ float _ShadowBlendWidth;
 // yellow near the ground, red at sunset) — shared by all custom surface shaders.
 float3 _SunLightColor;
 
+// Moonlight: direction TO the moon, and reflected-light colour × scene intensity
+// (already includes phase, eclipse, horizon and atmospheric transmittance).
+// Set by MoonlightSystem; zero when the camera body has no moon.
+float3 _TerrainMoonDir;
+float3 _MoonLightColor;
+float3 _MoonAmbientColor;   // night-sky ambient scattered from the moon
+float _MoonShadowActive;    // 1 = the one HDRP cascade map belongs to the moon
+
 // Ambient tint (day: blue, sunset: warm) × sky brightness.
 float3 _SkyAmbientColor;
 
@@ -47,6 +55,31 @@ float3 GalilegoSkyAmbient(float3 normalWS)
 {
     float hemi = saturate((dot(normalWS, _SkyUp) * 0.5) + 0.5);
     return _SkyAmbientColor * (_SkyAmbient * (0.35 + 0.65 * hemi));
+}
+
+// Unit direction to the moon; the fallback keeps normalize(0) from producing NaN
+// when MoonlightSystem is absent (other slices) or the moon is below the horizon.
+float3 GalilegoMoonDir(float3 fallbackDir)
+{
+    float moonLength = length(_TerrainMoonDir);
+    return moonLength > 1e-5 ? (_TerrainMoonDir / moonLength) : fallbackDir;
+}
+
+// Night sky ambient scattered from the moon: unlike daylight sky ambient this
+// does NOT fade with the sun, because the moon is the source. Shadows under the
+// moon are therefore dark blue, not absolute black.
+float3 GalilegoMoonAmbient(float3 normalWS)
+{
+    float hemi = saturate((dot(normalWS, _SkyUp) * 0.5) + 0.5);
+    return _MoonAmbientColor * (0.35 + 0.65 * hemi);
+}
+
+// The single HDRP cascade atlas belongs to whichever directional light is the
+// current direct source: the sun by day, the moon by night. GalilegoSunShadow
+// reads index 0, so it must be called with THIS direction, not always the sun's.
+float3 GalilegoShadowLightDir(float3 sunDir)
+{
+    return _MoonShadowActive > 0.5 ? GalilegoMoonDir(sunDir) : sunDir;
 }
 
 #include "Packages/com.unity.render-pipelines.high-definition/Runtime/Lighting/LightLoop/HDShadow.hlsl"

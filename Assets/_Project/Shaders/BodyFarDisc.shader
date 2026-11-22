@@ -18,6 +18,7 @@ Shader "Galilego/BodyFarDisc"
         [HideInInspector] _BFD_LimbDarkening("Limb Darkening", Float) = 0.35
         [HideInInspector] _BFD_Ambient("Ambient", Float) = 0.015
         [HideInInspector] _BFD_Opacity("Opacity", Float) = 1
+        [HideInInspector] _BFD_Eclipse("Eclipse Visibility", Float) = 1
     }
 
     SubShader
@@ -55,6 +56,7 @@ Shader "Galilego/BodyFarDisc"
             float _BFD_LimbDarkening;
             float _BFD_Ambient;
             float _BFD_Opacity;
+            float _BFD_Eclipse;
 
             struct Attributes
             {
@@ -106,7 +108,16 @@ Shader "Galilego/BodyFarDisc"
                 float mapValue = SAMPLE_TEXTURE2D(_BFD_Map, s_linear_clamp_sampler, uvMap).r * 2.0;
                 float3 albedo = _BFD_Albedo.rgb * lerp(1.0, mapValue, _BFD_MapStrength);
 
-                float3 color = albedo * (ndl + _BFD_Ambient) * limb * _BFD_IntensityScale;
+                // Lunar eclipse: the Sun is hidden by the parent planet, and the only
+                // light is refracted through its atmosphere — a dim copper disc, not a
+                // black hole and not a full moon. The floor (0.002) keeps totality
+                // visible; the geometric flux is far smaller.
+                float eclipse = saturate(_BFD_Eclipse);
+                float eclipseGain = 0.002 + (0.998 * eclipse);
+                float3 eclipseTint = lerp(float3(0.62, 0.16, 0.07), float3(1.0, 1.0, 1.0), eclipse);
+
+                float3 color = albedo * eclipseTint * (ndl + _BFD_Ambient)
+                    * limb * _BFD_IntensityScale * eclipseGain;
 
                 // One-pixel feather: a 6 px disc stepped hard reads as a square.
                 float edge = max(1e-5, fwidth(r2) * 1.5);

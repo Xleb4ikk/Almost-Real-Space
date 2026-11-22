@@ -325,7 +325,9 @@ Shader "Galilego/WaterSurface"
                 float cameraDist = length(_PlanetCameraPos - input.positionWS);
                  float sun = _TerrainSun;
                  float3 sunDir = normalize(_TerrainSunDir);
-                 float cloudShadow = SampleCloudShadow(input.positionWS);
+                 float3 moonDir = GalilegoMoonDir(sunDir);
+                 float3 shadowDir = GalilegoShadowLightDir(sunDir);
+                 float cloudShadow = SampleCloudShadowDirection(input.positionWS, shadowDir);
                 // The same single radial as in the vertex shader.
                 float3 centerDeltaF = input.positionWS - _PlanetWaterCenter;
                 float3 baseNFace = dot(centerDeltaF, centerDeltaF) > 1.0
@@ -665,12 +667,18 @@ Shader "Galilego/WaterSurface"
                 // down is a flat black fill.
                  float ndl = saturate(dot(n, sunDir));
                  float ndlWrap = saturate((dot(n, sunDir) + 0.6) / 1.6);
+                 float moonNdl = saturate(dot(n, moonDir));
+                 float moonNdlWrap = saturate((dot(n, moonDir) + 0.6) / 1.6);
+                 float moonUp = smoothstep(-0.05, 0.10, dot(baseN, moonDir));
                 // HOWTO water glows from reflection, not ambient over-lighting.
                 float dayLocal = smoothstep(-0.12, 0.08, dot(baseN, sunDir));
                 float3 waterSky = GalilegoSkyAmbient(n) * waterRad * 1.15 * dayLocal;
+                float3 waterMoonSky = GalilegoMoonAmbient(n) * waterRad * 1.15;
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + waterSky
-                     + (_SunLightColor * (sun * (ndl * 0.35 + ndlWrap * 0.65) * cloudShadow) * waterRad);
+                    + waterMoonSky
+                     + (_SunLightColor * (sun * (ndl * 0.35 + ndlWrap * 0.65) * cloudShadow) * waterRad)
+                     + (_MoonLightColor * (sun * (moonNdl * 0.35 + moonNdlWrap * 0.65) * cloudShadow) * waterRad);
 
                 float cosT = saturate(dot(n, viewDir));
                 float fresnelPow = pow(1.0 - cosT, 5.0);
@@ -697,8 +705,15 @@ Shader "Galilego/WaterSurface"
                 float glitter = 0.5 + (0.5 * sin((sp1 * 1.7) - (t * 2.3)));
                 spec *= (0.2 + (0.7 * glitter * saturate(sparkleFade + 0.25))) * dayLocal;
 
+                float3 moonHalfSum = moonDir + viewDir;
+                float moonHalfLen = length(moonHalfSum);
+                float3 moonHalfVec = moonHalfLen > 1e-5 ? (moonHalfSum / moonHalfLen) : moonDir;
+                float moonSpec = pow(saturate(dot(nSpec, moonHalfVec)), max(1.0, _SpecularPower)) * _SpecularIntensity;
+                moonSpec *= (0.2 + (0.7 * glitter * saturate(sparkleFade + 0.25))) * moonUp;
+
                 color = (waterBase * lightTerm)
-                     + (spec * sun * _SunLightColor * waterRad * cloudShadow);
+                     + (spec * sun * _SunLightColor * waterRad * cloudShadow)
+                     + (moonSpec * sun * _MoonLightColor * waterRad * cloudShadow * 2.0);
 
                 // Wave-body glow (SSS approximation as in Crest/NorthStar): looking
                 // through a crest toward the sun, the wave glows turquoise (forward
@@ -723,6 +738,10 @@ Shader "Galilego/WaterSurface"
                 // the glitter itself feeds the spec below).
                 float sunPath = pow(saturate(dot(reflectDir, sunDir)), 10.0);
                  skyRef += _SunLightColor * (sunPath * 0.05 * waterRad * cloudShadow) * dayLocal;
+                // Moon path: a broad silver streak plus the glitter above. Separate
+                // from the sun term because dayLocal is zero at night.
+                float moonPath = pow(saturate(dot(reflectDir, moonDir)), 10.0);
+                skyRef += _MoonLightColor * ((0.25 + (0.75 * moonPath)) * waterRad * cloudShadow) * moonUp;
                 color = lerp(color, skyRef, saturate(fresnelF * _FresnelStrength));
                 // Distant water haze: the horizon merges into the sky.
                 // Boosted for open sea — oceans all the way to the horizon.

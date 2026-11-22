@@ -301,6 +301,17 @@ namespace Galilego.Universe
             star.EvaluateWorldState(Runner.TimeSeconds, out Vector3d starPos, out _);
             Vector3 sunDirection = AstroFrame.ToSimulation((starPos - bodyPos).Normalized);
 
+            // Lunar eclipse: the parent planet hides the Sun from this body. The disc
+            // must dim with the same geometry MoonlightSystem uses, or a total eclipse
+            // would show a full bright moon over a pitch-black ground.
+            double eclipse = 1d;
+            if (body.Parent != null && !ReferenceEquals(body.Parent, star))
+            {
+                body.Parent.EvaluateWorldState(Runner.TimeSeconds, out Vector3d parentPos, out _);
+                eclipse = MoonlightPhysics.LunarEclipseVisibility(
+                    bodyPos, parentPos, body.Parent.Radius, starPos, star.Radius);
+            }
+
             Runner.SystemState.GetVisualFrame(body, Runner.TimeSeconds, out _, out _, out QuaternionD orientation);
             Quaternion bodyRotation = AstroFrame.ToSimulation(orientation);
 
@@ -312,6 +323,7 @@ namespace Galilego.Universe
             material.SetFloat("_BFD_IntensityScale", Brightness * energyScale);
             material.SetFloat("_BFD_DiscDistance", discDistance);
             material.SetFloat("_BFD_LimbDarkening", LimbDarkening);
+            material.SetFloat("_BFD_Eclipse", (float)eclipse);
             material.SetTexture("_BFD_Map", SurfaceMap);
             material.SetFloat("_BFD_MapStrength", SurfaceMap != null ? SurfaceMapStrength : 0f);
             material.SetFloat("_BFD_Opacity", opacity);

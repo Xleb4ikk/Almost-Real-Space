@@ -8,12 +8,19 @@ pointed the wrong way:
 |---|---|---|---|
 | Per-cascade resolution | **512** (`m_Level: 0`) | **2048** (`m_Level: 2`) | the `Sun` light, `HDAdditionalLightData.m_ShadowResolution` |
 | Sun angular diameter (penumbra) | **2.5°** | **the star's real size** (1.47° at 0.37 AU) | `SkyEnvironment.ApplyGlobalsNow` |
-| PCSS samples / bias | 4 + 4, bias 0.2 / 0.15 | 8 + 12, bias 0.75 / 0.5 | the `Sun` light |
+| PCSS samples / minimum penumbra | 4 + 8 taps, 1.5 texels | 16 + 24 taps, **2 texels** | the `Sun` light |
+| Bias | 0.2 / 0.15 | 0.75 / 0.5 | the `Sun` light |
 
 The useful mental model: `shadowDistance = 250 m` is split into 3 cascades, and the
 whole cascade has to fit in one shadow map. At 512 texels the far cascade spends
 **44 cm per texel**, so a 3 m rocket is 7 texels wide and the PCSS kernel (which is
 sized in *texels*) turns it into a blob. At 2048 the same cascade is 11 cm/texel.
+
+**The penumbra must never be narrower than 2 texels.** That is what
+`dirLightPCSSMinFilterSizeTexels = 2` buys: the shadow edge is always a gradient over
+at least two texels instead of the texel-aligned staircase that a 1-texel edge turns
+into whenever the physical penumbra is small (a high sun) or the cascade is coarse.
+
 
 ## Symptom
 
@@ -56,6 +63,17 @@ the wide brown halo. That halo is what looks "ugly" — it is not the rocket's s
   HDRP filter inside `_ShadowHighDistance`, then GATHER, then one tap. The near field
   — the only place a rocket shadow is readable — therefore pays the PCSS cost and
   benefits from all of the above.
+
+## Night: the Moon owns the cascades
+
+HDRP stores **one** set of directional cascades (`HDShadowManager`:
+`m_CachedDirectionalShadowData = new HDDirectionalShadowData[1]`). `MoonlightSystem`
+therefore transfers shadow ownership: the sun casts by day, the Moon by night, with a
+switch while the sun is below −2° (and back at −0.5°, when the sun's own intensity is
+still zero). `Shader.SetGlobalFloat("_MoonShadowActive", 1)` makes
+`GalilegoSunShadow` bias the one map with the Moon's direction, so terrain, grass and
+decor receive the Moon's shadows. The Moon's `angularDiameter` is its real 0.53°, so
+its PCSS penumbra is not the sun's 1.47°. See [Moonlight.md](Moonlight.md).
 
 ## Cost
 

@@ -92,24 +92,31 @@ Shader "Galilego/GroundDecorBillboard"
 
                 float3 n = normalize(input.normalWS);
                 float3 l = normalize(_TerrainSunDir);
+                float3 moonDir = GalilegoMoonDir(l);
                 // Two-sided leaf: light both sides.
                 float ndl = saturate(abs(dot(n, l)));
                 // Backlight against the sun — as in the solid layer, otherwise distant
                 // grass in backlight is darker than near grass.
                 float back = saturate(dot(-n, l)) * _Translucency;
+                float moonNdl = saturate(abs(dot(n, moonDir)));
+                float moonBack = saturate(dot(-n, moonDir)) * _Translucency;
                 // Lighting as on terrain: true sun (_TerrainSun, may exceed 1), hemispheric
                 // ambient from the sky (no *ndl: at sunset the sky glows even when the direct
                 // ray has faded); the sun colour (photosphere × T) and ambient are shared globals.
                 // The HDRP shadow dims direct light; ambient remains.
-                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
-                 float cloudShadow = SampleCloudShadow(input.positionWS);
-                 float sun = _TerrainSun;
+                float3 shadowDir = GalilegoShadowLightDir(l);
+                float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, shadowDir);
+                float cloudShadow = SampleCloudShadowDirection(input.positionWS, shadowDir);
+                float sun = _TerrainSun;
                 float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
                 float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, l));
                 float3 light = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + (GalilegoSkyAmbient(n) * _TerrainRadianceScale * dayLocal)
+                    + (GalilegoMoonAmbient(n) * _TerrainRadianceScale)
                      + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
-                     + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale);
+                     + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale)
+                     + (_MoonLightColor * (sun * moonNdl * shadow * cloudShadow) * _TerrainRadianceScale)
+                     + (_MoonLightColor * (sun * moonBack * shadow * cloudShadow) * _TerrainRadianceScale);
                 float3 color = albedo * light * _GroundTint.rgb;
                 color += _UnderwaterCausticColor.rgb * UnderwaterCausticMask(input.positionWS, n);
                 return float4(color, 1.0);

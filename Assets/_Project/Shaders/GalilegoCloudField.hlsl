@@ -98,7 +98,12 @@ bool CloudRaySphere(float3 ro, float3 rd, float radius, out float t0, out float 
     return true;
 }
 
-float SampleCloudShadow(float3 positionWS)
+// Cloud shadow along an arbitrary light direction. The direct source changes at
+// night: the clouds' own _CldSunDirWS points at the (set) sun, whose ray no longer
+// hits the shell, so a moonlit ground would lose its cloud shadows. MoonlightSystem
+// moves the scene's one direct source to the moon, and the caller passes that
+// direction here instead of always using the sun's.
+float SampleCloudShadowDirection(float3 positionWS, float3 lightDirWS)
 {
     if (_CldCloudActive < 0.5 || _CldShadowStrength <= 0.0 || _CldNoiseStyle < 0.5)
     {
@@ -106,7 +111,8 @@ float SampleCloudShadow(float3 positionWS)
     }
 
     float3 origin = positionWS - _CldBodyCenterWS;
-    float3 direction = normalize(_CldSunDirWS);
+    float directionLength = length(lightDirWS);
+    float3 direction = directionLength > 1e-6 ? (lightDirWS / directionLength) : normalize(_CldSunDirWS);
     float top0;
     float top1;
     if (!CloudRaySphere(origin, direction, _CldTopRadius, top0, top1))
@@ -160,6 +166,12 @@ float SampleCloudShadow(float3 positionWS)
     float attenuation = exp(-opticalDepth * max(_CldExtinction, 0.0) * 0.35);
     attenuation = max(attenuation, 0.28);
     return lerp(1.0, attenuation, saturate(_CldShadowStrength));
+}
+
+// Back-compatible entry point: the sun's direction, as before.
+float SampleCloudShadow(float3 positionWS)
+{
+    return SampleCloudShadowDirection(positionWS, _CldSunDirWS);
 }
 
 #endif

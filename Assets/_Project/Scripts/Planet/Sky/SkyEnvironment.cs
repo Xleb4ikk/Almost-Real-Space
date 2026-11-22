@@ -85,6 +85,19 @@ namespace Galilego.Universe
         [Tooltip("Пол компенсации ночью (EV): ночь остаётся ночью, звёздный свет читается.")]
         public float NightExposure = 0.5f;
 
+        [Tooltip("Дополнительная адаптация глаза в лунную ночь (EV): полная луна над горизонтом " +
+                 "раскрывает экспозицию на столько сверх NightExposure. Без этого физический свет луны " +
+                 "(~0.15 сцены при gain 16) читается как почти чёрная земля. 0 = выключено.")]
+        public float MoonlightExposureBoost = 0.5f;
+
+        /// <summary>
+        /// Scene-space moon intensity (0..~0.4), written by MoonlightSystem before this
+        /// component's LateUpdate. The eye's night adaptation follows it: a moonlit
+        /// landscape is visible because the pupil opens, not because the moon is bright.
+        /// A property, not a field: it must never be serialized into the scene.
+        /// </summary>
+        public float MoonlightLevel { get; set; }
+
         [Tooltip("До этой дистанции тени фильтруются штатным HQ-фильтром HDRP (PCSS).")]
         public float ShadowHighDistanceMeters = 70f;
 
@@ -579,6 +592,19 @@ namespace Galilego.Universe
             else
             {
                 exposureComp = TwilightExposureMax * (1d - SkyPhysics.Smoothstep(0.15d, 1d, lightLevel));
+            }
+
+            // Night adaptation to moonlight: a full moon on the ground is ~0.1 of the
+            // noon sun, which a day-calibrated exposure renders nearly black. The eye
+            // opens; so does the camera. Fades out before civil twilight, where the
+            // sky — not the moon — already sets the exposure. MoonlightLevel is set by
+            // MoonlightSystem (0 = no moon body in this scene).
+            if (MoonlightExposureBoost > 0f && MoonlightLevel > 0f)
+            {
+                double night = 1d - SkyPhysics.Smoothstep(-0.18d, -0.02d, sinEl);
+                double moonAdapt = System.Math.Sqrt(
+                    SkyPhysics.Clamp(MoonlightLevel / 0.15f, 0d, 1d));
+                exposureComp += MoonlightExposureBoost * night * moonAdapt;
             }
 
             ExposureCompensation = (float)exposureComp;

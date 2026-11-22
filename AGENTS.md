@@ -40,6 +40,17 @@ sized in **shadow-map texels** and in **the sun's angular diameter**. Two rules:
 Full write-up, the symptom/root-cause split and the A/B recipe:
 **[`Docs/Shadows.md`](Docs/Shadows.md)**.
 
+## Moonlight — real phase and position on Terra
+
+`MoonlightSystem` turns a moon into reflected star light: geometric albedo,
+`(R/d)²`, Allen's lunar phase law (quarter = 1/11 of full) and the parent planet's
+shadow; the Moon's own atmospheric transmittance and horizon are applied. The one
+non-physical step is `NightAdaptationGainEv` (16 EV) plus
+`SkyEnvironment.MoonlightExposureBoost` (0.5 EV) — without them the physical 2.9·10⁻⁶
+moon/sun ratio is black under a day exposure. HDRP has **one** cascade atlas: the sun
+owns it by day, the Moon by night (`_MoonShadowActive` selects the bias direction).
+Full write-up: **[`Docs/Moonlight.md`](Docs/Moonlight.md)**.
+
 ## Debugging rendering at altitude
 
 * Freeze the frame first: `SimulationRunner.Paused = true` (the ship moves at km/s).

@@ -159,6 +159,7 @@ Shader "Galilego/GroundDecorSolid"
 
                 float3 n = normalize(input.normalWS);
                 float3 l = normalize(_TerrainSunDir);
+                float3 moonDir = GalilegoMoonDir(l);
                 // The blade normal matches the surface normal (mesh normals are
                 // baked along growth), so ndl is taken as for the ground.
                 // _TwoSided is kept as an option: 0 — exactly the ground model.
@@ -166,10 +167,16 @@ Shader "Galilego/GroundDecorSolid"
                 float twoSided = saturate(abs(dot(n, l)));
                 float ndl = lerp(oneSided, twoSided, saturate(_TwoSided));
                 float back = saturate(dot(-n, l)) * _Translucency * lerp(1.0, 0.25, saturate(_TwoSided));
+                float moonOneSided = saturate(dot(n, moonDir));
+                float moonTwoSided = saturate(abs(dot(n, moonDir)));
+                float moonNdl = lerp(moonOneSided, moonTwoSided, saturate(_TwoSided));
+                float moonBack = saturate(dot(-n, moonDir)) * _Translucency * lerp(1.0, 0.25, saturate(_TwoSided));
 
                 // HDRP shadow (PCSS/PCF): attenuates direct light; ambient remains.
-                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, l);
-                 float cloudShadow = SampleCloudShadow(input.positionWS);
+                // The one cascade atlas follows the sun by day and the moon by night.
+                float3 shadowDir = GalilegoShadowLightDir(l);
+                float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, n, shadowDir);
+                float cloudShadow = SampleCloudShadowDirection(input.positionWS, shadowDir);
 
                  // Lighting is exactly the terrain model (PlanetSurface.shader):
                 // real sun (_TerrainSun, may exceed 1), hemispherical sky
@@ -180,8 +187,11 @@ Shader "Galilego/GroundDecorSolid"
                 float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, l));
                 float3 light = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + (GalilegoSkyAmbient(n) * _TerrainRadianceScale * dayLocal)
+                    + (GalilegoMoonAmbient(n) * _TerrainRadianceScale)
                      + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
-                     + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale);
+                     + (_SunLightColor * (sun * back * shadow * cloudShadow) * _TerrainRadianceScale)
+                     + (_MoonLightColor * (sun * moonNdl * shadow * cloudShadow) * _TerrainRadianceScale)
+                     + (_MoonLightColor * (sun * moonBack * shadow * cloudShadow) * _TerrainRadianceScale);
                 float3 color = albedo.rgb * light * _GroundTint.rgb;
                 color += _UnderwaterCausticColor.rgb * UnderwaterCausticMask(input.positionWS, n);
                 return float4(color, 1.0);

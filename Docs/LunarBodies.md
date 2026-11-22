@@ -84,6 +84,13 @@ are. For comparison the star is 1.47° at 0.369 AU, 2.6× wider, which is why th
 as a dot next to a big sun. A larger disc means a smaller orbit (32 100 km would make it
 exactly the sun's size, still 0.106 R_H) or a bigger body.
 
+## Moonlight on Terra
+
+The same body is a light source: `MoonlightSystem` turns its reflected sunlight into
+a dynamic directional light with the real phase law, the observer's position on Terra
+and the Moon's own atmospheric extinction. A total lunar eclipse dims both the light
+and the far disc. See [Moonlight.md](Moonlight.md).
+
 ### The size floor (`MinScreenRadiusPixels`)
 
 5.6 px reads as a star, so the far disc is drawn with a floor of **11 px radius** (22 px

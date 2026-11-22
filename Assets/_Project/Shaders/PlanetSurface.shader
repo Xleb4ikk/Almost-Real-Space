@@ -475,7 +475,9 @@ Shader "Galilego/PlanetSurface"
             {
                 float3 normal = normalize(input.normalWS);
                 float3 sunDir = normalize(_TerrainSunDir);
+                float3 moonDir = GalilegoMoonDir(sunDir);
                 float ndl = saturate(dot(normal, sunDir));
+                float moonNdl = saturate(dot(normal, moonDir));
 
                 // NOTE: a far-side clip was tried here (a per-fragment test that would drop
                 // the FAR half of a chunk straddling the limb, which `Cull Off` paints as a
@@ -486,10 +488,13 @@ Shader "Galilego/PlanetSurface"
                 // Kept out until it can be done in one explicit space (or by making the
                 // skirts double-sided and switching to Cull Back).
 
-                // HDRP shadow (PCSS/PCF) from trees/rocks/terrain; attenuates only
-                // the sun term — ambient remains, shadowed areas are not black.
-                float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, normal, sunDir);
-                float cloudShadow = SampleCloudShadow(input.positionWS);
+                // HDRP shadow (PCSS/PCF) from trees/rocks/terrain; attenuates the
+                // direct term — ambient remains, shadowed areas are not black.
+                // HDRP has ONE cascaded directional shadow: the sun owns it by day,
+                // the moon by night, so the sample follows the current owner.
+                float3 shadowDir = GalilegoShadowLightDir(sunDir);
+                float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, normal, shadowDir);
+                float cloudShadow = SampleCloudShadowDirection(input.positionWS, shadowDir);
 
                 // Single per-fragment light term: night ambient (stars) + sky
                 // ambient (mean sky brightness: blue by day, warm at sunset —
@@ -502,7 +507,9 @@ Shader "Galilego/PlanetSurface"
                 float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, sunDir));
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale * dayLocal)
-                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale);
+                    + (GalilegoMoonAmbient(normal) * _TerrainRadianceScale)
+                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
+                     + (_MoonLightColor * (sun * moonNdl * shadow * cloudShadow) * _TerrainRadianceScale);
 
                 // --- Per-pixel albedo -----------------------------------------
                 float3 dir = normalize(input.dirOS);
