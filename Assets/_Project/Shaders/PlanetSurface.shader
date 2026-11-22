@@ -482,14 +482,28 @@ Shader "Galilego/PlanetSurface"
 
             float4 Frag(Varyings input) : SV_Target
             {
-                float3 normal = normalize(input.normalWS);
-                float3 sunDir = normalize(_TerrainSunDir);
-                float3 moonDir = GalilegoMoonDir(sunDir);
-
                 // ---- Albedo inputs, read BEFORE lighting: the macro map also supplies
                 // the surface normal (crater rims seen from orbit are shading, not
                 // silhouette).
-                float3 dir = normalize(input.dirOS);
+                //
+                // Both directions are normalised by hand, not with normalize(): a
+                // degenerate interpolated value (a zero normal on a coarse quad, a zero
+                // dirOS at a cube corner) produces NaN, and ONE NaN pixel poisons HDRP's
+                // auto-exposure — the whole frame collapses to a flat teal until the
+                // offender leaves the view. Seen in Play after a teleport to the Moon.
+                float3 dirRaw = input.dirOS;
+                float dirLen2 = dot(dirRaw, dirRaw);
+                float3 dir = dirLen2 > 1e-12 ? dirRaw * rsqrt(dirLen2) : float3(0.0, 0.0, 1.0);
+
+                float3 normalRaw = input.normalWS;
+                float normalLen2 = dot(normalRaw, normalRaw);
+                float3 normal = normalLen2 > 1e-12
+                    ? normalRaw * rsqrt(normalLen2)
+                    : TransformObjectToWorldDir(dir);
+
+                float3 sunDir = normalize(_TerrainSunDir);
+                float3 moonDir = GalilegoMoonDir(sunDir);
+
                 float raw = input.extra.x;
                 float slopeCos = clamp(input.extra.y, -1.0, 1.0);
                 float slopeTan = SlopeTanFromCos(slopeCos);
@@ -666,7 +680,16 @@ Shader "Galilego/PlanetSurface"
 
                 float3 color = lerp(landWet, seabed, isWater);
                 color += _UnderwaterCausticColor.rgb * UnderwaterCausticMask(input.positionWS, normal);
-                return float4(color, 1.0);
+
+                // Last line of defence for HDRP's auto-exposure: one NaN/Inf pixel in the
+                // frame makes the exposure unbounded and the whole image collapses to a
+                // flat teal until the offender leaves the view.
+                if (any(isnan(color)) || any(isinf(color)))
+                {
+                    color = 0.0;
+                }
+
+                return float4(min(color, 65504.0), 1.0);
             }
             ENDHLSL
         }
