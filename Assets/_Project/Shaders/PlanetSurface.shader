@@ -104,6 +104,15 @@ Shader "Galilego/PlanetSurface"
             float _SteepBlendStart;
             float _SteepBlendEnd;
 
+            // Baked macro map (equirect, body-fixed). Global, from PlanetSurfaceRenderer:
+            // R = albedo multiplier / 2, normal xyz = n*0.5+0.5 in BODY space.
+            sampler2D _TerrainMacroAlbedoMap;
+            sampler2D _TerrainMacroNormalMap;
+            float _TerrainMacroOn;
+            float _TerrainMacroAlbedoStrength;
+            float _TerrainMacroNormalStrength;
+            float _TerrainMacroTexelAngular;
+
             struct Attributes
             {
                 float3 positionOS : POSITION;
@@ -476,6 +485,65 @@ Shader "Galilego/PlanetSurface"
                 float3 normal = normalize(input.normalWS);
                 float3 sunDir = normalize(_TerrainSunDir);
                 float3 moonDir = GalilegoMoonDir(sunDir);
+
+                // ---- Albedo inputs, read BEFORE lighting: the macro map also supplies
+                // the surface normal (crater rims seen from orbit are shading, not
+                // silhouette).
+                float3 dir = normalize(input.dirOS);
+                float raw = input.extra.x;
+                float slopeCos = clamp(input.extra.y, -1.0, 1.0);
+                float slopeTan = SlopeTanFromCos(slopeCos);
+                float lat01 = saturate(abs(asin(clamp(dir.z, -1.0, 1.0))) / 1.5707963267948966);
+
+                // Pixel footprint on the unit body direction, i.e. the pixel's angular
+                // size. A texel of the baked map spans _TerrainMacroTexelAngular:
+                //   pixel < texel  -> the map is the blurry thing, fade it OUT;
+                //   pixel > texel  -> the chunk quad and its interpolated vertex mask
+                //                     are the blurry thing, the map takes over.
+                // That one comparison replaces every distance/altitude threshold: it is
+                // the true LOD criterion, in radians.
+                float angular = max(max(fwidth(dir.x), fwidth(dir.y)), fwidth(dir.z));
+                float macroW = 0.0;
+                float2 macroUv = float2(0.5, 0.5);
+                if (_TerrainMacroOn > 0.5)
+                {
+                    float texel = max(_TerrainMacroTexelAngular, 1e-6);
+                    // Full weight as soon as a pixel covers a whole texel. Half weight there
+                    // would leave the MESH normal in the lighting at orbital distances — and
+                    // the mesh normal is computed per chunk by one-sided differences, so it
+                    // jumps across a cube-face boundary: a 1 px line straight down the body.
+                    // The map is continuous over the same seam, so trusting it fully is both
+                    // sharper and seamless.
+                    macroW = saturate(angular / texel) * _TerrainMacroAlbedoStrength;
+                    macroUv = float2((atan2(dir.y, dir.x) * 0.15915494) + 0.5,
+                                     (asin(clamp(dir.z, -1.0, 1.0)) * 0.31830989) + 0.5);
+                }
+
+                if (macroW > 0.0 && _TerrainMacroNormalStrength > 0.0)
+                {
+                    float3 mapN = (tex2D(_TerrainMacroNormalMap, macroUv).xyz * 2.0) - 1.0;
+                    float len2 = dot(mapN, mapN);
+                    if (len2 > 1e-4)
+                    {
+                        // The map and dirOS share the CHUNK's object frame (that is the
+                        // frame the bake was taken in), so the body -> world rotation for
+                        // the normal is the mesh transform itself. Using the
+                        // _TerrainWorldToBody global here was wrong: that one answers for
+                        // positionWS (camera-relative sim axes), not for object-space
+                        // directions, and its mismatch turned every reconstructed normal
+                        // away from the sun (the body rendered black).
+                        float3 nWorld = TransformObjectToWorldDir(mapN * rsqrt(len2));
+                        float tilt2 = dot(nWorld, nWorld);
+                        // A degenerate direction must never reach normalize(): one NaN
+                        // pixel poisons HDRP's auto-exposure and the whole frame.
+                        if (tilt2 > 1e-8)
+                        {
+                            normal = normalize(lerp(normal, nWorld * rsqrt(tilt2),
+                                saturate(macroW * _TerrainMacroNormalStrength)));
+                        }
+                    }
+                }
+
                 float ndl = saturate(dot(normal, sunDir));
                 float moonNdl = saturate(dot(normal, moonDir));
 
@@ -496,6 +564,20 @@ Shader "Galilego/PlanetSurface"
                 float shadow = GalilegoSunShadow(input.positionCS.xy, input.positionWS, normal, shadowDir);
                 float cloudShadow = SampleCloudShadowDirection(input.positionWS, shadowDir);
 
+                // Skirt walls duplicate the chunk edge one node BELOW the surface, so the
+                // shadow pass sees them inside the terrain and paints them black. At a LOD
+                // junction the two edges cross and a pixel-wide sliver of that wall shows:
+                // the "cracked moon" hairline. Unshadowed, the wall is exactly the colour
+                // of the ground it hides behind, so the junction disappears.
+                // Only the skirt vertices carry the flag (Extra2.y = 1); a skirt triangle
+                // has one core vertex and two skirt ones, hence the step, not a lerp.
+                float skirt = step(0.01, input.extra2.y);
+                if (skirt > 0.0)
+                {
+                    shadow = lerp(shadow, 1.0, skirt);
+                    cloudShadow = lerp(cloudShadow, 1.0, skirt);
+                }
+
                 // Single per-fragment light term: night ambient (stars) + sky
                 // ambient (mean sky brightness: blue by day, warm at sunset —
                 // hemispherical gradient, NOT dependent on ndl) + the sun by
@@ -512,21 +594,17 @@ Shader "Galilego/PlanetSurface"
                      + (_MoonLightColor * (sun * moonNdl * shadow * cloudShadow) * _TerrainRadianceScale);
 
                 // --- Per-pixel albedo -----------------------------------------
-                float3 dir = normalize(input.dirOS);
-                float raw = input.extra.x;
-                float slopeCos = clamp(input.extra.y, -1.0, 1.0);
-                float slopeTan = SlopeTanFromCos(slopeCos);
-                float lat01 = saturate(abs(asin(clamp(dir.z, -1.0, 1.0))) / 1.5707963267948966);
-
-                // Pixel footprint in the noise lattice: attenuate detail when it is
-                // smaller than a pixel (otherwise high-frequency noise shimmers far away).
-                float angular = max(max(fwidth(dir.x), fwidth(dir.y)), fwidth(dir.z));
-
                 // Mask and detail are interpolated vertex values computed by the same
                 // CPU noise the decor reads (paint/placement parity). The shader no
                 // longer has its own Fbm: its float-safe offsets produced a different
                 // pattern, so visual forest would be steppe for the decor.
-                float mask = input.extra.z;
+                //
+                // The macro map carries the SAME field at a resolution the mesh cannot
+                // (2048x1024 texels over the whole body). Where it is trusted, the
+                // interpolated copy is faded out instead of being multiplied in: a
+                // blurred mare times a sharp mare would read twice as dark.
+                float vertexDetail = saturate(1.0 - macroW);
+                float mask = input.extra.z * vertexDetail;
                 float detail = input.extra.w;
                 if (_ColorDetailStrength != 0.0 && _ColorDetailFrequency > 0.0)
                 {
@@ -534,7 +612,17 @@ Shader "Galilego/PlanetSurface"
                     detail *= saturate(1.0 - (footprint * 0.7));
                 }
 
+                detail *= vertexDetail;
+
                 float3 albedo = TerrainAlbedo(raw, mask, detail, slopeTan, lat01);
+
+                if (macroW > 0.0)
+                {
+                    // Stored as factor / 2 (0..1 in 8 bit), the same encoding the far
+                    // disc map uses, so one bake feeds both views.
+                    float macroAlbedo = tex2D(_TerrainMacroAlbedoMap, macroUv).r * 2.0;
+                    albedo *= lerp(1.0, macroAlbedo, macroW);
+                }
 
                 // Terrain textures instead of procedural albedo —
                 // land only: the sea stays procedural/water.

@@ -330,17 +330,18 @@ namespace Galilego.Universe
         public int ResolutionHalveEveryLevels = 4;
 
         /// <summary>
-        /// Share of the desired nodes that have SOME built geometry above them (0..1),
-        /// read by <see cref="BodyFarDiscView"/> to hold the billboard until the real
-        /// sphere is there.
+        /// Share of the desired nodes that are built at (or one level below) the LOD the
+        /// camera asks for, 0..1 — read by <see cref="BodyFarDiscView"/> to hold the
+        /// billboard until the real sphere is there.
         ///
         /// Not a node COUNT and not a solid angle: the question is whether the screen has
-        /// a hole, and the quadtree answers it exactly — the traversal's parents are drawn
-        /// as hole plugs, so a desired node whose ancestor is built is covered at a coarser
-        /// LOD, while a node with no built ancestor at all is a black gap. Right after the
-        /// camera arrives at a new body the cache holds only the near cap, the far side of
-        /// the visible hemisphere has no ancestor yet, and this reports the truth (the
-        /// count/area metrics both claimed "full" then and uncovered a half-built sphere).
+        /// a hole, and the quadtree answers it exactly. But "any ancestor is built" was too
+        /// generous: right after the camera arrives only the six depth-0 faces may exist,
+        /// the metric reported 1.0, the disc dropped, and the player watched a smooth
+        /// low-poly ball sharpen — the "I can see it loading" report. The ancestor must now
+        /// be at most <see cref="MaxCoverageCoarsenLevels"/> levels coarser than desired,
+        /// and the near band (the finely split ring around the camera) must be covered too,
+        /// because it is the part the eye reads as "the ground".
         ///
         /// Only evaluated where it matters — the disc fades out between 4 R and 1.6 R of
         /// altitude, and the desired sets out there are tens of nodes, not thousands.
@@ -359,17 +360,21 @@ namespace Galilego.Universe
             }
 
             int covered = 0;
+            int nearCovered = 0;
+            int nearTotal = 0;
+            int nearDepthFrom = Mathf.Max(0, MaxDepth - CoverageNearBandLevels);
             for (int i = 0; i < desired.Count; i++)
             {
                 Node n = desired[i];
                 int depth = n.Depth;
                 int ix = n.Ix;
                 int iy = n.Iy;
+                int builtDepth = -1;
                 while (true)
                 {
                     if (chunks.ContainsKey(NodeId(n.Face, depth, ix, iy)))
                     {
-                        covered++;
+                        builtDepth = depth;
                         break;
                     }
 
@@ -382,10 +387,40 @@ namespace Galilego.Universe
                     ix >>= 1;
                     iy >>= 1;
                 }
+
+                bool built = builtDepth >= 0 && (n.Depth - builtDepth) <= MaxCoverageCoarsenLevels;
+                if (built)
+                {
+                    covered++;
+                }
+
+                if (n.Depth >= nearDepthFrom)
+                {
+                    nearTotal++;
+                    if (built)
+                    {
+                        nearCovered++;
+                    }
+                }
             }
 
-            return (float)covered / desired.Count;
+            float coverage = (float)covered / desired.Count;
+            if (nearTotal > 0)
+            {
+                coverage = Mathf.Min(coverage, (float)nearCovered / nearTotal);
+            }
+
+            return coverage;
         }
+
+        /// <summary>How many LOD levels a built ancestor may be coarser and still count as
+        /// "covered": one level is the traversal's own hole plug, two is a visible pop.</summary>
+        private const int MaxCoverageCoarsenLevels = 1;
+
+        /// <summary>Depth band (from MaxDepth) that counts as the near field. Its coverage
+        /// gates the disc separately: a sharp far ring over a melted near cap still reads
+        /// as "loading".</summary>
+        private const int CoverageNearBandLevels = 4;
 
         /// <summary>
         /// Periodic geometry budget report: chunks actually visible, their triangle
@@ -2302,6 +2337,10 @@ namespace Galilego.Universe
         {
             if (terrain == null || !(terrain.TextureScale > 0d))
             {
+                // The triplanar texture projection of this body reads _TerrainWorldToBody.
+                // It is never filled here (no TextureScale), so leave a valid rotation
+                // instead of the zero matrix a fresh global would hold.
+                Shader.SetGlobalMatrix("_TerrainWorldToBody", Matrix4x4.identity);
                 return;
             }
 
@@ -7853,6 +7892,26 @@ namespace Galilego.Universe
                 Shader.SetGlobalFloat("_SteepBlendStart", (float)terrain.SteepBlendStart);
                 Shader.SetGlobalFloat("_SteepBlendEnd", (float)terrain.SteepBlendEnd);
             }
+
+            // Baked macro map (equirect, body-fixed): the only source of crust detail
+            // above a few hundred metres, where a chunk quad is already wider than the
+            // pixel and the per-vertex mask has melted into blobs. The shader decides
+            // per fragment (pixel angle vs texel angle), so no distance uniform here.
+            Texture2D macroAlbedo = terrain.MacroAlbedo;
+            Texture2D macroNormal = terrain.MacroNormal;
+            bool useMacro = macroAlbedo != null;
+            Shader.SetGlobalFloat("_TerrainMacroOn", useMacro ? 1f : 0f);
+            Shader.SetGlobalFloat("_TerrainMacroAlbedoStrength", useMacro ? terrain.MacroAlbedoStrength : 0f);
+            Shader.SetGlobalFloat("_TerrainMacroNormalStrength",
+                useMacro && macroNormal != null ? terrain.MacroNormalStrength : 0f);
+            Shader.SetGlobalTexture("_TerrainMacroAlbedoMap",
+                useMacro ? macroAlbedo : Texture2D.whiteTexture);
+            Shader.SetGlobalTexture("_TerrainMacroNormalMap",
+                macroNormal != null ? macroNormal : Texture2D.normalTexture);
+            // Texel angular size in radians of a unit body direction: the U axis wraps
+            // the full 2*pi, so one texel of width W covers 2*pi/W radians.
+            Shader.SetGlobalFloat("_TerrainMacroTexelAngular",
+                useMacro && macroAlbedo.width > 0 ? (2f * Mathf.PI) / macroAlbedo.width : 0f);
         }
 
         private static Vector4 ToVec(Color c)

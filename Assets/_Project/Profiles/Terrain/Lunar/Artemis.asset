@@ -110,6 +110,10 @@ MonoBehaviour:
     TextureSteep: {fileID: 0}
     TextureOcclusion: {fileID: 0}
     TextureScale: 0.04
+    MacroAlbedo: {fileID: 2800000, guid: 65451f9aeac2c6b4c8bc9ae733fd530a, type: 3}
+    MacroNormal: {fileID: 2800000, guid: 224cc261d1047914f85db561e83d8e51, type: 3}
+    MacroAlbedoStrength: 1
+    MacroNormalStrength: 1
     Lunar:
       Enabled: 1
       RadiusMeters: 412000

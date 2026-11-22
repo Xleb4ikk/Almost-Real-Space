@@ -83,6 +83,15 @@ namespace Galilego.Universe
         [Tooltip("Сила карты альбедо.")]
         public float SurfaceMapStrength = 1f;
 
+        [Tooltip("Карта нормалей ПОВЕРХНОСТИ в телесных координатах (xyz = n*0.5+0.5). " +
+            "Без неё диск — плоский раскрашенный круг: кратеры и валы видны только тенью, " +
+            "то есть никак. Пекётся вместе с альбедо (Tools/Galilego/Airless Bodies/Bake lunar macro maps).")]
+        public Texture2D NormalMap;
+
+        [Range(0f, 1f)]
+        [Tooltip("Сила рельефа диска: 1 = нормаль карты целиком, 0 = гладкий шар.")]
+        public float NormalStrength = 1f;
+
         private OrbitingBody body;
         private OrbitingBody star;
         private Transform disc;
@@ -326,6 +335,8 @@ namespace Galilego.Universe
             material.SetFloat("_BFD_Eclipse", (float)eclipse);
             material.SetTexture("_BFD_Map", SurfaceMap);
             material.SetFloat("_BFD_MapStrength", SurfaceMap != null ? SurfaceMapStrength : 0f);
+            material.SetTexture("_BFD_NormalMap", NormalMap);
+            material.SetFloat("_BFD_NormalStrength", NormalMap != null ? NormalStrength : 0f);
             material.SetFloat("_BFD_Opacity", opacity);
             material.SetMatrix("_BFD_BodyToWorld", Matrix4x4.TRS(Vector3.zero, bodyRotation, Vector3.one));
 

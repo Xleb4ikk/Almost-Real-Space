@@ -47,9 +47,11 @@ timescale, which makes the baked ephemeris meaningless. 90 000 km is 0.298 R_H.
   because every crater formula is in metres.
 * **`NormalEpsilonMeters = 2`** — the normal step used to be a fixed 1e−4 rad, which is
   170 m on the Moon and 41 m here: fine craters would vanish from the lighting.
-* **Albedo rides in the colour-detail channel** (`Extra.w`). `PlanetSurface.shader` fades
-  that channel by pixel footprint, so maria and ray systems wash out at a distance — by
-  design, against shimmer.
+* **Albedo rides in the colour-detail channel** (`Extra.w`) close up, and in the baked
+  macro map (`TerrainProfile.MacroAlbedo`) from a few hundred metres up. The vertex channel
+  is faded by pixel footprint (against shimmer) and the map takes over exactly where a
+  pixel becomes wider than a map texel — see [MoonLook.md](MoonLook.md). Without the map the
+  maria and ray systems wash out with altitude and the Moon looks painted on.
 * **No textures.** The profile leaves `TextureLow…Steep` empty, so the shader uses the
   procedural palette; the lunar field itself comes from the vertex data.
 * **`MinCraterDiameterMeters = 24`**: smaller craters exist in physics but alias in the

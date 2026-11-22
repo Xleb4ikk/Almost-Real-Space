@@ -399,6 +399,12 @@ namespace Galilego.Universe.EditorTools
             EditorUtility.SetDirty(bodyView);
             EditorUtility.SetDirty(renderer);
             AssetDatabase.SaveAssets();
+
+            // Bake the macro albedo/normal right away: without them the body reads as a
+            // painted ball from orbit and on any far disc — see Docs/MoonLook.md.
+            LunarMacroMapBaker.BakeOne(authoring, asset);
+            AssetDatabase.SaveAssets();
+
             EditorSceneManager.MarkSceneDirty(go.scene);
             Selection.activeGameObject = go;
             Debug.Log("[LunarBodyCreator] «" + safeName + "»: R=" + (radius / 1000d).ToString("F1") + " км, g="

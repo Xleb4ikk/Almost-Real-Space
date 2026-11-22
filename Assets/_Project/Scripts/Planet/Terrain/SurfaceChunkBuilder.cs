@@ -320,7 +320,13 @@ namespace Galilego.Universe
                         Normal = core.Normal,
                         SurfaceDir = core.SurfaceDir,
                         Extra = core.Extra,
-                        Extra2 = core.Extra2
+                        // Extra2.y = "this vertex is a skirt". The wall lives BELOW the
+                        // surface it duplicates, so the sun shadow pass puts it in the
+                        // terrain's own shadow and it renders as a black line wherever a
+                        // LOD junction opens a pixel-wide slit. The shader skips the shadow
+                        // for it, which makes the wall exactly the colour of the ground it
+                        // hides behind. (Extra2.x stays the polar ice weight.)
+                        Extra2 = new float2(core.Extra2.x, 1f)
                     };
 
                     if (hasWater)

@@ -358,6 +358,18 @@ namespace Galilego.Universe
         public Texture2D TextureSteep;
         public Texture2D TextureOcclusion;
         public double TextureScale = 0.04d;
+
+        /// <summary>Baked body-fixed macro albedo (R = albedo multiplier / 2), sampled by
+        /// the terrain shader where a chunk quad is coarser than the map texel. Null = off.</summary>
+        public Texture2D MacroAlbedo;
+
+        /// <summary>Baked body-fixed SURFACE normal (xyz = n*0.5+0.5) for the same region.
+        /// Null = shading uses the mesh normal only.</summary>
+        public Texture2D MacroNormal;
+
+        public float MacroAlbedoStrength = 1f;
+        public float MacroNormalStrength = 1f;
+
         public double LowMidBlendStart = 30d;
         public double LowMidBlendEnd = 60d;
         public double MidHighBlendStart = 2500d;
@@ -464,6 +476,10 @@ namespace Galilego.Universe
             TextureSteep = profile.TextureSteep;
             TextureOcclusion = profile.TextureOcclusion;
             TextureScale = profile.TextureScale;
+            MacroAlbedo = profile.MacroAlbedo;
+            MacroNormal = profile.MacroNormal;
+            MacroAlbedoStrength = profile.MacroAlbedoStrength;
+            MacroNormalStrength = profile.MacroNormalStrength;
             LowMidBlendStart = profile.LowMidBlendStart;
             LowMidBlendEnd = profile.LowMidBlendEnd;
             MidHighBlendStart = profile.MidHighBlendStart;

@@ -8,6 +8,8 @@ Shader "Galilego/BodyFarDisc"
     {
         [HideInInspector] _BFD_Map("Surface Map", 2D) = "white" {}
         [HideInInspector] _BFD_MapStrength("Map Strength", Float) = 0
+        [HideInInspector] _BFD_NormalMap("Surface Relief (body-space normal)", 2D) = "white" {}
+        [HideInInspector] _BFD_NormalStrength("Relief Strength", Float) = 0
         [HideInInspector] _BFD_Albedo("Albedo", Color) = (0.5, 0.49, 0.47, 1)
         [HideInInspector] _BFD_SunDirWS("Sun Direction", Vector) = (1, 0, 0, 0)
         [HideInInspector] _BFD_RightWS("Screen Right", Vector) = (1, 0, 0, 0)
@@ -46,6 +48,8 @@ Shader "Galilego/BodyFarDisc"
             float4 _BFD_Albedo;
             TEXTURE2D(_BFD_Map);
             float _BFD_MapStrength;
+            TEXTURE2D(_BFD_NormalMap);
+            float _BFD_NormalStrength;
             float4x4 _BFD_BodyToWorld;
             float4 _BFD_SunDirWS;
             float4 _BFD_RightWS;
@@ -103,6 +107,25 @@ Shader "Galilego/BodyFarDisc"
                 float lat = asin(clamp(nb.z, -1.0, 1.0));
                 float lon = atan2(nb.y, nb.x);
                 float2 uvMap = float2((lon * 0.15915494) + 0.5, (lat * 0.31830989) + 0.5);
+
+                // Baked body-space SURFACE normal: the disc is a flat quad with a sphere
+                // reconstructed from the screen basis, so without this the approach shows
+                // a painted ball and the craters appear only when the chunks take over.
+                // The map holds the real relief (rims, basin walls, rilles), lit by the
+                // same Lambert term, which is what makes the hand-over invisible.
+                if (_BFD_NormalStrength > 0.0)
+                {
+                    float3 mapN = (SAMPLE_TEXTURE2D(_BFD_NormalMap, s_linear_repeat_sampler, uvMap).xyz * 2.0) - 1.0;
+                    float len2 = dot(mapN, mapN);
+                    if (len2 > 1e-4)
+                    {
+                        nb = normalize(lerp(nb, mapN * rsqrt(len2), _BFD_NormalStrength));
+                        // body -> world: mul(v, transpose(B)) == B * v
+                        float3 nWorld = normalize(mul(nb, transpose((float3x3)_BFD_BodyToWorld)));
+                        ndl = saturate(dot(nWorld, _BFD_SunDirWS.xyz));
+                    }
+                }
+
                 // The baked map stores factor/2 (0..1 in an 8-bit texture), so the albedo
                 // multiplier is read back at its true 0.28..1.8 range.
                 float mapValue = SAMPLE_TEXTURE2D(_BFD_Map, s_linear_clamp_sampler, uvMap).r * 2.0;
