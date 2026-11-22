@@ -26,6 +26,20 @@ float radius = SkyDomeLayout.Radius(camera);   // ~1 km fixed, guarded
 Full write-up, the checklist for new planets/bodies and the diagnosis recipe that
 found it: **[`Docs/SkyDomes.md`](Docs/SkyDomes.md)**.
 
+## Sun shadows — the rocket's shadow is a blob
+
+HDRP directional shadows are PCSS on the "High Fidelity" asset, so the penumbra is
+sized in **shadow-map texels** and in **the sun's angular diameter**. Two rules:
+
+* `angularDiameter` is physics, not art: `SkyEnvironment` derives it from the star's
+  apparent size every frame (`0.53°` = Sol at 1 AU). Never hand-tune it in the light
+  inspector — a 2.5° sun smears a 10 m object into an unreadable halo.
+* The per-light `m_ShadowResolution` **tier** decides the cascade resolution
+  (`Low` = 512 texels/cascade, whatever the asset says). Keep the sun on `High`.
+
+Full write-up, the symptom/root-cause split and the A/B recipe:
+**[`Docs/Shadows.md`](Docs/Shadows.md)**.
+
 ## Debugging rendering at altitude
 
 * Freeze the frame first: `SimulationRunner.Paused = true` (the ship moves at km/s).

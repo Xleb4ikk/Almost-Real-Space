@@ -94,6 +94,13 @@ namespace Galilego.Universe
         [Tooltip("Ширина переходной зоны между тирами фильтрации (м): выбор тира — dither, без двойной стоимости.")]
         public float ShadowBlendWidthMeters = 25f;
 
+        [Tooltip("Потолок видимого углового диаметра звезды, по которому считается полутень тени (градусы). " +
+                 "Сам диаметр берётся из орбиты, а не задаётся руками: у звезды в 1 а.е. это 0.53°.")]
+        public float SunShadowMaxAngularDiameterDeg = 2f;
+
+        /// <summary>Angular diameter of Sol at 1 AU, used until the star data is ready.</summary>
+        private const double FallbackSunAngularDiameterDeg = 0.53d;
+
         /// <summary>Per-channel transmittance to the sun (updated every frame).</summary>
         public Vector3 Transmittance { get; private set; } = Vector3.one;
 
@@ -439,6 +446,26 @@ namespace Galilego.Universe
 
             if (applyToLight && SunLight != null)
             {
+                // The sun's angular diameter is the physical penumbra width of every
+                // HDRP directional PCSS shadow: Sol at 1 AU is 0.53°, the same star
+                // seen from 0.37 AU is 1.44°. A hand-tuned constant (the scene once
+                // carried 2.5°) blurs a 10 m object's shadow into an unreadable blob,
+                // so the value follows the actual distance. The cap only guards the
+                // approach to the star, where the shadow would dissolve completely.
+                var hdLight = SunLight.GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalLightData>();
+                if (hdLight != null)
+                {
+                    double starRadius = root.Radius;
+                    double angularDeg = (starRadius > 0d) && (starDistance > starRadius)
+                        ? 2d * System.Math.Atan(starRadius / starDistance) * (180d / System.Math.PI)
+                        : FallbackSunAngularDiameterDeg;
+                    float target = (float)System.Math.Min(angularDeg, SunShadowMaxAngularDiameterDeg);
+                    if (System.Math.Abs(hdLight.angularDiameter - target) > 1e-4f)
+                    {
+                        hdLight.angularDiameter = target;
+                    }
+                }
+
                 // Directional Light — light for objects with regular HDRP materials.
                 // The sky/terrain/decor compute their own light (_SunLightColor,
                 // _TerrainSun, _TerrainRadianceScale globals) in the artificial
