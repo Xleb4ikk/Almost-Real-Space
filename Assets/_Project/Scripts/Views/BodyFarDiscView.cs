@@ -188,7 +188,9 @@ namespace Galilego.Universe
             // real body was still 5 px - the moon visibly shrank to a speck on approach.
             // Hand the body over only when the real chunks are both inside the frustum AND
             // already at least as big as the floor, so the sizes match at the swap.
-            bool chunksCover = nearSurface < (far * 0.95d) && pixelRadius >= MinScreenRadiusPixels;
+            bool chunksCover = nearSurface < (far * 0.95d)
+                && nearSurface < (body.Radius * 2d)
+                && pixelRadius >= MinScreenRadiusPixels;
             if (chunksCover)
             {
                 SetActive(false);
