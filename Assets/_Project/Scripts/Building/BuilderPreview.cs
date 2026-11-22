@@ -20,6 +20,13 @@ namespace Galilego.Building
         private const int Layer = 31;
 
         /// <summary>
+        /// Layer of the preview hangar (floor, beams, lamps). Separate from the part
+        /// layer: the icon pass renders the part only, and the reflection probe renders
+        /// the hangar only, so neither one leaks into the other.
+        /// </summary>
+        private const int HangarLayer = 29;
+
+        /// <summary>
         /// Layer of the ICON visual (separate from the preview layer): the icon
         /// camera masks only this layer, so the preview visual never appears in
         /// the icon frame.
@@ -35,6 +42,12 @@ namespace Galilego.Building
         private const float IconSpinDegrees = 25f;
         private const float RenderInterval = 1f / 30f;
 
+        /// <summary>Hangar footprint: half width of the room, metres.</summary>
+        private const float RoomHalf = 13f;
+
+        /// <summary>Hangar height, metres.</summary>
+        private const float RoomHeight = 12f;
+
         /// <summary>
         /// Fixed exposure of the preview frame (EV100). Calibrated for the scene's
         /// physical sun (Sol at 0.368 AU ≈ 7.6× the reference irradiance): the parts
@@ -48,6 +61,11 @@ namespace Galilego.Building
         private static readonly Color Background = new Color(0.0240f, 0.0261f, 0.0289f, 1f);
 
         private GameObject rig;
+        private GameObject hangar;
+        private Cubemap probeCubemap;
+        private bool hangarCaptured;
+        private int rigBuiltFrame;
+        private readonly System.Collections.Generic.List<Material> hangarMaterials = new System.Collections.Generic.List<Material>();
         private Transform spinner;
         private Camera camera;
         private RenderTexture target;
@@ -76,6 +94,14 @@ namespace Galilego.Building
             if (rig == null)
             {
                 return;
+            }
+
+            if (!hangarCaptured && Time.frameCount > rigBuiltFrame)
+            {
+                // A full frame has passed since the rig was built, so the hangar
+                // lights are registered and the capture is not black.
+                CaptureHangar();
+                hangarCaptured = true;
             }
 
             string nextEngineId = engine != null && engine.Spec != null ? engine.Spec.Id : null;
@@ -385,6 +411,25 @@ namespace Galilego.Building
                 Object.Destroy(rig);
             }
 
+            for (int i = 0; i < hangarMaterials.Count; i++)
+            {
+                if (hangarMaterials[i] != null)
+                {
+                    Object.Destroy(hangarMaterials[i]);
+                }
+            }
+
+            hangarMaterials.Clear();
+            hangar = null;
+
+            if (probeCubemap != null)
+            {
+                Object.Destroy(probeCubemap);
+                probeCubemap = null;
+            }
+
+            hangarCaptured = false;
+
             if (target != null)
             {
                 target.Release();
@@ -425,6 +470,7 @@ namespace Galilego.Building
             // Far from the world: even if the camera mask is not cleared, the
             // object never enters the frame.
             rig.transform.position = new Vector3(0f, -10000f, 0f);
+            rigBuiltFrame = Time.frameCount;
 
             var spinnerGo = new GameObject("Spinner") { layer = Layer };
             spinnerGo.transform.SetParent(rig.transform, false);
@@ -434,7 +480,7 @@ namespace Galilego.Building
             cameraGo.transform.SetParent(rig.transform, false);
             camera = cameraGo.AddComponent<Camera>();
             camera.enabled = false;
-            camera.cullingMask = 1 << Layer;
+            camera.cullingMask = (1 << Layer) | (1 << HangarLayer);
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = Background;
             camera.fieldOfView = FieldOfView;
@@ -470,82 +516,255 @@ namespace Galilego.Building
             // volume also keeps the scene bloom out of the frame.
             BuildExposureVolume(cameraGo);
 
-            // Metal needs an environment for reflections, otherwise the tank is a
-            // black silhouette: a cubic "studio" (top-to-bottom gradient) + Custom probe.
+            // A real hangar around the part and a realtime probe that captures it:
+            // the mirror finish then reflects actual geometry and actual light.
+            BuildHangar();
             BuildReflectionProbe();
 
             keyLight = FindKeyLight();
             KeepHidden();
         }
 
-        /// <summary>Reflection Probe with a "studio" cubemap.</summary>
+        /// <summary>
+        /// Captures the hangar into a cubemap and feeds it to the probe.
+        /// The capture is a real render of the real geometry (Camera.RenderToCubemap
+        /// works with HDRP), so the mirror wall reflects the beams, the crates and
+        /// the lamps as they actually are, under the actual lights. Everything is
+        /// static, so one capture is enough; dragging a beam in the code re-bakes it.
+        /// </summary>
         private void BuildReflectionProbe()
         {
             var probeGo = new GameObject("PreviewReflection") { layer = Layer };
             probeGo.transform.SetParent(rig.transform, false);
 
-            var cubemap = BuildStudioCubemap();
-
-            var probe = probeGo.AddComponent<ReflectionProbe>();
-            probe.mode = ReflectionProbeMode.Custom;
-            probe.customBakedTexture = cubemap;
-            probe.size = new Vector3(400f, 400f, 400f);
-            probe.intensity = 1f;
-            probe.nearClipPlane = 0.1f;
-            probe.farClipPlane = 500f;
-
-            // HDRP takes the custom cubemap from its own data (hd.customTexture),
-            // not from ReflectionProbe.customBakedTexture.
-            var hd = probeGo.AddComponent<HDAdditionalReflectionData>();
-            hd.mode = ProbeSettings.Mode.Custom;
-            hd.customTexture = cubemap;
-        }
-
-        /// <summary>"Studio" cubemap: bright sky, dark bottom.</summary>
-        private static Cubemap BuildStudioCubemap()
-        {
-            const int size = 32;
-            var cubemap = new Cubemap(size, TextureFormat.RGBA32, false)
+            // The texture is filled on the next frame (see Ensure): HDRP only picks
+            // up the hangar lights after a full frame, and a capture taken in the
+            // same frame as their creation comes out black.
+            probeCubemap = new Cubemap(256, TextureFormat.RGBA32, true)
             {
-                name = "BuilderPreviewStudio",
+                name = "PreviewHangarCubemap",
                 hideFlags = HideFlags.HideAndDontSave
             };
 
-            var pixels = new Color[size * size];
-            for (int face = 0; face < 6; face++)
-            {
-                for (int y = 0; y < size; y++)
-                {
-                    for (int x = 0; x < size; x++)
-                    {
-                        float u = ((x + 0.5f) / size) * 2f - 1f;
-                        float v = ((y + 0.5f) / size) * 2f - 1f;
-                        Vector3 dir = CubemapDirection((CubemapFace)face, u, v);
-                        float h = dir.y * 0.5f + 0.5f;              // 0 bottom, 1 top
-                        float top = Mathf.Lerp(0.30f, 1.05f, h * h); // soft neutral gradient
-                        pixels[(y * size) + x] = new Color(top, top, top, 1f);
-                    }
-                }
+            var probe = probeGo.AddComponent<ReflectionProbe>();
+            probe.mode = ReflectionProbeMode.Custom;
+            probe.customBakedTexture = probeCubemap;
+            // The influence box must swallow the camera too: HDRP fades a probe out
+            // as the view leaves its volume, and the preview camera sits high and
+            // wide to frame the part.
+            probe.size = new Vector3(RoomHalf * 3f, RoomHeight * 2.5f, RoomHalf * 3f);
+            probe.intensity = 1f;
+            probe.nearClipPlane = 0.1f;
+            probe.farClipPlane = 200f;
 
-                cubemap.SetPixels(pixels, (CubemapFace)face);
-            }
-
-            cubemap.Apply();
-            return cubemap;
+            var hd = probeGo.AddComponent<HDAdditionalReflectionData>();
+            hd.mode = ProbeSettings.Mode.Custom;
+            hd.customTexture = probeCubemap;
         }
 
-        /// <summary>Cubemap face pixel direction (Unity order).</summary>
-        private static Vector3 CubemapDirection(CubemapFace face, float u, float v)
+        /// <summary>
+        /// Bakes the hangar into the probe texture. A real render of the real
+        /// geometry (Camera.RenderToCubemap works with HDRP), so the mirror wall
+        /// reflects the beams, the crates and the lamps as they are, under the real
+        /// lights of the rig. Static scene, one capture.
+        /// </summary>
+        private void CaptureHangar()
         {
-            switch (face)
+            var camGo = new GameObject("~HangarCapture") { layer = Layer, hideFlags = HideFlags.HideAndDontSave };
+            camGo.transform.SetParent(rig.transform, false);
+            camGo.transform.localPosition = new Vector3(0f, 2.4f, 0f);
+
+            var capture = camGo.AddComponent<Camera>();
+            capture.cullingMask = 1 << HangarLayer;
+            capture.fieldOfView = 90f;
+            capture.nearClipPlane = 0.1f;
+            capture.farClipPlane = 200f;
+            capture.allowHDR = true;
+
+            // Same exposure volume as the preview frame, otherwise the capture is
+            // auto-exposed from an empty history and comes out black.
+            var hd = camGo.AddComponent<HDAdditionalCameraData>();
+            hd.volumeLayerMask = (1 << 0) | (1 << Layer);
+            hd.clearColorMode = HDAdditionalCameraData.ClearColorMode.Color;
+            hd.backgroundColorHDR = Background;
+
+            capture.RenderToCubemap(probeCubemap);
+            Object.DestroyImmediate(camGo);
+        }
+
+        /// <summary>
+        /// The hangar the part stands in: floor, walls, scaffolding beams, yellow
+        /// safety trim, ceiling light strips and wall lamps. Real geometry with real
+        /// lights on its own layer — that is what makes the reflection live: move a
+        /// beam and the highlight on the tank moves with it. The icon pass renders
+        /// only the part layer, so the hangar never lands in a slot thumbnail.
+        /// </summary>
+        private void BuildHangar()
+        {
+            hangar = new GameObject("PreviewHangar")
             {
-                case CubemapFace.PositiveX: return new Vector3(1f, -v, -u).normalized;
-                case CubemapFace.NegativeX: return new Vector3(-1f, -v, u).normalized;
-                case CubemapFace.PositiveY: return new Vector3(u, 1f, v).normalized;
-                case CubemapFace.NegativeY: return new Vector3(u, -1f, -v).normalized;
-                case CubemapFace.PositiveZ: return new Vector3(u, -v, 1f).normalized;
-                default: return new Vector3(-u, -v, -1f).normalized;
+                layer = HangarLayer,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            hangar.transform.SetParent(rig.transform, false);
+
+            Material floor = HangarMaterial("HangarFloor", new Color(0.26f, 0.265f, 0.27f), 0.10f, 0.55f);
+            Material wall = HangarMaterial("HangarWall", new Color(0.55f, 0.56f, 0.57f), 0.15f, 0.55f);
+            Material beam = HangarMaterial("HangarBeam", new Color(0.20f, 0.205f, 0.21f), 0.60f, 0.60f);
+            Material trim = HangarMaterial("HangarTrim", new Color(0.72f, 0.46f, 0.03f), 0.10f, 0.45f);
+            Material lamp = HangarLampMaterial("HangarLamp", new Color(7f, 6.8f, 6.3f));
+
+            const float t = 0.5f;
+
+            // Shell.
+            Box("Floor", new Vector3(0f, -t * 0.5f, 0f), new Vector3(RoomHalf * 2f, t, RoomHalf * 2f), floor);
+            Box("Ceiling", new Vector3(0f, RoomHeight + (t * 0.5f), 0f), new Vector3(RoomHalf * 2f, t, RoomHalf * 2f), floor);
+            Box("WallNorth", new Vector3(0f, RoomHeight * 0.5f, RoomHalf), new Vector3(RoomHalf * 2f, RoomHeight, t), wall);
+            Box("WallSouth", new Vector3(0f, RoomHeight * 0.5f, -RoomHalf), new Vector3(RoomHalf * 2f, RoomHeight, t), wall);
+            Box("WallEast", new Vector3(RoomHalf, RoomHeight * 0.5f, 0f), new Vector3(t, RoomHeight, RoomHalf * 2f), wall);
+            Box("WallWest", new Vector3(-RoomHalf, RoomHeight * 0.5f, 0f), new Vector3(t, RoomHeight, RoomHalf * 2f), wall);
+
+            // Scaffolding: two rings of beams around the room.
+            float[] ringHeights = { 3.1f, 8.9f };
+            for (int i = 0; i < ringHeights.Length; i++)
+            {
+                float y = ringHeights[i];
+                Box("BeamNorth" + i, new Vector3(0f, y, RoomHalf - 0.55f), new Vector3(RoomHalf * 2f, 0.36f, 0.36f), beam);
+                Box("BeamSouth" + i, new Vector3(0f, y, -RoomHalf + 0.55f), new Vector3(RoomHalf * 2f, 0.36f, 0.36f), beam);
+                Box("BeamEast" + i, new Vector3(RoomHalf - 0.55f, y, 0f), new Vector3(0.36f, 0.36f, RoomHalf * 2f), beam);
+                Box("BeamWest" + i, new Vector3(-RoomHalf + 0.55f, y, 0f), new Vector3(0.36f, 0.36f, RoomHalf * 2f), beam);
             }
+
+            // Yellow safety rail under the lower beams (the warm accents of the
+            // reference hangar; they also land on the tank as warm horizontal glints).
+            float railY = ringHeights[0] - 0.42f;
+            Box("RailNorth", new Vector3(0f, railY, RoomHalf - 0.55f), new Vector3(RoomHalf * 2f, 0.12f, 0.12f), trim);
+            Box("RailSouth", new Vector3(0f, railY, -RoomHalf + 0.55f), new Vector3(RoomHalf * 2f, 0.12f, 0.12f), trim);
+            Box("RailEast", new Vector3(RoomHalf - 0.55f, railY, 0f), new Vector3(0.12f, 0.12f, RoomHalf * 2f), trim);
+            Box("RailWest", new Vector3(-RoomHalf + 0.55f, railY, 0f), new Vector3(0.12f, 0.12f, RoomHalf * 2f), trim);
+
+            // Vertical columns: the strong verticals the chrome barrel picks up.
+            for (float x = -12f; x <= 12f; x += 6f)
+            {
+                Box("ColumnN" + x, new Vector3(x, RoomHeight * 0.5f, RoomHalf - 0.55f), new Vector3(0.42f, RoomHeight, 0.42f), beam);
+                Box("ColumnS" + x, new Vector3(x, RoomHeight * 0.5f, -RoomHalf + 0.55f), new Vector3(0.42f, RoomHeight, 0.42f), beam);
+            }
+
+            for (float z = -12f; z <= 12f; z += 8f)
+            {
+                Box("ColumnE" + z, new Vector3(RoomHalf - 0.55f, RoomHeight * 0.5f, z), new Vector3(0.42f, RoomHeight, 0.42f), beam);
+                Box("ColumnW" + z, new Vector3(-RoomHalf + 0.55f, RoomHeight * 0.5f, z), new Vector3(0.42f, RoomHeight, 0.42f), beam);
+            }
+
+            // Ceiling light strips: the long bright bars that read as chrome.
+            for (int i = 0; i < 4; i++)
+            {
+                float z = -9.6f + (i * 6.4f);
+                Box("CeilingStrip" + i, new Vector3(0f, RoomHeight - 0.3f, z), new Vector3(RoomHalf * 1.75f, 0.2f, 1.6f), lamp);
+            }
+
+            // Low wall lamps.
+            for (int i = 0; i < 3; i++)
+            {
+                float x = -10f + (i * 10f);
+                Box("WallLampN" + i, new Vector3(x, 6.4f, RoomHalf - 0.45f), new Vector3(2.2f, 1.1f, 0.16f), lamp);
+            }
+
+            // A few crates for depth, so the reflection is not a flat tiled box.
+            Box("CrateA", new Vector3(-11f, 0.9f, 11f), new Vector3(2.4f, 1.8f, 2.4f), beam);
+            Box("CrateB", new Vector3(11.5f, 1.2f, 12f), new Vector3(3f, 2.4f, 2.2f), beam);
+            Box("CrateC", new Vector3(-12.5f, 1.6f, -10f), new Vector3(2.2f, 3.2f, 2.2f), trim);
+
+            // Practical lights: the sun is the key, these fill the interior. The
+            // capture below happens once, so these values decide how bright the
+            // hangar is inside every reflection of the part.
+            PointLight("HangarLightA", new Vector3(-5f, RoomHeight - 2.4f, -5f), 9000f, 40f, new Color(1f, 0.96f, 0.90f));
+            PointLight("HangarLightB", new Vector3(5f, RoomHeight - 2.4f, 0f), 9000f, 40f, new Color(1f, 0.96f, 0.90f));
+            PointLight("HangarLightC", new Vector3(-2f, RoomHeight - 2.4f, 6f), 7000f, 40f, new Color(1f, 0.93f, 0.84f));
+
+            // Real lights: ceiling pendants over the floor (the sun is the key, these
+            // are the hangar's practicals — they light the interior the way the lamp
+            // banks of the reference hangar do).
+        }
+
+        /// <summary>One solid box of the hangar: no collider, no shadow casting (the
+        /// sun must reach the interior, otherwise the diorama reads as a black box).</summary>
+        private void Box(string name, Vector3 position, Vector3 size, Material material)
+        {
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.layer = HangarLayer;
+            go.transform.SetParent(hangar.transform, false);
+            go.transform.localPosition = position;
+            go.transform.localScale = size;
+
+            Collider collider = go.GetComponent<Collider>();
+            if (collider != null)
+            {
+                collider.enabled = false;
+                Object.Destroy(collider);
+            }
+
+            var renderer = go.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = material;
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+                renderer.lightProbeUsage = LightProbeUsage.Off;
+                renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            }
+        }
+
+        private Material HangarMaterial(string name, Color baseColor, float metallic, float smoothness)
+        {
+            var material = new Material(Shader.Find("HDRP/Lit"))
+            {
+                name = name,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            material.SetColor("_BaseColor", baseColor);
+            material.SetFloat("_Metallic", metallic);
+            material.SetFloat("_Smoothness", smoothness);
+            hangarMaterials.Add(material);
+            return material;
+        }
+
+        /// <summary>Emissive lamp surface: a Lit material with an HDR emissive colour.</summary>
+        private Material HangarLampMaterial(string name, Color emission)
+        {
+            var material = new Material(Shader.Find("HDRP/Lit"))
+            {
+                name = name,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            material.SetColor("_BaseColor", Color.black);
+            material.SetFloat("_Metallic", 0f);
+            material.SetFloat("_Smoothness", 0.2f);
+            material.SetColor("_EmissiveColor", emission);
+            material.SetFloat("_EmissiveIntensity", 1f);
+            material.SetFloat("_EmissiveExposureWeight", 0f);
+            hangarMaterials.Add(material);
+            return material;
+        }
+
+        /// <summary>
+        /// One hangar practical. They live on the hangar layer, which every other
+        /// camera has masked out, so the lights exist only for the preview.
+        /// </summary>
+        private void PointLight(string name, Vector3 position, float lumens, float range, Color color)
+        {
+            var go = new GameObject(name) { layer = HangarLayer };
+            go.transform.SetParent(hangar.transform, false);
+            go.transform.localPosition = position;
+
+            var light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = color;
+            light.range = range;
+            light.shadows = LightShadows.None;
+            light.lightUnit = LightUnit.Lumen;
+            light.intensity = lumens;
         }
 
         /// <summary>
@@ -611,24 +830,28 @@ namespace Galilego.Building
 
         /// <summary>
         /// Preview camera direction: from the SUN side, otherwise the part is a
-        /// dark silhouette (camera on the shadowed side). Slightly above, 3/4 view.
+        /// dark silhouette (camera on the shadowed side). The sun's azimuth is kept,
+        /// its elevation is fixed: in play the star moves and a high sun would put
+        /// the camera overhead, which reads badly against the hangar walls.
         /// </summary>
         private Vector3 ViewDirection()
         {
             if (keyLight == null)
             {
-                return new Vector3(0.72f, 0.38f, 1f).normalized;
+                return new Vector3(0.72f, 0.34f, 1f).normalized;
             }
 
             Vector3 toLight = -keyLight.transform.forward;
-            Vector3 side = Vector3.Cross(Vector3.up, toLight);
-            if (side.sqrMagnitude < 1e-4f)
+            Vector3 horizontal = new Vector3(toLight.x, 0f, toLight.z);
+            if (horizontal.sqrMagnitude < 1e-4f)
             {
-                side = Vector3.right;
+                horizontal = Vector3.forward;
             }
 
+            horizontal.Normalize();
+            Vector3 side = Vector3.Cross(Vector3.up, horizontal);
             side.Normalize();
-            return (toLight + (side * 0.55f) + (Vector3.up * 0.30f)).normalized;
+            return (horizontal + (side * 0.55f) + (Vector3.up * 0.34f)).normalized;
         }
 
         /// <summary>Preview and icon layers must not be rendered by the main camera.</summary>
@@ -642,6 +865,7 @@ namespace Galilego.Building
 
             main.cullingMask &= ~(1 << Layer);
             main.cullingMask &= ~(1 << IconLayer);
+            main.cullingMask &= ~(1 << HangarLayer);
         }
 
         private void Rebuild(PartKind nextKind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
@@ -666,6 +890,16 @@ namespace Galilego.Building
             }
 
             SetLayerRecursive(visual.Root, Layer);
+
+            // The preview may not throw a shadow into the hangar: the shadow of a
+            // 6 m tank across the floor reads as a blob, and the hangar lighting is
+            // soft anyway.
+            Renderer[] previewRenderers = visual.Root.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < previewRenderers.Length; i++)
+            {
+                previewRenderers[i].shadowCastingMode = ShadowCastingMode.Off;
+            }
+
             Frame(metrics);
         }
 
@@ -686,7 +920,7 @@ namespace Galilego.Building
             camera.transform.position = targetPoint + (direction * distance);
             camera.transform.LookAt(targetPoint, Vector3.up);
             camera.nearClipPlane = Mathf.Max(0.05f, distance - (half * 2.5f));
-            camera.farClipPlane = distance + (half * 4f) + 5f;
+            camera.farClipPlane = distance + 80f;
         }
 
         private static void SetLayerRecursive(GameObject go, int layer)
