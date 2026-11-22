@@ -66,6 +66,10 @@ namespace Galilego.Universe
         private OrbitingBody star;
         private Transform disc;
         private Material material;
+        private Vector3d LastBodyPosition;
+        private double LastRadius;
+        private float LastFar;
+        private float LastPixelRadius;
 
         private void Start()
         {
@@ -173,6 +177,10 @@ namespace Galilego.Universe
             float fovRadians = Mathf.Max(0.01f, camera.fieldOfView) * Mathf.Deg2Rad;
             float pixelRadius = angularRadius / Mathf.Tan(fovRadians * 0.5f) * (Screen.height * 0.5f);
             float floorPixels = Mathf.Max(pixelRadius, MinScreenRadiusPixels);
+            LastBodyPosition = bodyPos;
+            LastRadius = body.Radius;
+            LastFar = far;
+            LastPixelRadius = pixelRadius;
 
             // The disc stands in for a body the camera cannot draw OR draws so small that
             // it reads as a star. It must not depend on `far` alone: the far plane jumps to
@@ -239,6 +247,11 @@ namespace Galilego.Universe
             if (disc != null && disc.gameObject.activeSelf != active)
             {
                 disc.gameObject.SetActive(active);
+                Debug.Log("[BodyFarDisc] " + name + (active ? " ON" : " OFF")
+                    + " | alt=" + (((Runner.PlayerPosition - LastBodyPosition).Magnitude - LastRadius) / 1000d).ToString("F0")
+                    + " km far=" + (LastFar / 1000f).ToString("F0")
+                    + " km pxR=" + LastPixelRadius.ToString("F2")
+                    + " floor=" + MinScreenRadiusPixels.ToString("F1"));
             }
         }
 
