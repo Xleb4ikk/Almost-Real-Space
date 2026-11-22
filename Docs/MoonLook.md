@@ -114,6 +114,21 @@ of the wall shows — it rendered as a black hairline ("cracked Moon"). `Extra2.
 skirt vertices and the shader gives them the unshadowed light: the wall is exactly the
 colour of the ground it hides behind.
 
+## The Moon that was not in the sky
+
+Artemis' scene elements put `MeanAnomalyAtEpochDegrees = 0`, and at t = 0 that is
+**exactly behind Terra as seen from the Sun** (measured separation 0.06°): a full moon
+inside Terra's umbra. The far disc therefore drew at `eclipse = 0` — gain 0.002, i.e. a
+22 px disc at 0.2 % brightness, invisible next to the daylight scene — and, being the
+anti-solar point, it was also *below the horizon* at the moment the player spawns. From
+the ground the Moon simply was not there, and the night had no moonlight either
+(`MoonlightSystem` multiplies by the same eclipse term).
+
+`MeanAnomalyAtEpochDegrees = 295` moves it a quarter orbit round: phase angle 74° (63 %
+lit, a gibbous moon), 29° above the horizon at spawn, no eclipse, and ~15 % of full
+moonlight at night. The eclipse term itself is untouched — a real eclipse still darkens
+the disc on purpose.
+
 ## Known remaining artifact
 
 A **1 px dashed line** along a cube-face boundary is still visible at some angles. It is not

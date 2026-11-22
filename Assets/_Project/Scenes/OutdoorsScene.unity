@@ -2675,7 +2675,7 @@ MonoBehaviour:
   InclinationDegrees: 5.14
   LongitudeOfAscendingNodeDegrees: 0
   ArgumentOfPeriapsisDegrees: 0
-  MeanAnomalyAtEpochDegrees: 0
+  MeanAnomalyAtEpochDegrees: 295
   EpochTimeSeconds: 0
   RotationPeriodSeconds: 2360520
   TidallyLocked: 1
