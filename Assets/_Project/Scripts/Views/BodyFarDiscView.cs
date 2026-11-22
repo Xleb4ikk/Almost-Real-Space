@@ -385,7 +385,13 @@ namespace Galilego.Universe
             material.SetTexture("_BFD_NormalMap", NormalMap);
             material.SetFloat("_BFD_NormalStrength", NormalMap != null ? NormalStrength : 0f);
             material.SetFloat("_BFD_Opacity", opacity);
-            material.SetMatrix("_BFD_BodyToWorld", Matrix4x4.TRS(Vector3.zero, bodyRotation, Vector3.one));
+            // The body->world rotation as its three columns: a Matrix property cannot be
+            // declared in ShaderLab, so SetMatrix on an undeclared uniform was dropped
+            // ("Material ... doesn't have a matrix property") and the disc's body-fixed
+            // map lookup kept an identity — the relief/maria rotated with the world.
+            material.SetVector("_BFD_BodyRight", bodyRotation * Vector3.right);
+            material.SetVector("_BFD_BodyUp", bodyRotation * Vector3.up);
+            material.SetVector("_BFD_BodyForward", bodyRotation * Vector3.forward);
 
             SetActive(true);
         }

@@ -499,7 +499,9 @@ Shader "Galilego/PlanetSurface"
                 float normalLen2 = dot(normalRaw, normalRaw);
                 float3 normal = normalLen2 > 1e-12
                     ? normalRaw * rsqrt(normalLen2)
-                    : TransformObjectToWorldDir(dir);
+                    // dirOS is the ASTRO body direction (Z = pole); the chunk mesh is in
+                    // SIM axes (Y = up), so the axis bridge is not optional here.
+                    : TransformObjectToWorldDir(float3(dir.x, dir.z, -dir.y));
 
                 float3 sunDir = normalize(_TerrainSunDir);
                 float3 moonDir = GalilegoMoonDir(sunDir);
@@ -546,7 +548,16 @@ Shader "Galilego/PlanetSurface"
                         // positionWS (camera-relative sim axes), not for object-space
                         // directions, and its mismatch turned every reconstructed normal
                         // away from the sun (the body rendered black).
-                        float3 nWorld = TransformObjectToWorldDir(mapN * rsqrt(len2));
+                        //
+                        // The bake's frame is ASTRO body axes (Z = pole, see the macroUv
+                        // above), while the chunk mesh lives in SIM axes (Y = up, the
+                        // builder writes (x, z, -y)). Transforming the astro triple with
+                        // the mesh matrix turned every normal ~90 degrees away from the
+                        // sun: the sunlit side of a moon went black at the altitude where
+                        // the map takes over (700 km) and stayed lit near the ground,
+                        // where the mesh normal still dominated.
+                        float3 nWorld = TransformObjectToWorldDir(
+                            float3(mapN.x, mapN.z, -mapN.y) * rsqrt(len2));
                         float tilt2 = dot(nWorld, nWorld);
                         // A degenerate direction must never reach normalize(): one NaN
                         // pixel poisons HDRP's auto-exposure and the whole frame.

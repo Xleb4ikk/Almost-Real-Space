@@ -21,6 +21,24 @@ Shader "Galilego/BodyFarDisc"
         [HideInInspector] _BFD_Ambient("Ambient", Float) = 0
         [HideInInspector] _BFD_Opacity("Opacity", Float) = 1
         [HideInInspector] _BFD_Eclipse("Eclipse Visibility", Float) = 1
+        // These three MUST be declared here, not only in HLSL below. A material can
+        // only carry the properties the shader declares: Material.SetVector/SetFloat
+        // on an undeclared uniform is silently dropped, the shader reads 0, and the
+        // disc's radiance becomes 0 — the billboard turns invisible, so a body outside
+        // the camera's far plane (the Moon from > ~2 000 km) simply is not drawn, while
+        // its terrain chunks still show it from up close ("the Moon is black, I can
+        // only see it when I'm near"). _BFD_Haze had the same hole: the aerial
+        // perspective of the disc was never applied at all.
+        [HideInInspector] _BFD_SunColor("Sun Color", Vector) = (1, 1, 1, 0)
+        [HideInInspector] _BFD_SunScale("Sun Scale", Float) = 1
+        [HideInInspector] _BFD_Haze("Haze", Float) = 1
+        // The body->world rotation as its three columns. A Matrix property cannot be
+        // declared in ShaderLab, and an undeclared one is not carried by the material
+        // (Unity logs "doesn't have a matrix property" and the shader keeps an identity),
+        // so the body-fixed map lookup rotated with the WORLD instead of with the body.
+        [HideInInspector] _BFD_BodyRight("Body Right", Vector) = (1, 0, 0, 0)
+        [HideInInspector] _BFD_BodyUp("Body Up", Vector) = (0, 1, 0, 0)
+        [HideInInspector] _BFD_BodyForward("Body Forward", Vector) = (0, 0, 1, 0)
     }
 
     SubShader
@@ -59,7 +77,21 @@ Shader "Galilego/BodyFarDisc"
             float _BFD_MapStrength;
             TEXTURE2D(_BFD_NormalMap);
             float _BFD_NormalStrength;
-            float4x4 _BFD_BodyToWorld;
+            float4 _BFD_BodyRight;
+            float4 _BFD_BodyUp;
+            float4 _BFD_BodyForward;
+
+            // Body <-> world for the baked maps. Same result as the old matrix mul, but
+            // through properties a material can actually carry (see the Properties block).
+            float3 BodyToWorldDir(float3 v)
+            {
+                return (_BFD_BodyRight.xyz * v.x) + (_BFD_BodyUp.xyz * v.y) + (_BFD_BodyForward.xyz * v.z);
+            }
+
+            float3 WorldToBodyDir(float3 v)
+            {
+                return float3(dot(v, _BFD_BodyRight.xyz), dot(v, _BFD_BodyUp.xyz), dot(v, _BFD_BodyForward.xyz));
+            }
             float4 _BFD_SunDirWS;
             float4 _BFD_RightWS;
             float4 _BFD_UpWS;
@@ -123,7 +155,7 @@ Shader "Galilego/BodyFarDisc"
                 // Body-fixed albedo map (maria / highlands) so a 20 px disc still reads as
                 // THIS moon and not as a featureless ball. Same lat/lon convention as
                 // LunarRelief: dir = (cos lat cos lon, cos lat sin lon, sin lat).
-                float3 nb = mul(normalWS, (float3x3)_BFD_BodyToWorld);
+                float3 nb = WorldToBodyDir(normalWS);
                 float lat = asin(clamp(nb.z, -1.0, 1.0));
                 float lon = atan2(nb.y, nb.x);
                 float2 uvMap = float2((lon * 0.15915494) + 0.5, (lat * 0.31830989) + 0.5);
@@ -140,8 +172,7 @@ Shader "Galilego/BodyFarDisc"
                     if (len2 > 1e-4)
                     {
                         nb = normalize(lerp(nb, mapN * rsqrt(len2), _BFD_NormalStrength));
-                        // body -> world: mul(v, transpose(B)) == B * v
-                        float3 nWorld = normalize(mul(nb, transpose((float3x3)_BFD_BodyToWorld)));
+                        float3 nWorld = normalize(BodyToWorldDir(nb));
                         ndl = saturate(dot(nWorld, _BFD_SunDirWS.xyz));
                     }
                 }

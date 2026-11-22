@@ -217,6 +217,45 @@ lit, a gibbous moon), 29° above the horizon at spawn, no eclipse, and ~15 % of 
 moonlight at night. The eclipse term itself is untouched — a real eclipse still darkens
 the disc on purpose.
 
+## The Moon went black, and it was only visible up close
+
+Report: *"I arrived at the Moon and everything was fine; I landed in noclip, took off, and
+it went completely black. You only see it when you are next to it, even though this is the
+sunlit side — like the Moon's visibility range was cut off."*
+
+Two independent defects, both only visible away from the ground, and both the same mistake
+in a different place: a value that the C# sets but the GPU never receives, so it reads 0.
+
+**1. The far disc had zero radiance — the billboard was simply not drawn.**
+`BodyFarDisc.shader` declared `_BFD_SunColor`, `_BFD_SunScale` and `_BFD_Haze` in HLSL but
+not in the ShaderLab `Properties` block. A Unity material only carries the properties its
+shader declares: `Material.SetVector/SetFloat` on an undeclared uniform is silently
+dropped, so `sunlit = _BFD_SunColor * _BFD_SunScale` was `0 * 0` and
+`radiance = albedo * … * sunlit` was exactly zero for every pixel. The quad still drew —
+black on black space — which is why it looked like the body had been deleted rather than
+dimmed. Beyond the camera's far plane (~2 000 km over Artemis) the chunks are clipped, so
+the Moon had no representation at all; up close the chunks take over and the surface looks
+fine. Verified by disabling the chunk renderers at 3 000 km: before the fix the frame was
+pure starfield, after it is a lit disc with maria. `_BFD_Haze` had the same hole, so the
+disc's aerial perspective had never been applied since it was introduced.
+
+**2. The macro normal map was transformed with the wrong axis frame.**
+`SurfaceDir` (`dirOS` in the vertex) is stored in **astro** body axes (Z = pole — it is the
+frame `macroUv` is built in, `asin(dir.z)` = latitude), while the chunk mesh lives in **sim**
+axes (Y = up; `SurfaceChunkBuilder` writes `(x, z, −y)`). The macro-normal branch did
+`TransformObjectToWorldDir(mapN)` on the astro triple with the sim chunk matrix, which
+rotates every reconstructed normal by ~90°: the terminator of a *fully sunlit* hemisphere
+went straight through its middle. The effect is invisible near the ground, where
+`macroW → 0` and the mesh normal dominates, and total at altitude, where the map owns the
+normal — the "sunlit side is black, but only from a distance" signature. Fixed by bridging
+the axes before the transform: `float3(mapN.x, mapN.z, -mapN.y)` (the same permutation the
+chunk builder uses). Measured at 700 km, 9° from the sub-solar point: before, a 60 %-lit
+gibbous; after, the whole disc lit.
+
+Both are cheap to re-check in the editor: at 3 000 km the disc alone must cover the body
+(hide the `PlanetChunk_*` renderers), and at 700 km `ndl` must be ~1 across the whole disc
+when the camera sits on the sub-solar radial.
+
 ## Known remaining artifact
 
 A **1 px dashed line** along a cube-face boundary is still visible at some angles. It is not
