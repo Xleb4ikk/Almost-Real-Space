@@ -47,7 +47,10 @@ namespace Galilego.Universe
 
         public WarpKind ActiveKind = WarpKind.Physical;
 
-        /// <summary>Physical factor shown in the slot (one of <see cref="TimeControlPanel.PhysicalFactors"/>).</summary>
+        /// <summary>
+        /// Active physical rung (one of <see cref="TimeControlPanel.PhysicalFactors"/>).
+        /// The ×1 slot is normal time; this value only highlights the rung in its flyout.
+        /// </summary>
         public int PhysicalFactor = 1;
 
         /// <summary>Index into <see cref="TimeControlPanel.FullFactors"/>, valid when ActiveKind == Full.</summary>

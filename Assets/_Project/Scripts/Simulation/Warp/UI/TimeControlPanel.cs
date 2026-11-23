@@ -11,7 +11,7 @@ namespace Galilego.Universe
     /// <see cref="TimeControlModel"/> and reports what the player did through its events;
     /// the rewind / warp / physics logic lives in <see cref="TimeControlRuntime"/>.
     ///
-    ///   ┌ physics slot │ full warp ×10 … ×1M ┐   ← tab that sticks out of the window (top-left)
+    ///   ┌ ×1 slot │ full warp ×10 … ×1M ┐   ← tab that sticks out of the window (top-left)
     ///   ├─────────────────────────────────────┴──────────────┐
     ///   │  ПЕРЕМОТКА                                  [T]    │
     ///   │                 ВРЕМЯ ПОЛЁТА  (main clock)         │
@@ -25,8 +25,10 @@ namespace Galilego.Universe
     /// While open: player input is blocked, the cursor is released. The simulation keeps running.
     /// Runs after SettingsMenu (-200) so Esc/T are seen in a consistent order.
     ///
-    /// Mouse: click / drag on the timeline selects a point (snaps to points and to "now");
-    /// right click on the physics slot opens its flyout. Keys: ←/→ select, Enter rewind,
+    /// Mouse: click / drag on the timeline selects a point (snaps to points and to "now").
+    /// The ×1 slot is the normal-time button: a click on it always restores ×1, while
+    /// hovering it (or a right click) unfolds the other physical rungs above it — moving the
+    /// pointer into the flyout and clicking there picks one. Keys: ←/→ select, Enter rewind,
     /// T / Esc close.
     /// </summary>
     [DefaultExecutionOrder(-190)]
@@ -57,7 +59,7 @@ namespace Galilego.Universe
             closedFrame = -1;
         }
 
-        /// <summary>Physical warp values (x1 is the default of the slot, the rest live in the flyout).</summary>
+        /// <summary>Physical warp values (x1 is the slot itself — normal time; x2…x6 live in its flyout).</summary>
         internal static readonly int[] PhysicalFactors = { 1, 2, 3, 4, 6 };
 
         /// <summary>Full warp rungs, in the order of the buttons.</summary>
@@ -431,10 +433,16 @@ namespace Galilego.Universe
             string readout;
             Color readoutCol;
             int hoverWarp = HoveredWarpButton();
+            int hoverPhys = HoveredFlyoutItem();
             if (hoverWarp >= 0)
             {
                 readout = FormatFactor(FullFactors[hoverWarp]);
                 readoutCol = WarpCol;
+            }
+            else if (hoverPhys > 0)
+            {
+                readout = FormatFactor(hoverPhys);
+                readoutCol = PhysCol;
             }
             else if (physActive)
             {
@@ -462,9 +470,14 @@ namespace Galilego.Universe
 
             Txt(L(TabW - TabPad - 220f, CapY, 220f, 12f), readout, 10, true, TextAnchor.MiddleRight, readoutCol);
 
-            // Physics slot. Left click = use it, right click = flyout with the other values.
+            // Physics slot = the normal-time button. It always reads ×1: a plain click on it
+            // restores normal time from any warp (that is the way back the player looks for),
+            // while the other physical rungs live in its flyout. It used to show the active
+            // rung and a click only opened the flyout — from a full warp there was no
+            // one-click way back to ×1.
+            bool normalTime = physActive && model.PhysicalFactor <= 1;
             float h = Hov(IdSlot, slotRect);
-            if (physActive)
+            if (normalTime)
             {
                 Box(Inflate(slotRect, 4f), 12, WithA(PhysCol, 0.16f + (0.06f * h)));
                 Box(slotRect, 9, Color.Lerp(PhysCol, Color.white, 0.12f * h));
@@ -475,8 +488,8 @@ namespace Galilego.Universe
                 Box(slotRect, 9, WithA(PhysCol, 0.40f + (0.30f * h)), true);
             }
 
-            Txt(slotRect, "×" + model.PhysicalFactor, 14, true, TextAnchor.MiddleCenter, physActive ? OnPhys : PhysCol);
-            Tri(triUp, new Rect(slotRect.xMax - 12f, slotRect.y + 5f, 7f, 4.5f), physActive ? WithA(OnPhys, 0.7f) : WithA(PhysCol, 0.8f));
+            Txt(slotRect, "×1", 14, true, TextAnchor.MiddleCenter, normalTime ? OnPhys : PhysCol);
+            Tri(triUp, new Rect(slotRect.xMax - 12f, slotRect.y + 5f, 7f, 4.5f), normalTime ? WithA(OnPhys, 0.7f) : WithA(PhysCol, 0.8f));
 
             if (live)
             {
@@ -495,15 +508,22 @@ namespace Galilego.Universe
                 }
             }
 
-            // ЛКМ: нажатие открывает вылет, протяжка вверх выбирает, отпускание применяет.
+            // ЛКМ по слоту: обычное нажатие = «вернуть ×1» (на отпускании), протяжка вверх
+            // разворачивает вылет, отпускание над пунктом применяет его. ПКМ — вылет вкл/выкл.
             if (Clicked(slotRect, 0))
             {
                 slotPressed = true;
-                flyoutOpen = true;
             }
             else if (Clicked(slotRect, 1))
             {
                 flyoutOpen = !flyoutOpen;
+            }
+
+            if (live && slotPressed && Event.current.type == EventType.MouseDrag)
+            {
+                // Потянули от кнопки — раскрываем список под курсором (а не только по таймеру
+                // наведения): быстрое движение вверх не ждёт SlotHoverOpenSeconds.
+                flyoutOpen = true;
             }
 
             if (live && slotPressed && (Event.current.type == EventType.MouseUp || Event.current.rawType == EventType.MouseUp))
@@ -547,8 +567,9 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Отпускание мыши после протяжки от слота: над пунктом вылета — применить его,
-        /// над слотом — оставить вылет открытым, иначе просто закрыть вылет.
+        /// Отпускание мыши после нажатия на слот: над пунктом вылета — применить его,
+        /// над самим слотом — вернуть обычное время ×1 (главная кнопка всегда ×1),
+        /// иначе просто закрыть вылет.
         /// </summary>
         private void ApplySlotRelease()
         {
@@ -565,16 +586,16 @@ namespace Galilego.Universe
                 }
             }
 
-            if (slotRect.Contains(mp))
-            {
-                // An ordinary click on the slot is how the list is opened: keep it open.
-                // Applying the factor that is already active would be a no-op and closing
-                // the list on mouse-up made the values unreachable for a player who clicks
-                // instead of hovering or dragging.
-                return;
-            }
-
+            // A 4 px slack so a click that drifts a hair off the slot still counts as a click.
+            bool onSlot = Inflate(slotRect, 4f).Contains(mp);
             flyoutOpen = false;
+
+            if (onSlot)
+            {
+                // The slot is the normal-time button: a click on it always gives ×1, whatever
+                // warp was selected. Choosing another rung is the flyout's job (hover / drag / RMB).
+                model.RaisePhysical(1);
+            }
         }
 
         private int HoveredWarpButton()
@@ -595,15 +616,42 @@ namespace Galilego.Universe
             return -1;
         }
 
+        /// <summary>
+        /// Physical rung under the pointer while its flyout is open (0 = none), so the tab
+        /// readout previews the value the player is about to pick — same as the warp row.
+        /// </summary>
+        private int HoveredFlyoutItem()
+        {
+            if (!live || flyoutT <= 0.001f)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < flyoutItems.Count; i++)
+            {
+                if (FlyoutItemRect(i).Contains(mp))
+                {
+                    return flyoutItems[i];
+                }
+            }
+
+            return 0;
+        }
+
         // ─── Flyout (physical warp values) ───────────────────────────────────
 
         private void ComputeFlyout()
         {
             flyoutItems.Clear();
-            for (int i = 0; i < PhysicalFactors.Length; i++)
+            // Bottom-up: ×2 sits right above the slot and ×6 is the topmost rung, so the list
+            // grows away from the button the pointer came from (it used to be ×2 on top, which
+            // made the shortest reach the last one). The array stays ascending elsewhere.
+            for (int i = PhysicalFactors.Length - 1; i >= 0; i--)
             {
-                // The value shown in the slot is not repeated in the flyout.
-                if (PhysicalFactors[i] != model.PhysicalFactor)
+                // ×1 is the slot itself; the flyout offers the other physical rungs, always all
+                // of them — the active one is highlighted, not removed (a removed rung made the
+                // current state invisible and, with ×1 in the slot, left the list without ×1).
+                if (PhysicalFactors[i] > 1)
                 {
                     flyoutItems.Add(PhysicalFactors[i]);
                 }
@@ -686,6 +734,7 @@ namespace Galilego.Universe
             for (int i = 0; i < flyoutItems.Count; i++)
             {
                 Rect r = FlyoutItemRect(i);
+                bool active = model.ActiveKind == WarpKind.Physical && model.PhysicalFactor == flyoutItems[i];
 
                 // staggered: the item nearest to the slot (bottom) arrives first
                 float stagger = Mathf.Clamp01((flyoutT * 1.7f) - ((flyoutItems.Count - 1 - i) * 0.18f));
@@ -693,8 +742,17 @@ namespace Galilego.Universe
                 fade = previousFade * stagger;
 
                 float h = Hov(IdFly0 + i, r);
-                Box(r, 8, Color.Lerp(MenuTheme.Card, WithA(PhysCol, 0.22f), h));
-                Txt(r, "×" + flyoutItems[i], 13, true, TextAnchor.MiddleCenter, Color.Lerp(PhysCol, Color.white, 0.25f * h));
+                if (active)
+                {
+                    Box(r, 8, Color.Lerp(PhysCol, Color.white, 0.12f * h));
+                }
+                else
+                {
+                    Box(r, 8, Color.Lerp(MenuTheme.Card, WithA(PhysCol, 0.22f), h));
+                }
+
+                Txt(r, "×" + flyoutItems[i], 13, true, TextAnchor.MiddleCenter,
+                    active ? OnPhys : Color.Lerp(PhysCol, Color.white, 0.25f * h));
                 fade = prev;
             }
 
