@@ -10,7 +10,10 @@ namespace Galilego.Building
         FuelTank = 1,
         Separator = 2,
         Capsule = 3,
-        RcsBlock = 4
+        RcsBlock = 4,
+
+        /// <summary>Fairing base plate; the shell (PlacedPart.Fairing) is built on top of it.</summary>
+        Fairing = 5
     }
 
     /// <summary>
@@ -190,6 +193,9 @@ namespace Galilego.Building
 
         /// <summary>How the part is docked: true — by its bottom onto the parent's TOP.</summary>
         public bool ParentOnTop;
+
+        /// <summary>Fairing shell (PartKind.Fairing only; null for other parts).</summary>
+        public FairingShell Fairing;
 
         /// <summary>Something already sits on the top node.</summary>
         public bool TopOccupied;

@@ -88,6 +88,26 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Shift held (either side) regardless of the action table — a modifier for build gestures.
+        /// Works with either input backend: with Active Input Handling = Input System Package the
+        /// legacy UnityEngine.Input class throws, so it must not be used directly.
+        /// </summary>
+        public static bool ShiftHeld()
+        {
+            if (Blocked)
+            {
+                return false;
+            }
+
+#if ENABLE_INPUT_SYSTEM
+            Keyboard keyboard = Keyboard.current;
+            return keyboard != null && keyboard.shiftKey.isPressed;
+#else
+            return Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+#endif
+        }
+
+        /// <summary>
         /// Raw physical key press for UI shortcuts that are not rebindable actions
         /// (the RCS ring size on X/Z). Works with either input backend.
         /// </summary>

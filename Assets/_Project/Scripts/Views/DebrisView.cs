@@ -37,6 +37,18 @@ namespace Galilego.Universe
                 DebrisSlot slot = Runner.Debris.SlotAt(i);
                 if (slot.Active)
                 {
+                    Vector3 renderPosition = FloatingOrigin.ToRender(slot.Body.Position);
+                    if (Galilego.Building.FairingDebrisVisuals.Drive(i, slot, renderPosition, Time.deltaTime))
+                    {
+                        // A jettisoned fairing petal is drawn instead of the sphere marker.
+                        if (markers[i].gameObject.activeSelf)
+                        {
+                            markers[i].gameObject.SetActive(false);
+                        }
+
+                        continue;
+                    }
+
                     markers[i].position = FloatingOrigin.ToRender(slot.Body.Position);
                     markers[i].localScale = Vector3.one * MarkerScale;
                     if (!markers[i].gameObject.activeSelf)
@@ -44,9 +56,13 @@ namespace Galilego.Universe
                         markers[i].gameObject.SetActive(true);
                     }
                 }
-                else if (markers[i].gameObject.activeSelf)
+                else
                 {
-                    markers[i].gameObject.SetActive(false);
+                    Galilego.Building.FairingDebrisVisuals.Release(i);
+                    if (markers[i].gameObject.activeSelf)
+                    {
+                        markers[i].gameObject.SetActive(false);
+                    }
                 }
             }
         }

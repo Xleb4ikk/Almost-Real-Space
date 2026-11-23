@@ -28,7 +28,7 @@ namespace Galilego.Building
     /// invalid — red; the natural paint appears on the placed part.
     /// </summary>
     [DefaultExecutionOrder(-110)]
-    public sealed class SpacecraftBuilder : MonoBehaviour
+    public sealed partial class SpacecraftBuilder : MonoBehaviour
     {
         [Header("Ссылки сцены")]
         [Tooltip("SimulationRunner сцены.")]
@@ -282,6 +282,7 @@ namespace Galilego.Building
             }
 
             SyncCatalog();
+            RegisterFairingMaterials();
 
             ghostMaterial = CreateOverlayMaterial(new Color(0.25f, 0.55f, 1f, 0.38f), "GhostBlue");
             invalidMaterial = CreateOverlayMaterial(new Color(1f, 0.25f, 0.2f, 0.38f), "GhostRed");
@@ -389,17 +390,29 @@ namespace Galilego.Building
             if (PhysicsOn)
             {
                 UpdateStaging();
+                UpdateFairingJettison();
                 return;
             }
 
             // Alt: delete mode — the aim target turns red, RMB deletes it.
             // Deleting needs only the aim ray, so it must NOT depend on the distance
             // to the pad: from the spawn the player is a couple of hundred metres from
-            // the vessel and still has to delete its parts by aim.
+            // the vessel and still has to delete its parts by aim. While a fairing shell
+            // is being built, Alt+RMB drops the last section instead of the whole part.
             if (!UiOpen && PlayerInput.Held(GameAction.BuildDelete))
             {
-                HideGhost();
-                UpdateDeleteAim();
+                if (fairingBuild != null)
+                {
+                    // Editing a shell: Alt is "remove the last section", the red part
+                    // highlight (delete the whole part) would promise the wrong action.
+                    ClearDeleteHighlight();
+                    UpdateFairingSection();
+                }
+                else
+                {
+                    HideGhost();
+                    UpdateDeleteAim();
+                }
             }
             else
             {
@@ -412,7 +425,14 @@ namespace Galilego.Building
                 // the stars and the atmosphere behind it.
                 if (IsNearBuildSite(MaxGhostPadDistanceMeters))
                 {
-                    UpdatePlacement();
+                    if (fairingBuild != null)
+                    {
+                        UpdateFairingSection();
+                    }
+                    else
+                    {
+                        UpdatePlacement();
+                    }
                 }
                 else
                 {
@@ -424,9 +444,23 @@ namespace Galilego.Building
             {
                 if (PlayerInput.Held(GameAction.BuildDelete))
                 {
-                    if (deleteTarget >= 0 && PlayerInput.Down(GameAction.BuildPlace))
+                    if (PlayerInput.Down(GameAction.BuildPlace))
                     {
-                        RemoveAt(deleteTarget);
+                        if (fairingBuild != null)
+                        {
+                            // Editing: Alt+RMB always means "remove the last section",
+                            // even when the aim happens to be on the payload inside.
+                            RemoveFairingSection(fairingBuild.PartIndex);
+                        }
+                        else if (deleteTarget >= 0 && parts[deleteTarget].Kind == PartKind.Fairing)
+                        {
+                            // Alt+RMB on an installed fairing removes one section; the plate goes last.
+                            RemoveFairingSection(deleteTarget);
+                        }
+                        else if (deleteTarget >= 0)
+                        {
+                            RemoveAt(deleteTarget);
+                        }
                     }
                 }
                 else if (ghostVisible && ghostValid && PlayerInput.Down(GameAction.BuildPlace))
@@ -466,9 +500,18 @@ namespace Galilego.Building
             }
 
             int found = -1;
-            if (BuildMath.TryRaycastParts(parts, rayOrigin, aimDirections, aimVotes, BuildMath.SnapReach, out int index, out _))
+            float foundDistance = float.MaxValue;
+            if (BuildMath.TryRaycastParts(parts, rayOrigin, aimDirections, aimVotes, BuildMath.SnapReach, out int index, out float partDistance))
             {
                 found = index;
+                foundDistance = partDistance;
+            }
+
+            // A fairing is a thin plate plus a shell around other parts: aim at the shell too.
+            if (TryRaycastFairingShells(rayOrigin, aimDirections[0], out int shellIndex, out float shellDistance)
+                && (found < 0 || shellDistance <= foundDistance + 0.01f))
+            {
+                found = shellIndex;
             }
 
             if (found == deleteTarget)
@@ -926,6 +969,8 @@ namespace Galilego.Building
                 return;
             }
 
+            FairingFinishForLaunch();
+
             // Before handing over to physics — "weld" free-standing parts:
             // a part hanging within 2 m above someone's node and centered
             // is pulled flush and rigidly attached.
@@ -1107,9 +1152,18 @@ namespace Galilego.Building
                 }
 
                 PlacedPart parent = parts[best];
-                p.Pivot = bestOnTop
+                Vector3 weldedPivot = bestOnTop
                     ? new Vector3(parent.Pivot.x, parent.Pivot.y + parent.Metrics.Top - p.Metrics.Bottom, parent.Pivot.z)
                     : new Vector3(parent.Pivot.x, parent.Pivot.y + parent.Metrics.Bottom - p.Metrics.Top, parent.Pivot.z);
+
+                // Do not pull a loose part into a built fairing shell: the weld would push it
+                // through the wall (the placement check is bypassed here).
+                if (FairingShellBlocks(weldedPivot, p.Metrics, p.Kind == PartKind.Capsule))
+                {
+                    continue;
+                }
+
+                p.Pivot = weldedPivot;
                 p.ParentIndex = best;
                 p.ParentOnTop = bestOnTop;
                 if (bestOnTop)
@@ -1186,6 +1240,7 @@ namespace Galilego.Building
             }
 
             SetPartColliders(true);
+            FairingRestoreAfterFlight();
             RefreshVisualLocals();
 
             // Put the visuals/colliders on the pad right now, not in LateUpdate: the
@@ -1406,6 +1461,9 @@ namespace Galilego.Building
                     };
                 case PartKind.Separator:
                     return new PartPreset { Kind = kind, Radius = SeparatorRadius };
+                case PartKind.Fairing:
+                    // Radius is the fallback (a plate on a node takes the node radius); Count — petals.
+                    return new PartPreset { Kind = kind, Radius = SeparatorRadius, Count = FairingShell.DefaultPetals };
                 case PartKind.Capsule:
                     // Capsule sizes are fixed by the model — the preset needs nothing.
                     return new PartPreset { Kind = kind };
@@ -1528,6 +1586,12 @@ namespace Galilego.Building
                 return;
             }
 
+            // While a fairing shell is being built, undo removes its last section first.
+            if (FairingUndo())
+            {
+                return;
+            }
+
             int group = parts[parts.Count - 1].Group;
             if (group != 0)
             {
@@ -1607,6 +1671,7 @@ namespace Galilego.Building
                 }
             }
 
+            FairingOnPartRemoved(index);
             ClearDeleteHighlight();
             RefreshVisualLocals();
         }
@@ -1624,6 +1689,8 @@ namespace Galilego.Building
             }
 
             parts.Clear();
+            fairingBuild = null;
+            HideFairingSectionGhost();
         }
 
         /// <summary>
@@ -1675,6 +1742,13 @@ namespace Galilego.Building
                 {
                     marker.VisualCovered = !enabled && part.Kind != PartKind.Capsule;
                 }
+
+                // Fairing petals: no colliders in build mode (the player walks through), solid in physics.
+                ProceduralFairing fairing = part.Visual.Root.GetComponent<ProceduralFairing>();
+                if (fairing != null)
+                {
+                    fairing.SetSolid(!enabled);
+                }
             }
         }
 
@@ -1725,15 +1799,28 @@ namespace Galilego.Building
 
         private void UpdatePlacement()
         {
-            if (!HasSelection || UiOpen)
+            if (UiOpen)
             {
                 HideGhost();
+                return;
+            }
+
+            if (!HasSelection)
+            {
+                // Empty hand: RMB on a fairing still continues it.
+                UpdateEmptyHandFairing();
                 return;
             }
 
             if (SelectedPreset.Kind == PartKind.RcsBlock)
             {
                 UpdateRcsPlacement();
+                return;
+            }
+
+            if (SelectedPreset.Kind == PartKind.Fairing)
+            {
+                UpdateFairingPlacement();
                 return;
             }
 
@@ -1765,12 +1852,12 @@ namespace Galilego.Building
             if (hasSnap)
             {
                 pivot = snap.Pivot;
-                valid = CheckPlacement(pivot, metrics, snap.PartIndex);
+                valid = CheckPlacement(pivot, metrics, snap.PartIndex, SelectedPreset.Kind);
             }
             else if (TryRayToSurface(camera, out Vector3 hitPoint, out bool onPad))
             {
                 pivot = new Vector3(hitPoint.x, hitPoint.y - metrics.Bottom, hitPoint.z);
-                valid = onPad && CheckPlacement(pivot, metrics, -1);
+                valid = onPad && CheckPlacement(pivot, metrics, -1, SelectedPreset.Kind);
 
                 // Second pass: the point is in free space but maybe a couple of
                 // centimetres above a part node — snap edge to edge.
@@ -1779,7 +1866,7 @@ namespace Galilego.Building
                     snap = near;
                     hasSnap = true;
                     pivot = near.Pivot;
-                    valid = CheckPlacement(pivot, metrics, near.PartIndex);
+                    valid = CheckPlacement(pivot, metrics, near.PartIndex, SelectedPreset.Kind);
                 }
             }
             else
@@ -1790,14 +1877,14 @@ namespace Galilego.Building
                 float padTop = Zone.PadTopYAt(new Vector2(pivot.x, pivot.z));
                 bool above = (pivot.y + metrics.Bottom) >= (padTop - 0.05f);
                 bool notTooHigh = (pivot.y + metrics.Bottom) - padTop <= MaxBuildHeight;
-                valid = above && notTooHigh && CheckPlacement(pivot, metrics, -1);
+                valid = above && notTooHigh && CheckPlacement(pivot, metrics, -1, SelectedPreset.Kind);
 
                 if (valid && BuildMath.TryFindProximitySnap(parts, metrics, pivot, out BuildMath.SnapHit near))
                 {
                     snap = near;
                     hasSnap = true;
                     pivot = near.Pivot;
-                    valid = CheckPlacement(pivot, metrics, near.PartIndex);
+                    valid = CheckPlacement(pivot, metrics, near.PartIndex, SelectedPreset.Kind);
                 }
             }
 
@@ -2031,7 +2118,7 @@ namespace Galilego.Building
         /// Placement validity: the footprint fully on the pad, no intersections,
         /// within reach (pivot not above the ceiling over the slab).
         /// </summary>
-        private bool CheckPlacement(Vector3 pivot, PartMetrics metrics, int ignoreIndex)
+        private bool CheckPlacement(Vector3 pivot, PartMetrics metrics, int ignoreIndex, PartKind kind)
         {
             if (!BuildMath.FootprintInside(Zone.Polygon, new Vector2(pivot.x, pivot.z), metrics.Radius))
             {
@@ -2050,7 +2137,13 @@ namespace Galilego.Building
                 return false;
             }
 
-            return !BuildMath.OverlapsAny(parts, pivot, metrics, ignoreIndex);
+            if (BuildMath.OverlapsAny(parts, pivot, metrics, ignoreIndex))
+            {
+                return false;
+            }
+
+            // A built fairing shell is a wall too: a payload cannot be pushed through it.
+            return !FairingShellBlocks(pivot, metrics, kind == PartKind.Capsule);
         }
 
         /// <summary>
@@ -2145,6 +2238,18 @@ namespace Galilego.Building
 
         private void PlaceGhostedPart()
         {
+            if (fairingBuild != null)
+            {
+                PlaceFairingSection();
+                return;
+            }
+
+            if (SelectedPreset.Kind == PartKind.Fairing)
+            {
+                PlaceFairingBase();
+                return;
+            }
+
             if (SelectedPreset.Kind == PartKind.RcsBlock)
             {
                 PlaceRcsRing();
@@ -2210,6 +2315,7 @@ namespace Galilego.Building
         private void HideGhost()
         {
             ghostVisible = false;
+            HideFairingSectionGhost();
             if (ghost != null && ghost.Root != null)
             {
                 ghost.Root.SetActive(false);

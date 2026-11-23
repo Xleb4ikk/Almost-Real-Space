@@ -105,6 +105,43 @@ namespace Galilego.Flight
             }
         }
 
+        /// <summary>
+        /// A fairing shell was jettisoned (called by SpacecraftBuilder): the shell mass leaves the model, the
+        /// stage core that owns the plate and the ship. In the zone PhysX body masses follow in FixedUpdate.
+        /// </summary>
+        public void OnFairingReleased(int partIndex, double shellKg)
+        {
+            if (model == null || Runner == null) return;
+            model.ReleaseDryMass(partIndex, shellKg);
+
+            StagePropulsion propulsion = Runner.Propulsion;
+            if (propulsion != null)
+            {
+                for (int c = 0; c < propulsion.StageCount; c++)
+                {
+                    if (propulsion.Cores[c].PartIndices.Contains(partIndex))
+                    {
+                        propulsion.Cores[c].DryMassKg = Math.Max(0d, propulsion.Cores[c].DryMassKg - shellKg);
+                        break;
+                    }
+                }
+            }
+
+            if (ContactZoneHost.Active)
+            {
+                if (propulsion != null) Runner.Ship.Mass = propulsion.AttachedTotalKg() + propulsion.DetachedMassKg;
+            }
+            else
+            {
+                // Free flight: the COM shifts, Position (which is the COM) moves with it.
+                Vector3d oldCom = model.Com;
+                model.RefreshMassProps();
+                Runner.Ship.Mass = Math.Max(1d, Runner.Ship.Mass - shellKg);
+                Runner.Ship.Position += Runner.Ship.Attitude.Rotate(model.Com - oldCom);
+                Runner.SetVesselParts(model.RemainingDefs());
+            }
+        }
+
         // ─── Contact zone physics (PhysX) ────────────────────────────────────
 
         private void FixedUpdate()

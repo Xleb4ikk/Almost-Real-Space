@@ -27,6 +27,9 @@ namespace Galilego.Universe
         // Building
         BuildPlace, BuildDelete, BuildPeek, BuildUndo, BuildPhysics, BuildInventory, BuildHints,
         Hotbar1, Hotbar2, Hotbar3, Hotbar4, Hotbar5, Hotbar6, Hotbar7, Hotbar8, Hotbar9,
+
+        // Fairings
+        BuildFairingFinish, FairingJettison,
     }
 
     internal enum ActionGroup { Foot, Flight, Engines, Time, Build }
@@ -127,6 +130,9 @@ namespace Galilego.Universe
             {
                 Add((GameAction)((int)GameAction.Hotbar1 + i), "Слот панели " + (i + 1), gB, B, KeyCode.Alpha1 + i);
             }
+
+            Add(GameAction.BuildFairingFinish, "Завершить обтекатель (при стройке)", gB, B, KeyCode.F);
+            Add(GameAction.FairingJettison, "Сбросить обтекатель", gS, S, KeyCode.B);
 
             ByAction = new ActionInfo[list.Count];
             foreach (ActionInfo info in list)

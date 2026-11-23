@@ -187,6 +187,11 @@ namespace Galilego.Building
             StoreIcon(PartKind.RcsBlock, null,
                 PartCatalog.Measure(PartKind.RcsBlock, 0f, 0f, firstEngine),
                 null, tankSide, tankCap, separator);
+
+            // Fairing: plate with a demo shell (CaptureIconPixels swaps the metrics).
+            StoreIcon(PartKind.Fairing, null,
+                PartCatalog.Measure(PartKind.Fairing, PartCatalog.SeparatorDefaultRadius, 0f, firstEngine),
+                null, tankSide, tankCap, separator);
         }
 
         /// <summary>
@@ -315,6 +320,11 @@ namespace Galilego.Building
         private Texture2D CaptureIconPixels(PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
             Material tankSide, Material tankCap, Material separator)
         {
+            if (kind == PartKind.Fairing)
+            {
+                metrics = PartCatalog.MeasureFairingIcon(metrics.Radius);   // plate + demo shell
+            }
+
             PartCatalog.PartVisual visual = PartCatalog.CreateVisual(
                 kind, metrics, engine, tankSide, tankCap, separator, spinner, withCollider: false);
             if (visual == null || visual.Root == null)
@@ -871,6 +881,11 @@ namespace Galilego.Building
         private void Rebuild(PartKind nextKind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
             Material tankSide, Material tankCap, Material separator)
         {
+            if (nextKind == PartKind.Fairing)
+            {
+                metrics = PartCatalog.MeasureFairingIcon(metrics.Radius);   // plate + demo shell
+            }
+
             kind = nextKind;
             engineId = engine != null && engine.Spec != null ? engine.Spec.Id : null;
             radius = metrics.Radius;

@@ -62,6 +62,7 @@ namespace Galilego.Building
                 case PartKind.FuelTank: return "Топливный бак";
                 case PartKind.Capsule: return "Капсула Orion";
                 case PartKind.RcsBlock: return "Блок РСУ";
+                case PartKind.Fairing: return "Обтекатель";
                 default: return "Отделитель";
             }
         }
@@ -91,6 +92,10 @@ namespace Galilego.Building
                     break;
                 case PartKind.Separator:
                     radius = Mathf.Clamp(radius, SeparatorMinRadius, SeparatorMaxRadius);
+                    height = ProceduralSeparator.Thickness;
+                    break;
+                case PartKind.Fairing:
+                    radius = Mathf.Clamp(radius, SeparatorMinRadius, TankMaxRadius);
                     height = ProceduralSeparator.Thickness;
                     break;
                 case PartKind.Capsule:
@@ -162,6 +167,10 @@ namespace Galilego.Building
                     return new PartMetrics(radius, radius, thickness, 0f, -thickness * 0.5f, thickness * 0.5f, mass, SeparatorJointNewtons, 1e12d);
                 }
 
+                case PartKind.Fairing:
+                    // Base plate only; the shell mass is added by MeasureFairing as sections are built.
+                    return MeasureFairing(bottomRadius, 0d);
+
                 case PartKind.Capsule:
                     // Dimensions come from the model (CapsuleTemplate); input numbers are irrelevant.
                     return Capsule != null ? Capsule.Metrics : default;
@@ -177,6 +186,43 @@ namespace Galilego.Building
                 default:
                     return engine != null ? engine.Metrics : default;
             }
+        }
+
+        // ─── Fairing ─────────────────────────────────────────────────────────
+
+        /// <summary>Plate / shell materials of the fairing (registered by the builder).</summary>
+        public static Material FairingPlateMaterial { get; private set; }
+
+        public static Material FairingShellMaterial { get; private set; }
+
+        public static void RegisterFairingMaterials(Material plate, Material shell)
+        {
+            FairingPlateMaterial = plate;
+            FairingShellMaterial = shell;
+        }
+
+        /// <summary>
+        /// Fairing base plate metrics (a 40 mm disc like the separator, pivot in the middle). The mass is
+        /// the plate plus the whole shell, so draft mass, ΔV and the flight model see the fairing.
+        /// </summary>
+        public static PartMetrics MeasureFairing(float plateRadius, double shellMassKg)
+        {
+            float radius = Mathf.Clamp(plateRadius, SeparatorMinRadius, TankMaxRadius);
+            float thickness = ProceduralSeparator.Thickness;
+            double mass = FairingShell.PlateMassKg(radius) + shellMassKg;
+            return new PartMetrics(radius, radius, thickness, 0f, -thickness * 0.5f, thickness * 0.5f,
+                mass, TankJointNewtons, 1e12d);
+        }
+
+        /// <summary>
+        /// Tall metrics for the inventory icon and preview only: CreateVisual sees Height &gt; 1 and draws a
+        /// demo shell on the plate so the icon shows a fairing, not a flat disc.
+        /// </summary>
+        public static PartMetrics MeasureFairingIcon(float plateRadius)
+        {
+            float radius = Mathf.Clamp(plateRadius, SeparatorMinRadius, TankMaxRadius);
+            float height = radius * 3.2f;
+            return new PartMetrics(radius, radius, height, height * 0.5f, 0f, height, 0d, TankJointNewtons, 1e12d);
         }
 
         // ─── Visual ──────────────────────────────────────────────────────────
@@ -348,6 +394,20 @@ namespace Galilego.Building
                     break;
                 }
 
+                case PartKind.Fairing:
+                {
+                    var fairing = root.AddComponent<ProceduralFairing>();
+                    fairing.PlateRadius = metrics.Radius;
+                    fairing.PlateMaterial = FairingPlateMaterial != null ? FairingPlateMaterial : separatorMaterial;
+                    fairing.ShellMaterial = FairingShellMaterial != null ? FairingShellMaterial : fairing.PlateMaterial;
+                    fairing.BuildColliders = withCollider;
+                    fairing.Shell = metrics.Height > 1f
+                        ? FairingShell.CreateDemo(metrics.Radius, metrics.Height)
+                        : new FairingShell();
+                    fairing.Rebuild();
+                    break;
+                }
+
                 case PartKind.Capsule:
                 {
                     if (Capsule == null || Capsule.Prefab == null)
@@ -457,7 +517,7 @@ namespace Galilego.Building
                 else
                 {
                     MeshFilter filter = root.GetComponent<MeshFilter>();
-                    if ((kind == PartKind.FuelTank || kind == PartKind.Separator)
+                    if ((kind == PartKind.FuelTank || kind == PartKind.Separator || kind == PartKind.Fairing)
                         && filter != null && filter.sharedMesh != null)
                     {
                         // Tank/separator: the procedural mesh is already the exact body

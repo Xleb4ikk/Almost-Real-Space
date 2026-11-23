@@ -153,6 +153,16 @@ namespace Galilego.Flight
             return s;
         }
 
+        /// <summary>
+        /// A detachable piece of a part left the ship without the part going away (a fairing shell):
+        /// its mass leaves the part's dry mass. Call RefreshMassProps afterwards.
+        /// </summary>
+        public void ReleaseDryMass(int part, double kg)
+        {
+            if (part < 0 || part >= dry.Length || !(kg > 0d)) return;
+            dry[part] = Math.Max(0d, dry[part] - kg);
+        }
+
         public void RefreshMassProps()
         {
             scratch.Clear();

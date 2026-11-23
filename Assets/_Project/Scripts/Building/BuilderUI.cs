@@ -66,6 +66,7 @@ namespace Galilego.Building
 
             entries.Add(new CatalogEntry(PartKind.FuelTank, null));
             entries.Add(new CatalogEntry(PartKind.Separator, null));
+            entries.Add(new CatalogEntry(PartKind.Fairing, null));
             entries.Add(new CatalogEntry(PartKind.Capsule, null));
             entries.Add(new CatalogEntry(PartKind.RcsBlock, null));
             return entries.ToArray();
@@ -243,6 +244,7 @@ namespace Galilego.Building
                 AssignPreset(2, Builder.DefaultPreset(PartKind.Separator));
                 AssignPreset(3, Builder.DefaultPreset(PartKind.Capsule));
                 AssignPreset(4, Builder.DefaultPreset(PartKind.RcsBlock));
+                AssignPreset(5, Builder.DefaultPreset(PartKind.Fairing));
             }
 
             hotbarIndex = 0;
@@ -336,7 +338,8 @@ namespace Galilego.Building
 
             // RCS ring size: X adds a block to the ring, Z removes one
             // (1/2/3/4/6/8). Ctrl is peek/undo — leave those chords alone.
-            if (!PlayerInput.Held(GameAction.BuildPeek) && Builder.SelectedPreset.Kind == PartKind.RcsBlock)
+            if (!PlayerInput.Held(GameAction.BuildPeek)
+                && (Builder.SelectedPreset.Kind == PartKind.RcsBlock || Builder.SelectedPreset.Kind == PartKind.Fairing))
             {
                 if (PlayerInput.RawKeyDown(KeyCode.X))
                 {
@@ -383,14 +386,16 @@ namespace Galilego.Building
         private void StepRcsCount(int direction)
         {
             HotSlot slot = hotbarIndex >= 0 ? hotbar[hotbarIndex] : null;
-            if (slot == null || !slot.Occupied || slot.Preset.Kind != PartKind.RcsBlock)
+            if (slot == null || !slot.Occupied
+                || (slot.Preset.Kind != PartKind.RcsBlock && slot.Preset.Kind != PartKind.Fairing))
             {
                 return;
             }
 
             PartPreset preset = slot.Preset;
-            int next = RcsBlockPlacement.Step(preset.Count, direction);
-            if (next == RcsBlockPlacement.ClampCount(preset.Count))
+            bool petals = preset.Kind == PartKind.Fairing;
+            int next = petals ? FairingShell.StepPetals(preset.Count, direction) : RcsBlockPlacement.Step(preset.Count, direction);
+            if (next == (petals ? FairingShell.ClampPetals(preset.Count) : RcsBlockPlacement.ClampCount(preset.Count)))
             {
                 return;
             }
@@ -751,7 +756,7 @@ namespace Galilego.Building
 
             PartKind kind = slot.Preset.Kind;
             bool tank = kind == PartKind.FuelTank;
-            bool rcs = kind == PartKind.RcsBlock;
+            bool rcs = kind == PartKind.RcsBlock || kind == PartKind.Fairing;
             bool hasSize = kind != PartKind.Engine && !rcs;
             int editors = tank ? (slot.Preset.Form == TankForm.Cone ? 3 : 2) : 1;
             float bodyH = hasSize || rcs
@@ -814,8 +819,9 @@ namespace Galilego.Building
             }
             else if (rcs)
             {
-                int count = RcsBlockPlacement.ClampCount(preset.Count);
-                DrawCountEditor(px, ref py, pw, "Блоков по кольцу", ref count, SlotMenuIdBase + 40);
+                bool petals = kind == PartKind.Fairing;
+                int count = petals ? FairingShell.ClampPetals(preset.Count) : RcsBlockPlacement.ClampCount(preset.Count);
+                DrawCountEditor(px, ref py, pw, petals ? "Долек обтекателя" : "Блоков по кольцу", ref count, SlotMenuIdBase + 40, petals);
                 preset.Count = count;
             }
             else if (hasSize)
@@ -1049,6 +1055,10 @@ namespace Galilego.Building
             else if (preset.Kind == PartKind.Separator)
             {
                 dims = "   <color=#9AA0A8>Ø " + (m.Radius * 2f).ToString("F1") + " м</color>";
+            }
+            else if (preset.Kind == PartKind.Fairing)
+            {
+                dims = "   <color=#9AA0A8>" + FairingShell.PetalsLabel(FairingShell.ClampPetals(preset.Count)) + "</color>";
             }
             else if (preset.Kind == PartKind.Capsule)
             {
@@ -1331,7 +1341,7 @@ namespace Galilego.Building
             {
                 case 1: return kind == PartKind.Engine || kind == PartKind.RcsBlock;
                 case 2: return kind == PartKind.FuelTank;
-                case 3: return kind == PartKind.Separator || kind == PartKind.Capsule;
+                case 3: return kind == PartKind.Separator || kind == PartKind.Capsule || kind == PartKind.Fairing;
                 default: return true;
             }
         }
@@ -1505,7 +1515,7 @@ namespace Galilego.Building
             bool tank = kind == PartKind.FuelTank;
             bool engine = kind == PartKind.Engine;
             bool capsule = kind == PartKind.Capsule;
-            bool rcs = kind == PartKind.RcsBlock;
+            bool rcs = kind == PartKind.RcsBlock || kind == PartKind.Fairing;
 
             // Stats rows: an engine has mass, propellant, thrust, Isp, flow,
             // expansion ratio, joint strength. A capsule has mass, diameter,
@@ -1611,6 +1621,10 @@ namespace Galilego.Building
                     AddStat(x, ref y, w, "Диаметр", (m.Radius * 2f).ToString("F1") + " м");
                     AddStat(x, ref y, w, "Высота", m.Height.ToString("F1") + " м");
                     break;
+                case PartKind.Fairing:
+                    AddStat(x, ref y, w, "Долек", FairingShell.ClampPetals(layout.Preset.Count) + " шт.");
+                    AddStat(x, ref y, w, "Масса оболочки", "≈ " + FairingShell.ArealDensityKgPerM2.ToString("0") + " кг/м²");
+                    break;
                 case PartKind.RcsBlock:
                 {
                     int ring = RcsBlockPlacement.ClampCount(layout.Preset.Count);
@@ -1670,11 +1684,12 @@ namespace Galilego.Building
                     ApplyPresetEdit(layout.Owner, layout.Card, preset);
                 }
             }
-            else if (kind == PartKind.RcsBlock)
+            else if (kind == PartKind.RcsBlock || kind == PartKind.Fairing)
             {
                 PartPreset before = preset;
-                int count = RcsBlockPlacement.ClampCount(preset.Count);
-                DrawCountEditor(x, ref y, w, "Блоков по кольцу", ref count, 40);
+                bool petals = kind == PartKind.Fairing;
+                int count = petals ? FairingShell.ClampPetals(preset.Count) : RcsBlockPlacement.ClampCount(preset.Count);
+                DrawCountEditor(x, ref y, w, petals ? "Долек обтекателя" : "Блоков по кольцу", ref count, 40, petals);
                 preset.Count = count;
                 if (!SamePreset(before, preset))
                 {
@@ -1975,6 +1990,10 @@ namespace Galilego.Building
                 case PartKind.Separator:
                     return "Отделитель ступеней. Самое слабое место стыка: при разделении рвётся первым."
                         + "\n<b>Диаметр отделителя настраивается.</b>";
+                case PartKind.Fairing:
+                    return "Плита-основание процедурного обтекателя. После установки ПКМ строит оболочку сегментами: высота и радиус — по прицелу. Замыкается на нижнем крае детали выше или носовым конусом."
+                        + "\n<b>Долек: X / Z. Завершить: F. Alt+ПКМ — убрать секцию. Сбросить в полёте: B.</b>"
+                        + "\nГотовый обтекатель снова редактируется: прицельтесь в него и нажмите ПКМ (деталь в руке не нужна).";
                 case PartKind.Capsule:
                     return "Экипажный модуль Orion. Габариты и масса определяются моделью."
                         + "\n<b>Размеры фиксированные.</b>";
@@ -2058,7 +2077,7 @@ namespace Galilego.Building
         /// Ring count editor (RCS): [&lt;] N шт. [&gt;]. Values cycle through the
         /// symmetry presets 1/2/3/4/6/8; X/Z do the same in the world.
         /// </summary>
-        private void DrawCountEditor(float x, ref float y, float w, string label, ref int count, int idBase)
+        private void DrawCountEditor(float x, ref float y, float w, string label, ref int count, int idBase, bool petals = false)
         {
             GUI.Label(new Rect(x, y, w * 0.6f, 18f), label, BuilderSkin.Body);
             GUI.Label(new Rect(x + (w * 0.4f), y, w * 0.6f, 18f), "X / Z", BuilderSkin.TinyRight);
@@ -2072,18 +2091,18 @@ namespace Galilego.Building
 
             if (StepButton(down, BuilderSkin.ChevronLeft, true, idBase, 0.25f))
             {
-                count = RcsBlockPlacement.Step(count, -1);
+                count = petals ? FairingShell.StepPetals(count, -1) : RcsBlockPlacement.Step(count, -1);
             }
 
             if (StepButton(up, BuilderSkin.ChevronRight, true, idBase + 1, 0.25f))
             {
-                count = RcsBlockPlacement.Step(count, 1);
+                count = petals ? FairingShell.StepPetals(count, 1) : RcsBlockPlacement.Step(count, 1);
             }
 
             GUI.Box(box, GUIContent.none, BuilderSkin.ValueBox);
             GUI.Label(new Rect(box.x, box.y - 2f, box.width, box.height - 4f),
-                count + " шт.", BuilderSkin.ValueText);
-            GUI.Label(new Rect(x, y + 36f, w, 14f), "1 / 2 / 3 / 4 / 6 / 8 по окружности",
+                petals ? FairingShell.PetalsLabel(count) : count + " шт.", BuilderSkin.ValueText);
+            GUI.Label(new Rect(x, y + 36f, w, 14f), petals ? "2 / 3 / 4 / 6 / 8 долек" : "1 / 2 / 3 / 4 / 6 / 8 по окружности",
                 BuilderSkin.TinyRight);
 
             y += 62f;
@@ -2529,6 +2548,7 @@ namespace Galilego.Building
                 case PartKind.FuelTank: return "Ёмкость · настраиваемая";
                 case PartKind.Capsule: return "Модуль экипажа · фиксированный";
                 case PartKind.RcsBlock: return "Блок РСУ · радиальный";
+                case PartKind.Fairing: return "Обтекатель · процедурный";
                 default: return "Разделение ступеней";
             }
         }
