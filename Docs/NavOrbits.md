@@ -45,6 +45,32 @@ identical, the frame offset is not inside the sampled path.
 reference ellipse, it must be a separate layer with its own legend row, off by default;
 it must never be the thing the `СЛЕД` dot turns on.
 
+## The body plate shows the live height — and nothing else
+
+Hovering a marker expands the body's plate in place. It used to show the body's radius:
+over Artemis the row read `R 412.000 КМ`. Three decimals are metre precision, but a dot
+in front of a whole number reads as a thousands separator — 412 000 km, the real Moon's
+distance from Terra — so the plate looked like it was quoting the Moon's altitude. And a
+radius is not a navigation datum: it answered a question nobody asks while aiming.
+
+The plate is now the name and one row:
+
+```
+АРТЕМИДА
+H 82 613 КМ
+```
+
+* `H` is the **live** height: `|ship − body| − radius`. For the body the craft is
+  actually over it is `ShipHeightAboveTerrain`, the terrain datum — the same number as
+  the map's own `H ... AGL`, so the plate cannot disagree with the footer.
+* **No radius.** It was removed on request ("там не должен отображаться радиус
+  планеты"): the plate is an aim readout, and a static body size only competed with the
+  one number that changes. The globe on the map is already to scale, so the size is
+  visible without a label.
+* `TabletFormat.Dist` still drops trailing fractional zeros (`412.000` → `412`,
+  `12.500` → `12.5`): the dot slip that started this is gone from every altitude and
+  distance on the tablet.
+
 ## How to check a change
 
 `Test572_NavMapBodyTrailsEveryFrame`:
@@ -69,3 +95,7 @@ File.WriteAllBytes(path, ImageConversion.EncodeToPNG(r.Texture));
 At `frame = Terra, center = Terra` the Moon must be a short arc near its marker
 (not a closed ellipse). At `frame = Sol` the same 14 h must be a heliocentric segment.
 The legend must read `ИСТОРИЯ 14:00:00` and the lines must change when the slider moves.
+
+The plate is checkable on the same texture: `renderer.Hover(pixelOf(artemisMarker), out text)`
+must return exactly two lines — the name and a row beginning with `H ` holding the craft's
+current distance to that surface. A `R ` row is a regression.

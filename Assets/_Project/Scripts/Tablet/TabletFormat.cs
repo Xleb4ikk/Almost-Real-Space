@@ -57,10 +57,37 @@ namespace Galilego.Tablet
 
             if (a < 1e6d)
             {
-                return Num(m / 1000d, 3) + " КМ";
+                // Three decimals give metre precision, but their trailing zeros print a
+                // dot in front of a whole number: "412.000 КМ" over a body plate reads as
+                // 412 000 km — the Moon's distance instead of its 412 km radius. A whole
+                // kilometre count needs no fraction, so drop the zeros (12.500 → 12.5).
+                return TrimTrailingZeros(Num(m / 1000d, 3)) + " КМ";
             }
 
             return Num(m / 1000d, 0) + " КМ";
+        }
+
+        /// <summary>Drops the fractional trailing zeros of a formatted number ("412.000" → "412").</summary>
+        private static string TrimTrailingZeros(string s)
+        {
+            int dot = s.IndexOf('.');
+            if (dot < 0)
+            {
+                return s;
+            }
+
+            int end = s.Length;
+            while (end > dot + 1 && s[end - 1] == '0')
+            {
+                end--;
+            }
+
+            if (end == dot + 1)
+            {
+                end = dot;
+            }
+
+            return s.Substring(0, end);
         }
 
         public static string Speed(double ms)

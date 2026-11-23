@@ -910,16 +910,19 @@ namespace Galilego.Tablet
                 }
 
                 string name = body.IsFrame ? "[" + body.Name + "]" : body.Name;
-                string radiusLine = "R " + TabletFormat.Dist(body.RadiusMeters);
+                string heightLine = BodyHeightLine(model, body);
                 float labelY = bodyRadius > 40f ? p.y - bodyRadius - 12f : p.y - 3f;
                 float labelX = p.x + (bodyRadius > 40f ? 0f : bodyRadius + 5f);
                 RectInt labelBox;
                 if (hoverKind == PickKind.Body && hoverIndex == i)
                 {
-                    // Same in-place plate as the apsis/ship markers: header plus the
-                    // data row, no separate floating window.
+                    // Same in-place plate as the apsis/ship markers: header plus one
+                    // data row, no separate floating window. The row is the LIVE height
+                    // — the only number a pilot aims with. The body's radius is not a
+                    // navigation datum and is deliberately absent: it read as a
+                    // kilometre altitude (see BodyHeightLine).
                     var pal = new MarkerPalette { Main = color, Light = color, Dark = TabletTheme.Bg };
-                    int tw = Mathf.Max(PixelCanvas.TextWidth(name), PixelCanvas.TextWidth(radiusLine)) + 14;
+                    int tw = Mathf.Max(PixelCanvas.TextWidth(name), PixelCanvas.TextWidth(heightLine)) + 14;
                     const int th = 12 + 3 + PlateRowHeight;
                     int tx = Mathf.RoundToInt(labelX) - 2;
                     int ty = Mathf.RoundToInt(labelY) - 1;
@@ -928,7 +931,7 @@ namespace Galilego.Tablet
                     DrawTagBox(tx, ty, tw, th, pal);
                     canvas.Text(tx + 7, ty + 2, name, pal.Main);
                     canvas.HLine(tx + 4, ty + 12, tw - 7, PixelCanvas.Mix(pal.Main, pal.Dark, 0.30f));
-                    canvas.Text(tx + 7, ty + 15, radiusLine, pal.Light);
+                    canvas.Text(tx + 7, ty + 15, heightLine, pal.Light);
                     labelBox = new RectInt(tx, ty, tw, th);
                 }
                 else
@@ -945,7 +948,7 @@ namespace Galilego.Tablet
                     Index = i,
                     Box = labelBox,
                     HasBox = true,
-                    Text = name + "\n" + radiusLine,
+                    Text = name + "\n" + heightLine,
                 });
             }
 
@@ -1126,6 +1129,38 @@ namespace Galilego.Tablet
                     });
                 }
             }
+        }
+
+        /// <summary>
+        /// Live height from the craft to the hovered body's surface — the only data row
+        /// of the body plate.
+        ///
+        /// The plate used to carry the body's radius instead: over Artemis it read
+        /// "R 412.000 КМ" (412 000 m), whose dot reads as a thousands separator — 412 000
+        /// km, the real Moon's distance from Terra, i.e. "the height is the Moon's".
+        /// A radius is not a navigation datum, so it is gone from the plate entirely.
+        /// </summary>
+        private static string BodyHeightLine(NavMapModel model, NavBodyMarker body)
+        {
+            if (model == null || !model.HasShip || body == null)
+            {
+                return "H " + TabletFormat.Dash;
+            }
+
+            double meters;
+            if (body.Body != null && ReferenceEquals(body.Body, model.DominantBody))
+            {
+                // The body the craft is over: the terrain datum, the same number as the
+                // map's own "H ... AGL".
+                meters = model.ShipHeightAboveTerrain;
+            }
+            else
+            {
+                Vector3d bodyPosition = body.Position + model.FramePosition;
+                meters = (model.ShipPosition - bodyPosition).Magnitude - body.RadiusMeters;
+            }
+
+            return "H " + TabletFormat.Dist(Math.Max(0d, meters));
         }
 
         /// <summary>
