@@ -8,13 +8,12 @@ namespace Galilego.Universe
     /// ROAD / ASPHALT PAD inside a SITE (SurfaceSite).
     ///
     /// Placed as a child of the site (local position 0, rotation 0). From a list of
-    /// points it builds a Mesh and seats each vertex on the terrain the same way as
-    /// SurfaceGrounded: TerrainNoise.SampleHeight along the point direction.
+    /// points it builds a Mesh in SITE AXES: the top is one plate at LiftMeters, it
+    /// does not follow the terrain noise (the sampler that could is only the
+    /// readiness gate now), so a "terrain pad" has to lie underneath it.
     ///
     /// Two shapes: Ribbon is a strip along the point line; Polygon is an arbitrary
-    /// closed contour filled entirely, meant for a FLAT pad (no interior vertices,
-    /// so it follows the terrain only at the corners). A "terrain pad" must lie
-    /// under it.
+    /// closed contour filled entirely, meant for a FLAT pad (no interior vertices).
     ///
     /// The texture is identical everywhere because UVs come from the site's metre
     /// coordinates: u = east / TileMeters, v = north / TileMeters, so any road
@@ -382,7 +381,11 @@ namespace Galilego.Universe
             }
         }
 
-        /// <summary>Points in world coordinates, already seated on the ground (for Scene view handles).</summary>
+        /// <summary>
+        /// Points of the plate in world coordinates (for the Scene view handles).
+        /// GroundSampler is only the readiness gate here: it is null until the site's
+        /// body resolves, and the plate height is LiftMeters either way.
+        /// </summary>
         public Vector3[] GetPointsWorld()
         {
             SurfaceSite site = GetComponentInParent<SurfaceSite>();
@@ -445,8 +448,9 @@ namespace Galilego.Universe
 
             terrainRevision = site.Terrain != null ? site.Terrain.ModsRevision : -1;
 
-            GroundSampler ground = GroundSampler.Create(site, MaxDropBelowSiteMeters);
-            if (ground == null)
+            // Gate: the site's body resolves a frame or two after the site enables.
+            // Until then there is nothing to build against.
+            if (GroundSampler.Create(site, MaxDropBelowSiteMeters) == null)
             {
                 built = false;
                 return false;
@@ -457,8 +461,8 @@ namespace Galilego.Universe
             var tris = new List<int>();
 
             bool ok = Shape == RoadShape.Polygon
-                ? BuildPolygon(site, ground, verts, uvs, tris)
-                : BuildRibbon(site, ground, verts, uvs, tris);
+                ? BuildPolygon(site, verts, uvs, tris)
+                : BuildRibbon(site, verts, uvs, tris);
 
             if (!ok || verts.Count < 3 || tris.Count < 3)
             {
@@ -501,7 +505,48 @@ namespace Galilego.Universe
             GetComponent<MeshFilter>().sharedMesh = null;
             EnsureGpuDrivenExcluded();
             GetComponent<MeshFilter>().sharedMesh = mesh;
-            UpdateCollider();
+
+            // A collider is only worth cooking when at least one triangle has area:
+            // PhysX logs "[Physics.PhysX] cleaning the mesh failed" (and the
+            // ">500 units" triangle warning) and leaves the collider empty otherwise,
+            // once per rebuild. An empty collider is the honest state; the render
+            // mesh still shows what was built.
+            if (HasUsableTriangle(verts, tris))
+            {
+                UpdateCollider();
+            }
+            else
+            {
+                RemoveCollider();
+            }
+        }
+
+        /// <summary>Whether the mesh has a triangle PhysX can cook: finite and non-degenerate.</summary>
+        private static bool HasUsableTriangle(List<Vector3> verts, List<int> tris)
+        {
+            for (int i = 0; i + 2 < tris.Count; i += 3)
+            {
+                Vector3 a = verts[tris[i]];
+                Vector3 b = verts[tris[i + 1]];
+                Vector3 c = verts[tris[i + 2]];
+                if (!IsFinite(a) || !IsFinite(b) || !IsFinite(c))
+                {
+                    continue;
+                }
+
+                if (Vector3.Cross(b - a, c - a).sqrMagnitude > 1e-12f)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsFinite(Vector3 v)
+        {
+            return !float.IsNaN(v.x) && !float.IsNaN(v.y) && !float.IsNaN(v.z)
+                && !float.IsInfinity(v.x) && !float.IsInfinity(v.y) && !float.IsInfinity(v.z);
         }
 
         private static readonly System.Type GpuDrivenExclusionType =
@@ -676,20 +721,47 @@ namespace Galilego.Universe
         /// </summary>
         private Vector3 ToSitePoint(SurfaceSite site, Vector3 point)
         {
-            Transform t = transform;
-            Vector3 pos = t.localPosition;
-            Vector3 scale = t.localScale;
-            bool identity = pos.sqrMagnitude < 1e-12f
-                && Quaternion.Angle(t.localRotation, Quaternion.identity) < 1e-4f
-                && Mathf.Abs(scale.x - 1f) < 1e-5f
-                && Mathf.Abs(scale.y - 1f) < 1e-5f
-                && Mathf.Abs(scale.z - 1f) < 1e-5f;
-            if (identity)
+            if (AlignedWithSite())
             {
                 return point;
             }
 
-            return site.transform.InverseTransformPoint(t.TransformPoint(point));
+            return site.transform.InverseTransformPoint(transform.TransformPoint(point));
+        }
+
+        /// <summary>
+        /// Vertex in ROAD-local axes for a point in site axes (x north, y zenith,
+        /// z east). By the same contract as ToSitePoint the road is a child of the
+        /// site at zero, so the point is already the local coordinate.
+        ///
+        /// Converting through world instead is not just redundant, it destroys the
+        /// plate: in Play the site stands at the floating-origin RENDER position,
+        /// which for a player far from the site is 10^9…10^11 m. Float32 there has a
+        /// 64…16000 m step, so a 40 m wide road collapses onto a handful of distinct
+        /// vertices — the triangles lose their area, PhysX cannot cook the collider
+        /// ("cleaning the mesh failed", "triangles … greater than 500 units") and the
+        /// road has no collision until the next rebuild.
+        /// </summary>
+        private Vector3 ToRoadLocal(SurfaceSite site, Vector3 sitePoint)
+        {
+            if (AlignedWithSite())
+            {
+                return sitePoint;
+            }
+
+            return transform.InverseTransformPoint(site.transform.TransformPoint(sitePoint));
+        }
+
+        /// <summary>Whether the road's transform equals the site's (the authoring contract).</summary>
+        private bool AlignedWithSite()
+        {
+            Transform t = transform;
+            Vector3 scale = t.localScale;
+            return t.localPosition.sqrMagnitude < 1e-12f
+                && Quaternion.Angle(t.localRotation, Quaternion.identity) < 1e-4f
+                && Mathf.Abs(scale.x - 1f) < 1e-5f
+                && Mathf.Abs(scale.y - 1f) < 1e-5f
+                && Mathf.Abs(scale.z - 1f) < 1e-5f;
         }
 
         /// <summary>Control points as (north, east) in site axes, without near-duplicates in a row.</summary>
@@ -717,12 +789,10 @@ namespace Galilego.Universe
         }
 
         private void AddVertex(
-            SurfaceSite site, GroundSampler ground, float north, float east,
+            SurfaceSite site, float north, float east,
             List<Vector3> verts, List<Vector2> uvs)
         {
-            float y = LiftMeters;
-            Vector3 world = site.transform.TransformPoint(new Vector3(north, y, east));
-            verts.Add(transform.InverseTransformPoint(world));
+            verts.Add(ToRoadLocal(site, new Vector3(north, LiftMeters, east)));
 
             float tile = Mathf.Max(0.1f, TileMeters);
             uvs.Add(new Vector2(east / tile, north / tile));
@@ -746,7 +816,7 @@ namespace Galilego.Universe
         // ---------- Ribbon ----------
 
         private bool BuildRibbon(
-            SurfaceSite site, GroundSampler ground,
+            SurfaceSite site,
             List<Vector3> verts, List<Vector2> uvs, List<int> tris)
         {
             List<Vector2> control = ControlPoints2D(site);
@@ -790,7 +860,7 @@ namespace Galilego.Universe
                     float t = j / (float)(columns - 1);
                     float offset = Mathf.Lerp(-half, half, t);
                     Vector2 p = path[i] + (sideNormals[i] * offset);
-                    AddVertex(site, ground, p.x, p.y, verts, uvs);
+                    AddVertex(site, p.x, p.y, verts, uvs);
                 }
             }
 
@@ -813,7 +883,7 @@ namespace Galilego.Universe
                 {
                     Vector2 leftOut = (-(sideNormals[i] + sideNormals[i + 1])).normalized;
                     AddWallQuad(
-                        site, ground, verts, uvs, tris,
+                        site, verts, uvs, tris,
                         path[i] - (sideNormals[i] * half),
                         path[i + 1] - (sideNormals[i + 1] * half),
                         leftOut,
@@ -821,15 +891,15 @@ namespace Galilego.Universe
 
                     Vector2 rightOut = (sideNormals[i] + sideNormals[i + 1]).normalized;
                     AddWallQuad(
-                        site, ground, verts, uvs, tris,
+                        site, verts, uvs, tris,
                         path[i] + (sideNormals[i] * half),
                         path[i + 1] + (sideNormals[i + 1] * half),
                         rightOut,
                         true);
                 }
 
-                AddRibbonCap(site, ground, verts, uvs, tris, path[0], sideNormals[0], half, -directions[0]);
-                AddRibbonCap(site, ground, verts, uvs, tris, path[count - 1], sideNormals[count - 1], half, directions[count - 1]);
+                AddRibbonCap(site, verts, uvs, tris, path[0], sideNormals[0], half, -directions[0]);
+                AddRibbonCap(site, verts, uvs, tris, path[count - 1], sideNormals[count - 1], half, directions[count - 1]);
             }
 
             return true;
@@ -837,7 +907,7 @@ namespace Galilego.Universe
 
         /// <summary>Ribbon cap: a wall across the full width, facing outward along the path.</summary>
         private void AddRibbonCap(
-            SurfaceSite site, GroundSampler ground,
+            SurfaceSite site,
             List<Vector3> verts, List<Vector2> uvs, List<int> tris,
             Vector2 center, Vector2 side, float half, Vector2 outward)
         {
@@ -847,7 +917,7 @@ namespace Galilego.Universe
                 float t0 = j / (float)(columns - 1);
                 float t1 = (j + 1) / (float)(columns - 1);
                 AddWallQuad(
-                    site, ground, verts, uvs, tris,
+                    site, verts, uvs, tris,
                     center + (side * Mathf.Lerp(-half, half, t0)),
                     center + (side * Mathf.Lerp(-half, half, t1)),
                     outward,
@@ -892,7 +962,7 @@ namespace Galilego.Universe
         // ---------- Polygon ----------
 
         private bool BuildPolygon(
-            SurfaceSite site, GroundSampler ground,
+            SurfaceSite site,
             List<Vector3> verts, List<Vector2> uvs, List<int> tris)
         {
             List<Vector2> contour = ControlPoints2D(site);
@@ -915,7 +985,7 @@ namespace Galilego.Universe
 
             for (int i = 0; i < contour.Count; i++)
             {
-                AddVertex(site, ground, contour[i].x, contour[i].y, verts, uvs);
+                AddVertex(site, contour[i].x, contour[i].y, verts, uvs);
             }
 
             // Ear triangulation gives counter-clockwise winding in the (north, east)
@@ -942,7 +1012,7 @@ namespace Galilego.Universe
                     Vector2 outward = area >= 0f
                         ? new Vector2(d.y, -d.x).normalized
                         : new Vector2(-d.y, d.x).normalized;
-                    AddWallQuad(site, ground, verts, uvs, tris, a, b, outward, true);
+                    AddWallQuad(site, verts, uvs, tris, a, b, outward, true);
                 }
             }
 
@@ -970,7 +1040,7 @@ namespace Galilego.Universe
         /// plane; the vertex order depends on it.
         /// </summary>
         private void AddWallQuad(
-            SurfaceSite site, GroundSampler ground,
+            SurfaceSite site,
             List<Vector3> verts, List<Vector2> uvs, List<int> tris,
             Vector2 a, Vector2 b, Vector2 outward2, bool bevel)
         {
@@ -1026,8 +1096,7 @@ namespace Galilego.Universe
             SurfaceSite site, List<Vector3> verts, List<Vector2> uvs,
             float north, float y, float east, float u, float v)
         {
-            Vector3 world = site.transform.TransformPoint(new Vector3(north, y, east));
-            verts.Add(transform.InverseTransformPoint(world));
+            verts.Add(ToRoadLocal(site, new Vector3(north, y, east)));
             uvs.Add(new Vector2(u, v));
         }
 
@@ -1270,9 +1339,13 @@ namespace Galilego.Universe
         // ---------- Ground height ----------
 
         /// <summary>
-        /// Ground height at a site point (north, east) in site local axes. The formula
-        /// is the same as in SurfaceGrounded.Apply, so the road and the buildings sit
-        /// on the same ground.
+        /// Ground height at a site point (north, east) in site local axes, with the
+        /// formula of SurfaceGrounded.Apply.
+        ///
+        /// LocalHeight is not called by the build: the mesh is a flat plate at
+        /// LiftMeters. The live use is Create(), which returns null until the site's
+        /// body resolves — that is the gate that keeps a rebuild from running in the
+        /// frame or two when the site is enabled but the body is not there yet.
         /// </summary>
         private sealed class GroundSampler
         {
