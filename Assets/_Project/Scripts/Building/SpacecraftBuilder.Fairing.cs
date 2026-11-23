@@ -72,7 +72,6 @@ namespace Galilego.Building
         // HUD
         private string fairingHudTitle;
         private string fairingHudValues;
-        private string fairingHudHint;
         private bool fairingHudValid = true;
         private GUIStyle fairingHudStyle;
 
@@ -193,7 +192,6 @@ namespace Galilego.Building
         private void UpdateFairingPlacement()
         {
             fairingContinueTarget = -1;
-            fairingHudHint = null;
             Camera camera = Camera.main;
             if (camera == null)
             {
@@ -213,9 +211,6 @@ namespace Galilego.Building
                 fairingContinueTarget = aimed;
                 ghostVisible = true;
                 ghostValid = true;
-                fairingHudHint = parts[aimed].Fairing != null && parts[aimed].Fairing.IsClosed
-                    ? "ПКМ — изменить · Alt+ПКМ — убрать секцию"
-                    : "ПКМ — продолжить · Alt+ПКМ — убрать секцию";
                 return;
             }
 
@@ -274,7 +269,6 @@ namespace Galilego.Building
             ghost.Root.transform.localPosition = pivot;
             ghost.Root.transform.localRotation = Quaternion.identity;
             ghost.SetMaterial(valid ? ghostMaterial : invalidMaterial);
-            fairingHudHint = null;
         }
 
         /// <summary>Nearest fairing under the centre ray (plate or shell), -1 if none. Finished fairings included.</summary>
@@ -487,7 +481,6 @@ namespace Galilego.Building
 
             fairingBuild = null;
             HideFairingSectionGhost();
-            fairingHudHint = null;
         }
 
         /// <summary>Called when a physics launch is requested while a shell is still being built.</summary>
@@ -732,7 +725,7 @@ namespace Galilego.Building
                 HideFairingSectionGhost();
                 ghostVisible = false;
                 ghostValid = false;
-                SetFairingHud(part, null, false, "Наведите на место рядом с ракетой");
+                SetFairingHud(part, null, false);
                 return;
             }
 
@@ -754,25 +747,7 @@ namespace Galilego.Building
             ghostVisible = true;
             ghostValid = st.Valid;
 
-            string hint;
-            if (!st.Valid)
-            {
-                hint = st.Reason;
-            }
-            else if (st.CandidateEnd == FairingEnd.Docked)
-            {
-                hint = "ПКМ — замкнуть на детали · Alt+ПКМ — убрать секцию";
-            }
-            else if (st.CandidateEnd == FairingEnd.Apex)
-            {
-                hint = "ПКМ — носовой конус · Alt+ПКМ — убрать секцию";
-            }
-            else
-            {
-                hint = "ПКМ — секция · Alt+ПКМ — убрать · F — завершить";
-            }
-
-            SetFairingHud(part, st, st.Valid, hint);
+            SetFairingHud(part, st, st.Valid);
         }
 
         /// <summary>Read the aim into a candidate ring (with the snaps). false — the aim is not on the plane.</summary>
@@ -1041,10 +1016,9 @@ namespace Galilego.Building
             }
         }
 
-        private void SetFairingHud(PlacedPart part, FairingBuildState st, bool valid, string hint)
+        private void SetFairingHud(PlacedPart part, FairingBuildState st, bool valid)
         {
             fairingHudValid = valid;
-            fairingHudHint = hint;
             FairingShell shell = part.Fairing;
             fairingHudTitle = "ОБТЕКАТЕЛЬ · " + FairingShell.PetalsLabel(shell.Petals);
             if (st != null && st.HasCandidate)
@@ -1080,7 +1054,7 @@ namespace Galilego.Building
             float scale = Mathf.Max(0.5f, Screen.height / 1080f);
             fairingHudStyle.fontSize = Mathf.RoundToInt(17f * scale);
             float w = 470f * scale;
-            float h = 112f * scale;
+            float h = 92f * scale;
             var box = new Rect((Screen.width * 0.5f) + (70f * scale), (Screen.height * 0.5f) + (30f * scale), w, h);
             Color previous = GUI.color;
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
@@ -1091,10 +1065,6 @@ namespace Galilego.Building
             GUI.color = Color.white;
             GUI.Label(new Rect(box.x + (12f * scale), box.y + (34f * scale), w - (24f * scale), 50f * scale),
                 fairingHudValues, fairingHudStyle);
-            fairingHudStyle.fontSize = Mathf.RoundToInt(13f * scale);
-            GUI.color = new Color(0.85f, 0.87f, 0.9f, 1f);
-            GUI.Label(new Rect(box.x + (12f * scale), box.y + (84f * scale), w - (24f * scale), 22f * scale),
-                fairingHudHint ?? string.Empty, fairingHudStyle);
             GUI.color = previous;
         }
 
