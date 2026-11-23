@@ -395,7 +395,7 @@ namespace Galilego.Universe
             {
                 MoonCandidate candidate = EvaluateCandidate(
                     Moon, bodyPosition, body.Radius, observerPosition, altitude,
-                    timeSeconds, starPosition, root);
+                    timeSeconds, starPosition);
                 if (candidate.Score > best.Score)
                 {
                     best = candidate;
@@ -413,7 +413,7 @@ namespace Galilego.Universe
 
                     MoonCandidate candidate = EvaluateCandidate(
                         child, bodyPosition, body.Radius, observerPosition, altitude,
-                        timeSeconds, starPosition, root);
+                        timeSeconds, starPosition);
                     if (candidate.Score > best.Score)
                     {
                         best = candidate;
@@ -611,8 +611,7 @@ namespace Galilego.Universe
             Vector3d observerPosition,
             double altitude,
             double timeSeconds,
-            Vector3d starPosition,
-            OrbitingBody root)
+            Vector3d starPosition)
         {
             MoonCandidate candidate = default;
             candidate.Body = moon;
@@ -629,17 +628,12 @@ namespace Galilego.Universe
             candidate.Distance = distance;
             candidate.PhaseAngle = MoonlightPhysics.PhaseAngleRad(moonPosition, starPosition, observerPosition);
 
-            if (moon.Parent != null && !ReferenceEquals(moon.Parent, root))
-            {
-                // The parent planet's shadow on the moon: a lunar eclipse.
-                moon.Parent.EvaluateWorldState(timeSeconds, out Vector3d occluderPosition, out _);
-                candidate.Eclipse = MoonlightPhysics.LunarEclipseVisibility(
-                    moonPosition, occluderPosition, moon.Parent.Radius, starPosition, root.Radius);
-            }
-            else
-            {
-                candidate.Eclipse = 1d;
-            }
+            // The moon can be shadowed by its parent, by a sister moon, or by any
+            // other body of the system: use the one shadow rule, not a parent-only
+            // special case. Editor preview has no StarSystem, so walk the tree.
+            candidate.Eclipse = Runner != null && Runner.SystemState != null
+                ? Runner.SystemState.StarVisibilityForBody(moon, timeSeconds, out _)
+                : StarOcclusion.VisibilityForBody(moon, timeSeconds, out _);
 
             candidate.Ratio = MoonlightPhysics.IrradianceRatioToSun(
                 GeometricAlbedo, moon.Radius, distance, candidate.PhaseAngle, candidate.Eclipse);

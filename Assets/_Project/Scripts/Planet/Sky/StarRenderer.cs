@@ -326,7 +326,7 @@ namespace Galilego.Universe
             double distanceAu = DistanceKm / StarPhysics.AuKm;
             double fluxRatio = IrradianceWm2 / StarPhysics.Esun1Au;
             double etaRatio = state.VisibleEtaRatioToSun;
-            EclipseVisibility = ComputeEclipseVisibility(observer, direction, distanceMeters, alpha, Runner.TimeSeconds);
+            EclipseVisibility = ComputeEclipseVisibility(observer, Runner.TimeSeconds);
 
             double pixelAngle = StarPhysics.PixelAngleRad(camera.fieldOfView * DegToRad, camera.pixelHeight);
             if (!(pixelAngle > 0d))
@@ -877,47 +877,18 @@ namespace Galilego.Universe
         // Eclipse geometry
         // ------------------------------------------------------------------
 
-        private double ComputeEclipseVisibility(
-            Vector3d observer,
-            Vector3d starDirection,
-            double starDistanceMeters,
-            double starAngularRadius,
-            double timeSeconds)
+        private double ComputeEclipseVisibility(Vector3d observer, double timeSeconds)
         {
-            double visible = 1d;
             if (Runner.SystemState == null)
             {
                 return 1d;
             }
 
-            foreach (OrbitingBody body in Runner.SystemState.AllBodies)
-            {
-                if (body == null || ReferenceEquals(body, star) || !(body.Radius > 0d))
-                {
-                    continue;
-                }
-
-                body.EvaluateWorldState(timeSeconds, out Vector3d bodyPosition, out _);
-                Vector3d toBody = bodyPosition - observer;
-                double bodyDistance = toBody.Magnitude;
-                if (!(bodyDistance > 1d) || bodyDistance >= starDistanceMeters)
-                {
-                    continue;
-                }
-
-                double occluderRadius = Math.Asin(StarPhysics.Clamp(body.Radius / bodyDistance, 0d, 1d));
-                double separation = Math.Acos(StarPhysics.Clamp(
-                    Vector3d.Dot(starDirection, toBody / bodyDistance), -1d, 1d));
-                visible *= StarPhysics.EclipseVisibleFraction(
-                    starAngularRadius, occluderRadius, separation);
-
-                if (visible <= 1e-6d)
-                {
-                    return 0d;
-                }
-            }
-
-            return StarPhysics.Clamp(visible, 0d, 1d);
+            // One geometry for the sun disc, the directional light, the sky and
+            // every body's far disc. The camera body is NOT ignored here: its own
+            // limb really does cut the setting sun, and the atmospheric/horizon
+            // smoothstep is applied later in ApplyLight.
+            return Runner.SystemState.StarVisibilityAt(observer, timeSeconds, out _);
         }
 
         // ------------------------------------------------------------------

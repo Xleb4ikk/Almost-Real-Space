@@ -413,15 +413,25 @@ namespace Galilego.Universe
             star.EvaluateWorldState(Runner.TimeSeconds, out Vector3d starPos, out _);
             Vector3 sunDirection = AstroFrame.ToSimulation((starPos - bodyPos).Normalized);
 
-            // Lunar eclipse: the parent planet hides the Sun from this body. The disc
-            // must dim with the same geometry MoonlightSystem uses, or a total eclipse
-            // would show a full bright moon over a pitch-black ground.
-            double eclipse = 1d;
-            if (body.Parent != null && !ReferenceEquals(body.Parent, star))
+            // Any body can hide the Sun from this one: Terra from Artemis, a moon
+            // from its planet, a second moon from the first. The geometry is shared
+            // with the star disc, the sky and MoonlightSystem, so the disc cannot
+            // show a full moon over a black ground (or the reverse) at the same time.
+            OrbitingBody eclipseOccluder = null;
+            double eclipse = Runner.SystemState != null
+                ? Runner.SystemState.StarVisibilityForBody(body, Runner.TimeSeconds, out eclipseOccluder)
+                : StarOcclusion.VisibilityForBody(body, Runner.TimeSeconds, out eclipseOccluder);
+
+            // The copper "blood moon" tint is refraction through the occluder's
+            // atmosphere, not a generic shadow. An airless occluder leaves a neutral
+            // dim disc; a small occluder that only clips the Sun does too.
+            bool copperEclipse = false;
+            if (eclipseOccluder != null && eclipseOccluder.Atmosphere != null)
             {
-                body.Parent.EvaluateWorldState(Runner.TimeSeconds, out Vector3d parentPos, out _);
-                eclipse = MoonlightPhysics.LunarEclipseVisibility(
-                    bodyPos, parentPos, body.Parent.Radius, starPos, star.Radius);
+                eclipseOccluder.EvaluateWorldState(Runner.TimeSeconds, out Vector3d occluderPos, out _);
+                double separation = (occluderPos - bodyPos).Magnitude;
+                copperEclipse = separation > 0d
+                    && EclipseGeometry.CoversBody(body.Radius, eclipseOccluder.Radius, separation);
             }
 
             Runner.SystemState.GetVisualFrame(body, Runner.TimeSeconds, out _, out _, out QuaternionD orientation);
@@ -453,6 +463,7 @@ namespace Galilego.Universe
             material.SetFloat("_BFD_LimbDarkening", LimbDarkening);
             material.SetFloat("_BFD_Ambient", Ambient);
             material.SetFloat("_BFD_Eclipse", (float)eclipse);
+            material.SetFloat("_BFD_EclipseRed", copperEclipse ? 1f : 0f);
             material.SetTexture("_BFD_Map", SurfaceMap);
             material.SetFloat("_BFD_MapStrength", SurfaceMap != null ? SurfaceMapStrength : 0f);
             material.SetTexture("_BFD_NormalMap", NormalMap);

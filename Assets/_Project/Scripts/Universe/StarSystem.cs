@@ -730,6 +730,128 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Fraction of the star's disc visible from <paramref name="observerPosition"/>
+        /// at <paramref name="timeSeconds"/>, after every body of the system has been
+        /// tested. This is the one shadow rule used by the star disc, the sky/terrain
+        /// light, the far discs and the moon light — so a planet's shadow falls on its
+        /// moon, a moon's shadow on its planet, and a future body's shadow on any other
+        /// body without a special case.
+        ///
+        /// <paramref name="ignoreBody"/> is the body the observer stands on: its
+        /// horizon is modelled separately by the smooth <c>SkyPhysics.SunOcclusion</c>,
+        /// and counting the body's own sphere here as well would double the sunset.
+        /// <paramref name="dominantOccluder"/> is the body that hides the largest
+        /// share of the disc (null if the star is clear).
+        /// </summary>
+        public double StarVisibilityAt(
+            Vector3d observerPosition,
+            double timeSeconds,
+            out OrbitingBody dominantOccluder,
+            OrbitingBody ignoreBody = null)
+        {
+            dominantOccluder = null;
+            if (!(root.Radius > 0d) || allBodies.Count < 2)
+            {
+                return 1d;
+            }
+
+            EnsureCachedPositions(timeSeconds);
+
+            Vector3d starPosition = cachedPositions[0];
+            Vector3d toStar = starPosition - observerPosition;
+            double starDistance = toStar.Magnitude;
+            if (!(starDistance > 0d))
+            {
+                return 1d;
+            }
+
+            double starAngularRadius = EclipseGeometry.AngularRadius(root.Radius, starDistance);
+            double visible = 1d;
+            double strongest = 0d;
+
+            for (int i = 1; i < allBodies.Count; i++)
+            {
+                OrbitingBody body = allBodies[i];
+                if (body == null || ReferenceEquals(body, ignoreBody) || !(body.Radius > 0d))
+                {
+                    continue;
+                }
+
+                Vector3d toBody = cachedPositions[i] - observerPosition;
+                double bodyDistance = toBody.Magnitude;
+                if (!(bodyDistance > 1d) || bodyDistance >= starDistance)
+                {
+                    continue;
+                }
+
+                double occluderAngularRadius = EclipseGeometry.AngularRadius(body.Radius, bodyDistance);
+                double separation = Math.Acos(StarPhysics.Clamp(
+                    Vector3d.Dot(toStar, toBody) / (starDistance * bodyDistance), -1d, 1d));
+                double fraction = StarPhysics.EclipseVisibleFraction(
+                    starAngularRadius, occluderAngularRadius, separation);
+                if (fraction >= 1d)
+                {
+                    continue;
+                }
+
+                double hidden = 1d - fraction;
+                if (hidden > strongest)
+                {
+                    strongest = hidden;
+                    dominantOccluder = body;
+                }
+
+                visible *= fraction;
+                if (visible <= 1e-9d)
+                {
+                    return 0d;
+                }
+            }
+
+            return StarPhysics.Clamp(visible, 0d, 1d);
+        }
+
+        /// <summary>
+        /// Fraction of the star's disc visible from the centre of a body (the body
+        /// itself is excluded). Used by the far discs, gas giants and the moon light,
+        /// where the body is an extended object and the centre is the cheapest
+        /// representative point for the whole disc.
+        /// </summary>
+        public double StarVisibilityForBody(
+            OrbitingBody body,
+            double timeSeconds,
+            out OrbitingBody dominantOccluder)
+        {
+            if (body == null)
+            {
+                dominantOccluder = null;
+                return 1d;
+            }
+
+            body.EvaluateWorldState(timeSeconds, out Vector3d position, out _);
+            double visible = StarVisibilityAt(position, timeSeconds, out dominantOccluder, body);
+            if (visible >= 1d || dominantOccluder == null)
+            {
+                return visible;
+            }
+
+            // The centre is a proxy for the whole body only when the occluder can
+            // cover it. A small moon transiting a planet dims a spot, not the disc;
+            // treating the centre factor as the planet's brightness made Terra dim
+            // by 16 % from the Moon during a solar eclipse.
+            dominantOccluder.EvaluateWorldState(timeSeconds, out Vector3d occluderPosition, out _);
+            double distance = (occluderPosition - position).Magnitude;
+            if (!(distance > 0d))
+            {
+                return visible;
+            }
+
+            return EclipseGeometry.CoversBody(body.Radius, dominantOccluder.Radius, distance)
+                ? visible
+                : 1d;
+        }
+
+        /// <summary>
         /// Ready visual frame of a body at time t: position (EvaluateWorldState —
         /// rail/ephemeris), velocity and body-to-world orientation (GetVisualOrientation).
         /// The render layer converts it to a Unity transform via AstroFrame and does not

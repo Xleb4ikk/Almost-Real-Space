@@ -149,22 +149,9 @@ namespace Galilego.Core
             Vector3d starPosition,
             double starRadiusMeters)
         {
-            Vector3d toStar = starPosition - moonPosition;
-            Vector3d toOccluder = occluderPosition - moonPosition;
-            double starDistance = toStar.Magnitude;
-            double occluderDistance = toOccluder.Magnitude;
-            if (!(starDistance > 0d) || !(occluderDistance > 0d)
-                || !(starRadiusMeters > 0d) || !(occluderRadiusMeters > 0d))
-            {
-                return 1d;
-            }
-
-            double starAngularRadius = Math.Asin(Clamp(starRadiusMeters / starDistance, 0d, 1d));
-            double occluderAngularRadius = Math.Asin(Clamp(occluderRadiusMeters / occluderDistance, 0d, 1d));
-            double separation = Math.Acos(Clamp(
-                Vector3d.Dot(toStar, toOccluder) / (starDistance * occluderDistance), -1d, 1d));
-
-            return StarPhysics.EclipseVisibleFraction(starAngularRadius, occluderAngularRadius, separation);
+            return EclipseGeometry.VisibleFraction(
+                moonPosition, starPosition, starRadiusMeters,
+                occluderPosition, occluderRadiusMeters);
         }
 
         private static double Clamp(double value, double min, double max)

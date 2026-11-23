@@ -100,11 +100,17 @@ The Moon's `HDAdditionalLightData.angularDiameter` is set from its real angular 
 
 ## Lunar eclipse
 
-`LunarEclipseVisibility` clips the Sun's disc against the parent planet's disc as seen
-from the Moon. A total eclipse sets the ground light to zero, and
-`BodyFarDiscView` passes the same factor to `BodyFarDisc.shader`, which dims the
-visible Moon to a copper disc (`_BFD_Eclipse`, floor 0.002) instead of showing a full
-bright moon over a black ground.
+`MoonlightPhysics.LunarEclipseVisibility` is now a thin wrapper over the shared
+`EclipseGeometry` / `StarSystem` rule ([Eclipses.md](Eclipses.md)), so any body — not
+just the parent — can shadow the Moon. `MoonlightSystem` uses
+`StarVisibilityForBody`, and `BodyFarDiscView` passes the same factor to
+`BodyFarDisc.shader`, which dims the visible Moon to a copper disc (`_BFD_Eclipse`,
+floor 0.002) instead of showing a full bright moon over a black ground.
+
+With the authored rails the deepest lunar eclipse in a two-year scan is `f = 0.326`
+at `t = 363.486 d` (the Earth's umbra at 90 000 km has a radius of only ~9 km, so the
+Moon's centre never reaches totality). The copper tint is enabled only when the occluder has
+an atmosphere and is at least as large as the Moon (`_BFD_EclipseRed`).
 
 ## Scene wiring
 

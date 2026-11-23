@@ -26,6 +26,7 @@ Shader "Galilego/BodyFarDisc"
         [HideInInspector] _BFD_Ambient("Ambient", Float) = 0
         [HideInInspector] _BFD_Opacity("Opacity", Float) = 1
         [HideInInspector] _BFD_Eclipse("Eclipse Visibility", Float) = 1
+        [HideInInspector] _BFD_EclipseRed("Eclipse Atmospheric Refraction", Float) = 1
         // These three MUST be declared here, not only in HLSL below. A material can
         // only carry the properties the shader declares: Material.SetVector/SetFloat
         // on an undeclared uniform is silently dropped, the shader reads 0, and the
@@ -108,6 +109,7 @@ Shader "Galilego/BodyFarDisc"
             float _BFD_Ambient;
             float _BFD_Opacity;
             float _BFD_Eclipse;
+            float _BFD_EclipseRed;
             // The star's photosphere (luminance 1) and the scene's albedo·ndl → radiance
             // factor. Both come from BodyFarDiscView, so the disc is lit by the star and
             // shares the terrain's scale even when no atmosphere is drawn.
@@ -198,7 +200,13 @@ Shader "Galilego/BodyFarDisc"
                 // visible; the geometric flux is far smaller.
                 float eclipse = saturate(_BFD_Eclipse);
                 float eclipseGain = 0.002 + (0.998 * eclipse);
-                float3 eclipseTint = lerp(float3(0.62, 0.16, 0.07), float3(1.0, 1.0, 1.0), eclipse);
+                // Refraction through the occluder's air is the copper "blood moon"
+                // colour. An airless occluder (or a small one that only clips the
+                // disc) leaves a neutral shadow: no atmosphere, no red ring.
+                float3 eclipseTint = lerp(
+                    lerp(float3(1.0, 1.0, 1.0), float3(0.62, 0.16, 0.07), saturate(_BFD_EclipseRed)),
+                    float3(1.0, 1.0, 1.0),
+                    eclipse);
 
                 // Surface radiance in SCENE units: the same "sunlit albedo·ndl"
                 // scale the terrain and the decor use, so the disc has the same

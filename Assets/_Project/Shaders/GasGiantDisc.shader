@@ -13,6 +13,7 @@ Shader "Galilego/GasGiantDisc"
         _GG_IntensityScale("Intensity Scale", Float) = 1
         [HideInInspector] _GG_SunDirWS("Sun Direction", Vector) = (1, 1, 0, 0)
         [HideInInspector] _GG_SunColor("Sun Color", Color) = (1, 1, 1, 1)
+        [HideInInspector] _GG_Eclipse("Eclipse Visibility", Float) = 1
         [HideInInspector] _GG_CameraPosWS("Camera Position", Vector) = (0, 0, 0, 0)
         [HideInInspector] _GG_BodyCenterWS("Body Center", Vector) = (0, 0, 0, 0)
         [HideInInspector] _GG_PlanetRadius("Planet Radius", Float) = 60303800

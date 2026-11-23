@@ -90,8 +90,11 @@ exactly the sun's size, still 0.106 R_H) or a bigger body.
 
 The same body is a light source: `MoonlightSystem` turns its reflected sunlight into
 a dynamic directional light with the real phase law, the observer's position on Terra
-and the Moon's own atmospheric extinction. A total lunar eclipse dims both the light
-and the far disc. See [Moonlight.md](Moonlight.md).
+and the Moon's own atmospheric extinction. An eclipse dims both the light and the far
+disc through the shared `EclipseGeometry`/`StarSystem` rule; the deepest one in the
+current rails is `f = 0.326` at `t = 363.486 d`, because the Earth's umbra at 90 000 km
+has a radius of only ~9 km and the Moon's centre never reaches totality. See
+[Moonlight.md](Moonlight.md) and [Eclipses.md](Eclipses.md).
 
 ### The size floor (`MinScreenRadiusPixels`)
 

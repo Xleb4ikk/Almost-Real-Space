@@ -139,6 +139,13 @@ namespace Galilego.Universe
         /// <summary>Solar occlusion by the body (0/1, smoothed).</summary>
         public float SunOcclusion { get; private set; }
 
+        /// <summary>
+        /// Fraction of the star's disc visible from the eye after every other body
+        /// has cast its shadow (0 = total eclipse, 1 = clear). The camera body
+        /// itself is excluded: its own limb is the smooth <see cref="SunOcclusion"/>.
+        /// </summary>
+        public float EclipseVisibility { get; private set; } = 1f;
+
         /// <summary>Star visibility, 0..1.</summary>
         public float StarVisibility { get; private set; } = 1f;
 
@@ -275,6 +282,27 @@ namespace Galilego.Universe
         }
 
         /// <summary>
+        /// Star visibility at the eye, ignoring the body under the eye (its horizon
+        /// is <see cref="SunOcclusion"/>). In Play the system's cached positions are
+        /// used; the editor preview walks the body tree.
+        /// </summary>
+        private double ResolveEclipseVisibility(
+            OrbitingBody body, OrbitingBody root, Vector3d observer, double timeSeconds)
+        {
+            if (body == null)
+            {
+                return 1d;
+            }
+
+            if (Application.isPlaying && Runner != null && Runner.SystemState != null)
+            {
+                return Runner.SystemState.StarVisibilityAt(observer, timeSeconds, out _, body);
+            }
+
+            return StarOcclusion.VisibilityAt(root, observer, timeSeconds, body, out _);
+        }
+
+        /// <summary>
         /// Outside Play only this method sets the globals. ApplyGlobalsNow is
         /// heavy (atmosphere integral), so it is not called every frame: only on
         /// a body or observer change and at most once per 0.5 s.
@@ -360,6 +388,13 @@ namespace Galilego.Universe
             double starDistance = toStar.Magnitude;
             Vector3d sunDir = starDistance > 0d ? toStar / starDistance : up;
 
+            // A body can stand between the eye and the star: the Moon from Terra,
+            // Terra from Artemis, a planet from its moon. This factor multiplies the
+            // DIRECT sun term of the terrain/decor/water shaders and the sky ambient,
+            // so an eclipse is not just a dark disc over a fully lit landscape.
+            double eclipse = ResolveEclipseVisibility(body, root, observerPosition, timeSeconds);
+            EclipseVisibility = (float)eclipse;
+
             double sinEl = Vector3d.Dot(sunDir, up);
 
             // Single source of β: the same coefficients as the GPU dome
@@ -393,8 +428,8 @@ namespace Galilego.Universe
             double occlusion = body.Parent == null
                 ? 1d
                 : SkyPhysics.SunOcclusion(sinEl, altitude, body.Radius);
-            double day = SkyPhysics.DayFactor(sinEl);
-            double skyLuminance = SkyPhysics.SkyLuminance(sinEl, density);
+            double day = SkyPhysics.DayFactor(sinEl) * eclipse;
+            double skyLuminance = SkyPhysics.SkyLuminance(sinEl, density) * eclipse;
             double starVisibility = SkyPhysics.StarVisibility(skyLuminance, StarVisibilityK);
 
             Transmittance = new Vector3((float)transmittance.X, (float)transmittance.Y, (float)transmittance.Z);
@@ -421,7 +456,7 @@ namespace Galilego.Universe
             Vector3d photosphere = Star != null && Star.IsReady
                 ? Star.LightColorLinear
                 : PhotosphereLinear / PhotosphereLuminance;
-            Vector3d sunLight = AtmosphereOptics.VecMul(photosphere, transmittance);
+            Vector3d sunLight = AtmosphereOptics.VecMul(photosphere, transmittance) * eclipse;
             Shader.SetGlobalVector("_SunLightColor",
                 new Vector3((float)sunLight.X, (float)sunLight.Y, (float)sunLight.Z));
 
@@ -478,7 +513,8 @@ namespace Galilego.Universe
             if (atmosphere != null && topAltitude > 0d && altitude < topAltitude)
             {
                 ambientRadiance = AtmosphereOptics.SkyAmbientRadiance(
-                    coeff, body.Radius, body.Radius + topAltitude, body.Radius + altitude, sinEl);
+                    coeff, body.Radius, body.Radius + topAltitude, body.Radius + altitude, sinEl)
+                    * eclipse;
                 double ambientLuminance = Luminance(ambientRadiance);
                 double referenceLuminance = AmbientReferenceLuminance(coeff, body.Radius, topAltitude);
                 if (ambientLuminance > 0d && referenceLuminance > 1e-12d)
@@ -615,9 +651,9 @@ namespace Galilego.Universe
             {
                 nextDiagTime = timeSeconds + 2d;
                 Debug.Log(string.Format(
-                    "[SkyEnvironment][SUNSET] el={0:F1}° T=({1:F3},{2:F3},{3:F3}) ambient={4:F3} day={5:F2} occ={6:F2} star={7:F2} ev={8:F2}",
+                    "[SkyEnvironment][SUNSET] el={0:F1}° T=({1:F3},{2:F3},{3:F3}) ambient={4:F3} day={5:F2} occ={6:F2} ecl={7:F2} star={8:F2} ev={9:F2}",
                     SunElevationDeg, Transmittance.x, Transmittance.y, Transmittance.z,
-                    AmbientAmount, DayFactor, SunOcclusion, StarVisibility, ExposureCompensation));
+                    AmbientAmount, DayFactor, SunOcclusion, EclipseVisibility, StarVisibility, ExposureCompensation));
             }
 
             // Eye adaptation: exposure compensation from physical illumination.

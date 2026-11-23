@@ -246,16 +246,17 @@ namespace Galilego.Universe
             // the dome really renders, so a stale dome never veils anything.
             Shader.SetGlobalFloat("_AtmActive", 0f);
 
-            // The star's photosphere, luminance 1, published even when no dome is drawn:
-            // a body lit by the star (the Moon's far disc in space) needs the star's
-            // colour, not the observer's sky.
+            // The star's photosphere, luminance 1. It is published even when no dome
+            // is drawn: a body lit by the star (the Moon's far disc in space) needs
+            // the star's colour, not the observer's sky. The eclipse factor is applied
+            // below, once we know whether this dome is the camera body's own sky.
             Vector3d starLinear = SkyEnvironment.PhotosphereLinear;
-            Shader.SetGlobalVector("_AtmSunColor",
-                new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z));
 
             if (Runner == null || Runner.SystemState == null || Runner.SystemState.Root == null
                 || body == null || profile == null || shell == null)
             {
+                Shader.SetGlobalVector("_AtmSunColor",
+                    new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z));
                 return;
             }
 
@@ -297,6 +298,32 @@ namespace Galilego.Universe
                     UnderwaterEffect.CameraIsUnderwater,
                     Runner.PlayerCarried, Runner.PlayerSeated, Runner.PlayerMode));
             }
+
+            // The dome is lit by the star. During a solar eclipse the eye's air is
+            // in the Moon's shadow, so the in-scatter — not just the sun disc — has
+            // to dim. A foreign body's dome uses that body's own shadow (Terra's
+            // atmosphere from the Moon must not inherit the Moon's night), while an
+            // inactive view publishes the observer's factor for the far-disc veil.
+            double observerEclipse = 1d;
+            if (visibilityCamera != null)
+            {
+                Vector3d observer = FloatingOrigin.Anchor
+                    + AstroFrame.ToAstro(visibilityCamera.transform.position);
+                observerEclipse = Runner.SystemState.StarVisibilityAt(
+                    observer, Runner.TimeSeconds, out _, body);
+            }
+
+            double atmosphereEclipse = observerEclipse;
+            if (active && !cameraOverBody)
+            {
+                atmosphereEclipse = Runner.SystemState.StarVisibilityForBody(
+                    body, Runner.TimeSeconds, out _);
+            }
+
+            Shader.SetGlobalVector("_AtmSunColor", new Vector3(
+                (float)(starLinear.X * atmosphereEclipse),
+                (float)(starLinear.Y * atmosphereEclipse),
+                (float)(starLinear.Z * atmosphereEclipse)));
 
             if (!active)
             {

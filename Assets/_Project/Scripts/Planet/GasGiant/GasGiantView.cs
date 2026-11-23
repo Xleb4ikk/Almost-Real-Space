@@ -458,6 +458,12 @@ namespace Galilego.Universe
             Vector3 simDirection = AstroFrame.ToSimulation(toBody / distance);
             Vector3 sunDirection = AstroFrame.ToSimulation((starPos - bodyPos).Normalized);
 
+            // A moon (or another planet) can hide the star from the giant: the same
+            // disc-overlap geometry as the star renderer and the far discs.
+            double eclipse = Runner.SystemState != null
+                ? Runner.SystemState.StarVisibilityForBody(body, Runner.TimeSeconds, out _)
+                : 1d;
+
             float far = Mathf.Max(1f, camera.farClipPlane);
             // The switch is about the NEAR SURFACE, not the centre: at 1.1 R
             // the centre is 60 000 km away but the cloud tops are only 5 500 km
@@ -489,6 +495,7 @@ namespace Galilego.Universe
                 {
                     surfaceMaterial.SetVector("_GG_SunDirWS", ToVec(sunDirection));
                     surfaceMaterial.SetVector("_GG_SunColor", SunColor());
+                    surfaceMaterial.SetFloat("_GG_Eclipse", (float)eclipse);
                     surfaceMaterial.SetVector("_GG_CameraPosWS", camera.transform.position);
                     surfaceMaterial.SetVector("_GG_BodyCenterWS", FloatingOrigin.ToRender(bodyPos));
                     surfaceMaterial.SetFloat("_GG_PlanetRadius", (float)body.Radius);
@@ -541,6 +548,7 @@ namespace Galilego.Universe
             discMaterial.SetFloat("_GG_DiscDistance", discDistance);
             discMaterial.SetVector("_GG_SunDirWS", ToVec(sunDirection));
             discMaterial.SetVector("_GG_SunColor", SunColor());
+            discMaterial.SetFloat("_GG_Eclipse", (float)eclipse);
             discMaterial.SetVector("_GG_CameraPosWS", cameraPosition);
             discMaterial.SetVector("_GG_BodyCenterWS", FloatingOrigin.ToRender(bodyPos));
             discMaterial.SetFloat("_GG_PlanetRadius", (float)body.Radius);

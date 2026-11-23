@@ -10,6 +10,7 @@ Shader "Galilego/GasGiantSurface"
         [HideInInspector] _GG_MapBump("Map Bump", Float) = 0
         _GG_SunDirWS("Sun Direction", Vector) = (1, 1, 0, 0)
         _GG_SunColor("Sun Color", Color) = (1, 1, 1, 1)
+        [HideInInspector] _GG_Eclipse("Eclipse Visibility", Float) = 1
         _GG_HazeColor("Haze Color", Color) = (0.62, 0.69, 0.78, 1)
         _GG_RimColor("Rim Color", Color) = (0.62, 0.69, 0.78, 1)
         _GG_PlanetRadius("Planet Radius", Float) = 60303800

@@ -51,6 +51,32 @@ moon/sun ratio is black under a day exposure. HDRP has **one** cascade atlas: th
 owns it by day, the Moon by night (`_MoonShadowActive` selects the bias direction).
 Full write-up: **[`Docs/Moonlight.md`](Docs/Moonlight.md)**.
 
+## Eclipses — one shadow rule for every body
+
+Solar (Moon in front of Sol from Terra), lunar (Artemis in Terra's penumbra) and a
+planet's shadow on a ship are all the same geometry:
+`StarSystem.StarVisibilityAt` / `StarVisibilityForBody`, built on
+`EclipseGeometry` + `StarPhysics.EclipseVisibleFraction`. Never add a parent-only
+eclipse again: every body in the system is an occluder, including a future planet or
+moon.
+
+The observer factor (`StarVisibilityAt`) multiplies the sun disc/light
+(`StarRenderer`), `_SunLightColor`, `DayFactor`, sky luminance and ambient
+(`SkyEnvironment`), atmosphere in-scatter (`PlanetAtmosphereView`), the far disc
+(`_BFD_Eclipse`) and the gas giant (`_GG_Eclipse`). Moonlight uses the same
+`StarVisibilityForBody`.
+
+`StarVisibilityForBody` applies the centre factor only when
+`EclipseGeometry.CoversBody` is true (the occluder can cover the body). Without that
+check a small moon transit dimmed Terra's whole far disc by 15 %. The copper lunar
+tint is likewise only for an atmospheric, larger occluder (`_BFD_EclipseRed`).
+
+With the authored scale the eclipses are partial: at `t = 88.743 d` Terra sees
+`f = 0.846` (Artemis is 0.36 of the Sun's angular size), at `t = 363.486 d` Artemis
+sees `f = 0.326` (the Earth's umbra at 90 000 km has a radius of only ~9 km). A total solar
+eclipse needs the Moon at ~32 100 km, not a shader threshold. Full write-up:
+**[`Docs/Eclipses.md`](Docs/Eclipses.md)**.
+
 ## Planets between planets — the SOI is not a visibility boundary
 
 A planet is drawn by its own chunks whenever the **camera** can rasterise it: it is the

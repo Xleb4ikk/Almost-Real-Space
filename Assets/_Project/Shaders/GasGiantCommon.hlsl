@@ -32,6 +32,7 @@ float _GG_MapBump;
 
 float3 _GG_SunDirWS;
 float4 _GG_SunColor;
+float _GG_Eclipse;
 float3 _GG_CameraPosWS;
 float3 _GG_BodyCenterWS;
 float _GG_PlanetRadius;
@@ -427,17 +428,18 @@ float3 ShadeGasGiant(float3 pBody, float3 normalWS, float3 viewWS)
         return float3(1.0, 0.0, 1.0);
     }
 
-    float3 color = albedo * _GG_SunColor.rgb * diffuse * limb;
-    color += albedo * 0.04;
+    float eclipse = saturate(_GG_Eclipse);
+    float3 color = albedo * _GG_SunColor.rgb * diffuse * limb * eclipse;
+    color += albedo * 0.04 * eclipse;
 
     // A thin blue-grey scattering rim on the illuminated limb. It fades out
     // on the night side, so it reads as atmosphere, not an outline.
     float fresnel = pow(1.0 - mu, 8.0);
-    color += _GG_RimColor.rgb * fresnel * _GG_RimIntensity * saturate(ndl * 2.5);
+    color += _GG_RimColor.rgb * fresnel * _GG_RimIntensity * saturate(ndl * 2.5) * eclipse;
 
     // Warm the terminator slightly, as a thin high haze does on Jupiter.
     float terminator = pow(saturate(1.0 - abs(ndl)), 6.0);
-    color += _GG_HazeColor.rgb * terminator * 0.02;
+    color += _GG_HazeColor.rgb * terminator * 0.02 * eclipse;
 
     return color * _GG_IntensityScale;
 }
