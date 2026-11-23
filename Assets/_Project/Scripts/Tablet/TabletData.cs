@@ -91,9 +91,9 @@ namespace Galilego.Tablet
         // ── Attitude (navball) ───────────────────────────────────────────
         /// <summary>
         /// Navball orientation: navball axes (X right, Y up, Z nose) → the selected
-        /// body's local horizon chart (X = up × north, Y = up, Z = north). The chart
-        /// is right-handed; X points west on a prograde body, and navball +Z is the
-        /// crew capsule's nose (local +Y of the parts).
+        /// body's local horizon chart (X = north × up = east, Y = up, Z = north).
+        /// The chart is the pilot's frame, so +X is the screen right on the ball;
+        /// navball +Z is the crew capsule's nose (local +Y of the parts).
         /// </summary>
         public Quaternion Attitude = Quaternion.identity;
         public bool MarkersValid;

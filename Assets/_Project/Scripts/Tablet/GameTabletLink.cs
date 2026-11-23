@@ -290,9 +290,11 @@ namespace Galilego.Tablet
             double radius = r.Magnitude;
             Vector3d up = radius > 1e-6d ? r / radius : new Vector3d(0d, 0d, 1d);
 
-            // Local horizon basis of the selected body. The chart is right-handed:
-            // right = up × north (points west), up, north. This is what the navball
-            // projection needs; a heading is read toward −X, see NavballRenderer.Euler.
+            // Local horizon basis of the selected body. The chart is the pilot's
+            // frame: right = north × up (EAST on a prograde body), up, north.
+            // Navball +X is the screen right, so with east here the ball is not
+            // mirrored: facing north puts west on the left, as it should.
+            // See NavballRenderer.Euler for the heading.
             HorizonBasis(body, up, out Vector3d chartRight, out Vector3d north);
 
             // Speed in the selected reference frame: surface — minus body
@@ -585,11 +587,11 @@ namespace Galilego.Tablet
             }
 
             north = north.Normalized;
-            // Right-handed chart frame (chartRight, up, north): the navball renders
-            // with X to the screen right, so this axis must be up × north, i.e. WEST
-            // on a prograde body. With true east the triple would be left-handed and
-            // the quaternion projection would mirror the ball.
-            chartRight = Vector3d.Cross(up, north).Normalized;
+            // Horizon chart frame (chartRight, up, north) = (east, up, north). The
+            // navball renders +X to the screen right, so chartRight must be the
+            // pilot's RIGHT (east) for the ball to match the world; up × north is
+            // west and would mirror the whole instrument.
+            chartRight = Vector3d.Cross(north, up).Normalized;
         }
 
         /// <summary>Astro-frame vector into the tablet horizon chart frame (right, up, north).</summary>

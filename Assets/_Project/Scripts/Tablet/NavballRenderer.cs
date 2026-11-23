@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Galilego.Tablet
 {
     /// <summary>
-    /// Pixel-drawn navball: sky/ground grid, horizon, cardinal directions
+    /// Pixel-drawn navball: sky/ground grid, horizon, compass and pitch numbers,
     /// and six velocity markers. The sphere is seen "from the nose": the center is
     /// where the ship points. Markers behind the sphere (rear hemisphere) are pale but
     /// still clickable — clicking a marker points the ship at it (SasMode).
@@ -13,6 +13,36 @@ namespace Galilego.Tablet
         public const int Radius = 54;
         private const int GridStepDeg = 15;
         private const int HitRadius = 7;
+
+        // Numbers printed on the ball. A label is fixed to a (heading, elevation)
+        // pair and therefore turns with the graticule, like a real instrument ball.
+        private const int CompassStepDeg = 30;
+        private const int CompassTickStepDeg = 10;
+        private const float CompassLabelElevationDeg = 6.5f;
+        private const float LabelMinDepth = 0.45f;
+        private static readonly int[] PitchMeridiansDeg = { 0, 90, 180, 270 };
+        private static readonly int[] PitchLabelsDeg = { -60, -45, -30, -15, 15, 30, 45, 60 };
+        private static readonly string[] PitchLabelNames = { "60", "45", "30", "15", "15", "30", "45", "60" };
+        private static readonly string[] CompassNames =
+        {
+            "000", "030", "060", "090", "120", "150", "180", "210", "240", "270", "300", "330",
+        };
+
+        // 3×5 digits for the ball. The tablet's 5×7 font is too heavy on a
+        // 108-pixel sphere; the small engraved digits read as instrument print.
+        private static readonly string[][] BallDigits =
+        {
+            new[] { "###", "#.#", "#.#", "#.#", "###" },
+            new[] { "..#", ".##", "..#", "..#", "###" },
+            new[] { "###", "..#", "###", "#..", "###" },
+            new[] { "###", "..#", "###", "..#", "###" },
+            new[] { "#.#", "#.#", "###", "..#", "..#" },
+            new[] { "###", "#..", "###", "..#", "###" },
+            new[] { "###", "#..", "###", "#.#", "###" },
+            new[] { "###", "..#", "..#", "..#", "..#" },
+            new[] { "###", "#.#", "###", "#.#", "###" },
+            new[] { "###", "#.#", "###", "..#", "###" },
+        };
 
         private static readonly string[][] Icons =
         {
@@ -47,6 +77,11 @@ namespace Galilego.Tablet
         private readonly float[] depth = new float[Size * Size];
         private readonly byte[] flags = new byte[Size * Size]; // 1 — inside the sphere, 2 — sky
         private readonly float[] elevDeg = new float[Size * Size];
+
+        // Last drawn label positions (dedupe around the pole; at most 12 + 32).
+        private readonly int[] labelX = new int[48];
+        private readonly int[] labelY = new int[48];
+        private int labelCount;
 
         /// <summary>Marker index under point (px, py) or -1. A front marker beats a rear one.</summary>
         public int HitTest(int px, int py)
@@ -87,8 +122,8 @@ namespace Galilego.Tablet
             Vector3 u = q * Vector3.up;
             pitch = Mathf.Asin(Mathf.Clamp(f.y, -1f, 1f)) * Mathf.Rad2Deg;
 
-            // The chart's X axis is up × north (west on a prograde body), so the
-            // compass heading runs toward −X. With the nose near vertical the
+            // The chart frame is (east, up, north), so the compass heading runs
+            // toward +X: 0 = north, 90 = east. With the nose near vertical the
             // heading is undefined; the ball's up axis (the craft roll reference)
             // gives a stable reading instead of amplifying float noise.
             Vector3 flat = new Vector3(f.x, 0f, f.z);
@@ -98,7 +133,7 @@ namespace Galilego.Tablet
             }
 
             heading = flat.sqrMagnitude > 1e-8f
-                ? Mathf.Atan2(-flat.x, flat.z) * Mathf.Rad2Deg
+                ? Mathf.Atan2(flat.x, flat.z) * Mathf.Rad2Deg
                 : 0f;
             if (heading < 0f)
             {
@@ -206,7 +241,8 @@ namespace Galilego.Tablet
             }
 
             DrawRim(c, cx, cy);
-            DrawCardinals(c, cx, cy, q);
+            DrawCompass(c, cx, cy, q);
+            DrawPitchLabels(c, cx, cy, q);
             DrawMarkers(c, cx, cy, t, hoverMarker, activeMarker);
             DrawBoresight(c, cx, cy);
         }
@@ -264,29 +300,170 @@ namespace Galilego.Tablet
             }
         }
 
-        private static readonly Vector3[] CardinalDirs =
+        /// <summary>
+        /// Unit direction in the horizon chart for a compass heading and an
+        /// elevation, degrees. 0 = north (+Z), 90 = east (+X), +90 = zenith (+Y).
+        /// </summary>
+        private static Vector3 ChartDirection(float headingDeg, float elevationDeg)
         {
-            new Vector3(0f, 0f, 1f), new Vector3(1f, 0f, 0f), new Vector3(0f, 0f, -1f), new Vector3(-1f, 0f, 0f),
-        };
+            float h = headingDeg * Mathf.Deg2Rad;
+            float e = elevationDeg * Mathf.Deg2Rad;
+            float ce = Mathf.Cos(e);
+            return new Vector3(Mathf.Sin(h) * ce, Mathf.Sin(e), Mathf.Cos(h) * ce);
+        }
 
-        // Chart +X is up × north (west), so the labels are mirrored relative to east.
-        private static readonly string[] CardinalNames = { "\u0421", "\u0417", "\u042E", "\u0412" };
-
-        private static void DrawCardinals(PixelCanvas c, int cx, int cy, Quaternion q)
+        /// <summary>
+        /// Compass numbers every 30° along the horizon, on the sky side. Minor
+        /// 10° ticks make the horizon read as a compass rose; the bearing is
+        /// constant along a meridian, so the value is right away from the line.
+        /// </summary>
+        private void DrawCompass(PixelCanvas c, int cx, int cy, Quaternion q)
         {
             Quaternion inv = Quaternion.Inverse(q);
-            for (int i = 0; i < 4; i++)
+            labelCount = 0;
+            DrawHorizonTicks(c, cx, cy, inv);
+            for (int heading = 0; heading < 360; heading += CompassStepDeg)
             {
-                Vector3 s = inv * CardinalDirs[i];
-                if (s.z < 0.35f)
+                Vector3 s = inv * ChartDirection(heading, CompassLabelElevationDeg);
+                TryLabel(c, cx, cy, s, CompassNames[heading / CompassStepDeg], false, TabletTheme.Bright);
+            }
+        }
+
+        /// <summary>Short degree ticks crossing the horizon every 10°.</summary>
+        private static void DrawHorizonTicks(PixelCanvas c, int cx, int cy, Quaternion inv)
+        {
+            for (int heading = 0; heading < 360; heading += CompassTickStepDeg)
+            {
+                float reach = (heading % CompassStepDeg) == 0 ? 2.2f : 1.1f;
+                Vector3 a = inv * ChartDirection(heading, reach);
+                Vector3 b = inv * ChartDirection(heading, -reach);
+                if (a.z < 0.25f || b.z < 0.25f)
                 {
                     continue;
                 }
 
-                int x = cx + Mathf.RoundToInt(s.x * Radius);
-                int y = cy - Mathf.RoundToInt(s.y * Radius);
-                c.Fill(x - 4, y - 5, 9, 11, TabletTheme.Sky[0]);
-                c.TextCenter(x, y - 3, CardinalNames[i], TabletTheme.Bright);
+                int x0 = cx + Mathf.RoundToInt(a.x * Radius);
+                int y0 = cy - Mathf.RoundToInt(a.y * Radius);
+                int x1 = cx + Mathf.RoundToInt(b.x * Radius);
+                int y1 = cy - Mathf.RoundToInt(b.y * Radius);
+                if (OutsideDisc(x0, y0, cx, cy) || OutsideDisc(x1, y1, cx, cy))
+                {
+                    continue;
+                }
+
+                c.Line(x0, y0, x1, y1,
+                    (heading % CompassStepDeg) == 0 ? TabletTheme.LineHi : TabletTheme.Line);
+            }
+        }
+
+        private static bool OutsideDisc(int x, int y, int cx, int cy)
+        {
+            int dx = x - cx;
+            int dy = y - cy;
+            int r = Radius - 1;
+            return (dx * dx) + (dy * dy) > r * r;
+        }
+
+        /// <summary>
+        /// Pitch ladder numbers every 15° on four meridians. The number is the
+        /// elevation of that ring, so the ring labelled 30 crosses the centre
+        /// exactly when the pitch readout says +30°. Unsigned: the horizon already
+        /// shows which side of the ball the ring is on.
+        /// </summary>
+        private void DrawPitchLabels(PixelCanvas c, int cx, int cy, Quaternion q)
+        {
+            Quaternion inv = Quaternion.Inverse(q);
+            for (int m = 0; m < PitchMeridiansDeg.Length; m++)
+            {
+                for (int k = 0; k < PitchLabelsDeg.Length; k++)
+                {
+                    int elev = PitchLabelsDeg[k];
+                    Vector3 s = inv * ChartDirection(PitchMeridiansDeg[m], elev);
+                    TryLabel(c, cx, cy, s, PitchLabelNames[k], true, TabletTheme.Main);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Draws one upright label at the projected point. Rejects rear-hemisphere
+        /// points, labels that would spill over the limb, the one under the
+        /// crosshair and duplicates (the meridians converge at the pole).
+        /// </summary>
+        private bool TryLabel(PixelCanvas c, int cx, int cy, Vector3 s, string text, bool avoidCenter, Color32 ink)
+        {
+            if (s.z < LabelMinDepth)
+            {
+                return false;
+            }
+
+            int w = BallTextWidth(text);
+            int x = cx + Mathf.RoundToInt(s.x * Radius);
+            int y = cy - Mathf.RoundToInt(s.y * Radius);
+            if (Mathf.Abs(x - cx) + (w / 2) + 2 > Radius - 2
+                || Mathf.Abs(y - cy) + 4 > Radius - 2)
+            {
+                return false;
+            }
+
+            if (avoidCenter && Mathf.Abs(x - cx) <= 12 && Mathf.Abs(y - cy) <= 8)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < labelCount; i++)
+            {
+                if (Mathf.Abs(x - labelX[i]) < 11 && Mathf.Abs(y - labelY[i]) < 7)
+                {
+                    return false;
+                }
+            }
+
+            if (labelCount >= labelX.Length)
+            {
+                return false;
+            }
+
+            labelX[labelCount] = x;
+            labelY[labelCount] = y;
+            labelCount++;
+            DrawBallText(c, x - (w / 2), y - 2, text, ink, TabletTheme.Bg);
+            return true;
+        }
+
+        private static int BallTextWidth(string s)
+        {
+            return (s.Length * 4) - 1;
+        }
+
+        /// <summary>3×5 digits with a one-pixel drop shadow (engraved instrument print).</summary>
+        private static void DrawBallText(PixelCanvas c, int x, int y, string s, Color32 ink, Color32 shadow)
+        {
+            for (int pass = 0; pass < 2; pass++)
+            {
+                Color32 col = pass == 0 ? shadow : ink;
+                int ox = x + (pass == 0 ? 1 : 0);
+                int oy = y + (pass == 0 ? 1 : 0);
+                for (int i = 0; i < s.Length; i++)
+                {
+                    int digit = s[i] - '0';
+                    if (digit < 0 || digit > 9)
+                    {
+                        continue;
+                    }
+
+                    string[] glyph = BallDigits[digit];
+                    for (int r = 0; r < 5; r++)
+                    {
+                        string row = glyph[r];
+                        for (int k = 0; k < 3; k++)
+                        {
+                            if (row[k] == '#')
+                            {
+                                c.Px(ox + (i * 4) + k, oy + r, col);
+                            }
+                        }
+                    }
+                }
             }
         }
 
