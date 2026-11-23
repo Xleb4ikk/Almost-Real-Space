@@ -317,8 +317,12 @@ namespace Galilego.Universe.EditorTools
             string horizonBPath = Folder + "/" + safe + "_macro_horizon1.png";
             WritePng(albedoPath, result.Albedo);
             WritePng(normalPath, result.Normal);
-            WritePng(horizonAPath, result.HorizonA);
-            WritePng(horizonBPath, result.HorizonB);
+            // The horizon maps pack EIGHT azimuth bins into two RGBA PNGs: the fourth
+            // bin of each lives in the ALPHA channel. Their importer must keep it —
+            // with `alphaSource = None` the GPU reads alpha as 1.0, which decodes to
+            // a +90° horizon for bins 3 and 7 and shadows half the daylight disc.
+            WritePng(horizonAPath, result.HorizonA, keepAlpha: true);
+            WritePng(horizonBPath, result.HorizonB, keepAlpha: true);
 
             Texture2D albedoTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(albedoPath);
             Texture2D normalTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
@@ -551,7 +555,7 @@ namespace Galilego.Universe.EditorTools
             return Mathf.Clamp(factor, AlbedoRangeMin, AlbedoRangeMax);
         }
 
-        private static void WritePng(string path, Color32[] pixels)
+        private static void WritePng(string path, Color32[] pixels, bool keepAlpha = false)
         {
             var texture = new Texture2D(Width, Height, TextureFormat.RGBA32, false);
             try
@@ -574,7 +578,9 @@ namespace Galilego.Universe.EditorTools
 
             importer.textureType = TextureImporterType.Default;
             importer.sRGBTexture = false;
-            importer.alphaSource = TextureImporterAlphaSource.None;
+            importer.alphaSource = keepAlpha
+                ? TextureImporterAlphaSource.FromInput
+                : TextureImporterAlphaSource.None;
             importer.mipmapEnabled = true;
             importer.filterMode = FilterMode.Trilinear;
             importer.anisoLevel = 4;

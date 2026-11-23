@@ -68,7 +68,16 @@ texels (~70 km on Artemis).
   different seeds cannot both be represented — the first body owns the bake and the
   second gets one warning (give it its own profile).
 * Stored as two RGBA PNGs, `_macro_horizon0/1` (azimuths 0–3 and 4–7), one 8-bit
-  channel per azimuth.
+  channel per azimuth. **The fourth bin of each map lives in the PNG's ALPHA
+  channel**, so those two images must be imported with `alphaSource = FromInput`
+  (`alphaUsage: 1` in the `.meta`). `WritePng` used to force
+  `TextureImporterAlphaSource.None` for all four bakes: the GPU then read alpha as
+  `1.0`, `DecodeHorizonAngle(1) = +90°`, and every pixel whose sun azimuth fell in
+  bin 3 or 7 was horizon-shadowed. On screen this was **two dark quadrants with a
+  straight edge through the sunlit disc** (half the azimuths), which reads exactly
+  like a broken terminator. If the horizon ever darkens half the day side again,
+  check `Shader.GetGlobalTexture("_TerrainMacroHorizonMapA")`'s alpha first: it
+  must be the baked angles, not 255.
 * **Encoding is nonlinear**: `u = sign(a)·√(|a|/90°)`, decoded as `a = sign(u)·u²·90`.
   A plain linear 0–255 byte over ±90° would quantise the horizon in 0.7° steps —
   the whole terminator — while this gives **0.0014°** at 0° and only degrades near
