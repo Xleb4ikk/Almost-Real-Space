@@ -51,6 +51,20 @@ moon/sun ratio is black under a day exposure. HDRP has **one** cascade atlas: th
 owns it by day, the Moon by night (`_MoonShadowActive` selects the bias direction).
 Full write-up: **[`Docs/Moonlight.md`](Docs/Moonlight.md)**.
 
+## Planets between planets — the SOI is not a visibility boundary
+
+A planet is drawn by its own chunks whenever the **camera** can rasterise it: it is the
+camera body, or it is inside the far plane and in front of the eye (`BodyVisibility`).
+Never hide a surface because `CameraBody != body` — that made Terra pop out at its SOI
+(165 500 km) while still 0.8° across. The far disc (`BodyFarDiscView`) is a **fallback**
+for the far-plane cut, not a replacement for a visible mesh (`OnlyWhenMeshMissing`); the
+gas giant's disc/mesh switch is by angular size (`MeshHandoverPixels`), not by
+`far·0.95` — during a transfer `far` is the Sun's horizon and the destination would be a
+0.3 px mesh for the whole flight. The proxy is created automatically for every body by
+`BodyView.EnsureFarProxy` (heightfield → far disc with a terrain-derived albedo, gas giant
+→ `GasGiantView`); authored components win. Full write-up and the measured numbers:
+**[`Docs/Interplanetary.md`](Docs/Interplanetary.md)**.
+
 ## Debugging rendering at altitude
 
 * Freeze the frame first: `SimulationRunner.Paused = true` (the ship moves at km/s).

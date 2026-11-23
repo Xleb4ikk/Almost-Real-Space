@@ -95,6 +95,23 @@ namespace Galilego.Universe
         [Tooltip("Взять альбедо из BodyAuthoring.TerrainPreset (палитра Snow).")]
         public bool UseTerrainPalette = true;
 
+        [Tooltip("Рисовать диск ТОЛЬКО когда настоящая сфера не рисуется (тело за дальней " +
+            "плоскостью камеры или позади неё). Для планеты с рельефом это правильный режим: " +
+            "видимый меш всегда лучше плоского квада, а диск — запасное представление на " +
+            "случай, когда чанки обрезаны far-плоскостью. У Артемиды выключено: там диск " +
+            "сознательно держится до 4R ради стабильной яркости и карты.")]
+        public bool OnlyWhenMeshMissing;
+
+        [Tooltip("Испечь цветовую карту альбедо из собственного рельефа тела " +
+            "(HeightfieldTerrain + палитра), если SurfaceMap не назначена. Один раз, на " +
+            "фоновом потоке, только когда диск впервые понадобился. Без неё диск Земли — " +
+            "серый шар: у атмосферной планеты нет готовой macro-карты, как у Луны.")]
+        public bool BakeTerrainAlbedo;
+
+        [Tooltip("SurfaceMap — ЦВЕТНАЯ карта альбедо (RGB, sRGB), а не скалярная карта " +
+            "яркости лунного грунта (R×2). Включается автоматически для испечённой карты.")]
+        public bool SurfaceMapIsColor;
+
         [Tooltip("Карта альбедо в телесных координатах (maria/нагорья). Без неё диск — ровный шар.")]
         public Texture2D SurfaceMap;
 
@@ -122,6 +139,10 @@ namespace Galilego.Universe
         private Transform disc;
         private Material material;
         private PlanetSurfaceRenderer surface;
+        private HeightfieldTerrain terrain;
+        private System.Threading.Tasks.Task<Color32[]> albedoTask;
+        private bool albedoFailed;
+        private Texture2D bakedAlbedo;
         private static readonly int TerrainRadianceScaleId = Shader.PropertyToID("_TerrainRadianceScale");
         private static readonly int SkySunDirId = Shader.PropertyToID("_SkySunDir");
         private static readonly int SkyUpId = Shader.PropertyToID("_SkyUp");
@@ -135,6 +156,11 @@ namespace Galilego.Universe
 
         private void Start()
         {
+            if (Runner == null)
+            {
+                Runner = FindAnyObjectByType<SimulationRunner>();
+            }
+
             if (Runner == null || Runner.SystemState == null)
             {
                 enabled = false;
@@ -158,6 +184,11 @@ namespace Galilego.Universe
             }
 
             star = Runner.SystemState.Root;
+
+            // A heightfield body can bake its own colour map: the far disc then shows the
+            // same ocean/land/ice the terrain does instead of a flat grey ball. The bake
+            // itself is lazy (first frame the disc is actually needed).
+            terrain = body.Terrain as HeightfieldTerrain;
 
             if (Star == null)
             {
@@ -221,6 +252,12 @@ namespace Galilego.Universe
             {
                 Destroy(material);
             }
+
+            if (bakedAlbedo != null)
+            {
+                Destroy(bakedAlbedo);
+                bakedAlbedo = null;
+            }
         }
 
         private void LateUpdate()
@@ -271,9 +308,19 @@ namespace Galilego.Universe
             //    would watch the sphere assemble out of a hole. ViewCoverage lets us hold
             //    it until the surface renderer has the view.
             float surfaceRendererCoverage = 1f;
+            bool meshDrawn = false;
             if (surface != null && surface.isActiveAndEnabled)
             {
                 surfaceRendererCoverage = surface.ViewCoverage;
+                meshDrawn = surface.SurfaceVisible;
+            }
+
+            // The lazy colour map is only worth baking when the disc is the body's ONLY
+            // representation. On the ground the real chunks are drawn and the bake would
+            // cost a startup hitch for a texture the player never sees.
+            if (!meshDrawn && BakeTerrainAlbedo && SurfaceMap == null && !albedoFailed)
+            {
+                EnsureTerrainAlbedo();
             }
 
             float handoverMeters = (float)(body.Radius * System.Math.Max(1f, HandoverRadii));
@@ -286,6 +333,29 @@ namespace Galilego.Universe
                 // terrain is what the player has to see. Never resurrect the disc here,
                 // even if chunks are still missing.
                 opacity = 0f;
+            }
+            else if (!meshDrawn)
+            {
+                // No real geometry can be rasterised (the body is behind the camera or
+                // beyond its far plane): the disc IS the body, at its true angular size and
+                // phase. Keep the hold primed, so the first frame the mesh comes back waits
+                // for coverage instead of flashing a hole.
+                hold = 1f;
+                opacity = 1f;
+            }
+            else if (OnlyWhenMeshMissing)
+            {
+                // The real sphere is drawn: it is at the true position with the real
+                // shader, so it wins at any distance. But it arrives ASYNCHRONOUSLY (a
+                // first view is many chunks): hold the disc until the mesh covers the
+                // view, then fade it out. Turning it off the frame the mesh appears
+                // would show the planet as a hole for the first seconds of the approach.
+                bool coverReady = surfaceRendererCoverage >= HandoverCoverage;
+                float holdTarget = coverReady ? 0f : 1f;
+                hold = holdTarget > hold
+                    ? holdTarget
+                    : Mathf.MoveTowards(hold, holdTarget, Time.deltaTime * 1.5f);
+                opacity = hold;
             }
             else
             {
@@ -308,13 +378,12 @@ namespace Galilego.Universe
             // slices it (far*0.28 lands inside a body at low altitude). The 0.55 cap also
             // keeps the billboard in front when `far` is the horizon of ANOTHER body.
             float discDistance = Mathf.Min(far * FarFraction, (float)(nearSurface * 0.55d));
+            LastOpacity = opacity;
             if (opacity <= 0.002f || discDistance < 1f)
             {
                 SetActive(false);
                 return;
             }
-
-            LastOpacity = opacity;
 
             Vector3 simDirection = AstroFrame.ToSimulation(toBody / distance);
             Vector3 cameraPosition = camera.transform.position;
@@ -358,7 +427,11 @@ namespace Galilego.Universe
             Runner.SystemState.GetVisualFrame(body, Runner.TimeSeconds, out _, out _, out QuaternionD orientation);
             Quaternion bodyRotation = AstroFrame.ToSimulation(orientation);
 
-            material.SetColor("_BFD_Albedo", Albedo);
+            // A colour albedo map already carries the surface colour: the material albedo
+            // is a fallback before the (lazy) map lands, so it must not tint the map.
+            bool colorMap = SurfaceMap != null && SurfaceMapIsColor;
+            material.SetColor("_BFD_Albedo", colorMap ? Color.white : Albedo);
+            material.SetFloat("_BFD_MapColor", colorMap ? 1f : 0f);
             material.SetVector("_BFD_SunDirWS", ToVec(sunDirection));
             material.SetVector("_BFD_RightWS", disc.right);
             material.SetVector("_BFD_UpWS", disc.up);
@@ -394,6 +467,74 @@ namespace Galilego.Universe
             material.SetVector("_BFD_BodyForward", bodyRotation * Vector3.forward);
 
             SetActive(true);
+        }
+
+        /// <summary>
+        /// Lazy equirectangular ALBEDO of this body's own terrain, built once on a worker
+        /// the first time the disc is the only representation (the real chunks are clipped
+        /// by the camera far plane — a planet seen from another body's surface). 512×256
+        /// is enough: Terra from Artemis is ~15 px across, and the texture is only the
+        /// surface under the disc, not a close-up. The palette rules are the same ones
+        /// the terrain uses (TerrainPalette.SurfaceColor), so the disc and the real
+        /// ground cannot disagree about where the ocean and the ice are.
+        /// </summary>
+        private void EnsureTerrainAlbedo()
+        {
+            if (terrain == null)
+            {
+                albedoFailed = true;
+                return;
+            }
+
+            if (albedoTask == null)
+            {
+                const int width = 512;
+                const int height = 256;
+                TerrainMacroAlbedo.Input input = TerrainMacroAlbedo.Capture(terrain, body.Radius, width, height);
+                if (input == null)
+                {
+                    albedoFailed = true;
+                    return;
+                }
+
+                albedoTask = System.Threading.Tasks.Task.Run(() => TerrainMacroAlbedo.Build(input));
+                return;
+            }
+
+            if (!albedoTask.IsCompleted)
+            {
+                return;
+            }
+
+            Color32[] pixels = albedoTask.Status == System.Threading.Tasks.TaskStatus.RanToCompletion
+                ? albedoTask.Result
+                : null;
+            albedoTask = null;
+            if (pixels == null)
+            {
+                albedoFailed = true;
+                return;
+            }
+
+            var texture = new Texture2D(512, 256, TextureFormat.RGB24, false, false)
+            {
+                name = name + "DiscAlbedo (runtime)",
+                wrapMode = TextureWrapMode.Repeat,
+                filterMode = FilterMode.Bilinear,
+                anisoLevel = 0,
+                hideFlags = HideFlags.DontSave,
+            };
+            texture.SetPixels32(pixels);
+            texture.Apply(false, false);
+            bakedAlbedo = texture;
+            SurfaceMap = texture;
+            SurfaceMapIsColor = true;
+            if (material != null)
+            {
+                material.SetTexture("_BFD_Map", texture);
+                material.SetFloat("_BFD_MapStrength", 1f);
+                material.SetFloat("_BFD_MapColor", 1f);
+            }
         }
 
         private void SetActive(bool active)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Galilego.Core;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -47,17 +47,24 @@ namespace Galilego.Universe
         [Range(0f, 8f)]
         public float MinScreenRadiusPixels = 2f;
 
+        [Tooltip("Минимальный экранный радиус, px, при котором ещё рисуется НАСТОЯЩАЯ сфера. " +
+            "Меньше — диск: меш на 0.3 px только мерцает, а диск держит честный угловой размер " +
+            "с полом MinScreenRadiusPixels. Порог не зависит от far-плоскости: в перелёте far — " +
+            "это горизонт Солнца (~1e11 м), и одного «помещается в far» мало.")]
+        [Range(0f, 64f)]
+        public float MeshHandoverPixels = 8f;
+
         [Tooltip("HDR-СЏСЂРєРѕСЃС‚СЊ Р±Р»РёР¶РЅРµР№ СЃС„РµСЂС‹. Р¤РёР·РёС‡РµСЃРєР°СЏ РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ РіР°Р·РѕРІРѕРіРѕ РіРёРіР°РЅС‚Р° С‚РµРјРЅРµРµ, С‡РµРј РѕР¶РёРґР°РµС‚ С‚РѕРЅРјР°РїРїРёРЅРі СЃС†РµРЅС‹; 1 = СЃС‚СЂРѕРіРѕ С„РёР·РёС‡РµСЃРєРё.")]
         [Range(0.2f, 5f)]
         public float SurfaceBrightness = 3.0f;
 
         [Tooltip("HDR-СЏСЂРєРѕСЃС‚СЊ РґР°Р»СЊРЅРµРіРѕ РґРёСЃРєР°. Р¤РёР·РёС‡РµСЃРєР°СЏ РїРѕРІРµСЂС…РЅРѕСЃС‚СЊ РіР°Р·РѕРІРѕРіРѕ РіРёРіР°РЅС‚Р° РЅР° С‚Р°РєРѕР№ РґРёСЃС‚Р°РЅС†РёРё СЃР»РёС€РєРѕРј С‚СѓСЃРєР»Р°СЏ РґР»СЏ С‚РѕРЅРјР°РїРїРёРЅРіР° СЃС†РµРЅС‹.")]
         [Range(1f, 100f)]
-        public float FarDiscBrightness = 12f;
+        public float FarDiscBrightness = 3f;   // = SurfaceBrightness: the disc and the near sphere match at the hand-over.
 
         [Tooltip("РџРѕР» СЏСЂРєРѕСЃС‚Рё РїРѕСЃР»Рµ РєРѕРјРїРµРЅСЃР°С†РёРё РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ СЂР°РґРёСѓСЃР°. 0 = СЃС‚СЂРѕРіР°СЏ СЌРЅРµСЂРіРѕСЃР±РµСЂРµРіР°СЋС‰Р°СЏ РєРѕРјРїРµРЅСЃР°С†РёСЏ (РґРёСЃРє РїРѕС‡С‚Рё РіР°СЃРЅРµС‚).")]
         [Range(0f, 1f)]
-        public float MinEnergyScale = 0.08f;
+        public float MinEnergyScale = 0.3f;     // keeps the old distant look while the 8 px switch is brightness-matched.
 
         [Range(16, 192)]
         public int MeshResolution = 96;
@@ -456,7 +463,22 @@ namespace Galilego.Universe
             // the centre is 60 000 km away but the cloud tops are only 5 500 km
             // away and are well inside the far plane.
             double nearSurfaceDistance = Math.Max(0d, distance - body.Radius);
-            bool nearVisible = RenderNearSphere && nearSurfaceDistance < (far * 0.95d);
+            float angularRadius = Mathf.Atan2((float)body.Radius, (float)distance);
+            float fovRadians = Mathf.Max(0.01f, camera.fieldOfView) * Mathf.Deg2Rad;
+            float screenHeight = Mathf.Max(1f, Screen.height);
+            float pixelRadius = angularRadius / Mathf.Tan(fovRadians * 0.5f) * (screenHeight * 0.5f);
+
+            // Two independent conditions, both about REPRESENTATION:
+            //  * the sphere must fit inside the far plane, or it is clipped;
+            //  * it must be big enough on screen that a 128x128 mesh is a better
+            //    picture than a flat disc. During an interplanetary leg the far
+            //    plane is the SUN's horizon (~1e11 m), so the "fits" test alone
+            //    kept the mesh active at 0.3 px for the whole flight while the
+            //    disc (with its MinScreenRadiusPixels floor) was switched off.
+            //    Below the hand-over the disc owns the body; above it the mesh does.
+            bool nearVisible = RenderNearSphere
+                && nearSurfaceDistance < (far * 0.95d)
+                && pixelRadius >= Mathf.Max(0f, MeshHandoverPixels);
 
             UpdateMaterialTime(camera, bodyPos, starPos, sunDirection);
 
@@ -485,7 +507,9 @@ namespace Galilego.Universe
             // 0.9*far put the quad's clip-space depth on the far plane (near/far ~ 1e7)
             // and the rasterizer dropped it entirely. 0.25*far keeps the same angular
             // size; the shader's depth test only needs the disc to be behind the body.
-            float discDistance = Mathf.Max(1f, far * 0.25f);
+            // The 0.55*nearSurface cap keeps the billboard IN FRONT of the body when the
+            // mesh is hidden for the size reason (the far plane can be well beyond it).
+            float discDistance = Mathf.Max(1f, Mathf.Min(far * 0.25f, (float)(nearSurfaceDistance * 0.55d)));
             Vector3 cameraPosition = camera.transform.position;
             farDisc.position = cameraPosition + (simDirection * discDistance);
 
@@ -501,15 +525,11 @@ namespace Galilego.Universe
 
             farDisc.rotation = Quaternion.LookRotation(simDirection, projectedNorth.normalized);
 
-            float angularRadius = Mathf.Atan2((float)body.Radius, (float)distance);
             float size = discDistance * 2f * Mathf.Tan(angularRadius) * 1.02f;
 
             // A 0.038-degree disc is subpixel on 1080p. A hard subpixel quad
             // flickers as the planet moves; expand to a minimum screen radius
             // and scale the radiance by the area ratio (energy conservation).
-            float fovRadians = Mathf.Max(0.01f, camera.fieldOfView) * Mathf.Deg2Rad;
-            float screenHeight = Mathf.Max(1f, Screen.height);
-            float pixelRadius = angularRadius / Mathf.Tan(fovRadians * 0.5f) * (screenHeight * 0.5f);
             float minPixels = Mathf.Max(0f, MinScreenRadiusPixels);
             float pixelScale = (minPixels > 0f && pixelRadius > 1e-6f)
                 ? Mathf.Max(1f, minPixels / pixelRadius)

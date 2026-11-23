@@ -259,9 +259,27 @@ namespace Galilego.Universe
                 return;
             }
 
+            bool cameraOverBody = Runner.CameraBody == body;
+            bool bodyVisible = false;
+            Camera visibilityCamera = ViewCamera;
+            if (!cameraOverBody && visibilityCamera != null)
+            {
+                body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d visibleBodyPosition, out _);
+                double visibleDistance = (visibleBodyPosition - Runner.PlayerPosition).Magnitude;
+                // No far-plane test: the dome is a screen-space proxy that marches the shell
+                // analytically, so it draws a real limb even for a body whose chunks are
+                // beyond the camera far plane. Only "in front" and "not subpixel" matter.
+                bodyVisible = BodyVisibility.IsInFront(
+                        visibilityCamera, visibleBodyPosition, body.Radius, visibleDistance)
+                    && BodyVisibility.RadiusPixels(visibilityCamera, body.Radius, visibleDistance) > 0.5d;
+            }
+
+            // The air exists for the CAMERA (the eye), not for the ship's SOI: a planet
+            // still inside the far plane keeps its limb after the camera crosses its SOI,
+            // and a body seen from another body's surface keeps the atmosphere it has.
             bool active = profile.VisualEnabled
                 && profile.TopAltitudeMeters > 0d
-                && Runner.DominantBody == body
+                && (cameraOverBody || bodyVisible)
                 && !UnderwaterEffect.CameraIsUnderwater;
             if (shell.gameObject.activeSelf != active)
             {
@@ -271,10 +289,11 @@ namespace Galilego.Universe
                 // looks like it has no atmosphere. One line per toggle names the exact
                 // condition that closed it, so a report from the cockpit is diagnosable.
                 Debug.Log(string.Format(
-                    "[PlanetAtmosphere] {0}: dominant={1}, body={2}, underwater={3}, carried={4}, seated={5}, mode={6}",
+                    "[PlanetAtmosphere] {0}: camera={1}, body={2}, visible={3}, underwater={4}, carried={5}, seated={6}, mode={7}",
                     active ? "ON" : "OFF",
-                    Runner.DominantBody != null ? Runner.DominantBody.Name : "null",
+                    Runner.CameraBody != null ? Runner.CameraBody.Name : "null",
                     body != null ? body.Name : "null",
+                    bodyVisible,
                     UnderwaterEffect.CameraIsUnderwater,
                     Runner.PlayerCarried, Runner.PlayerSeated, Runner.PlayerMode));
             }
@@ -282,6 +301,20 @@ namespace Galilego.Universe
             if (!active)
             {
                 return;
+            }
+
+            // Render order is physical: a body's OWN atmosphere sits in front of its
+            // disc, so a foreign body's dome must draw after the body far disc
+            // (Transparent+4) and before the clouds (Transparent+50). The observer's
+            // own dome keeps the historical Transparent queue: it is the sky that the
+            // sun/starfield/discs composite over.
+            if (materialCache != null)
+            {
+                int queue = cameraOverBody ? 3000 : 3005;
+                if (materialCache.renderQueue != queue)
+                {
+                    materialCache.renderQueue = queue;
+                }
             }
 
             // The profile may have changed at runtime (AerosolScale etc.):
@@ -372,7 +405,10 @@ namespace Galilego.Universe
 
             // Everything downstream of the dome (the Moon's far disc) is allowed to
             // use the air only now that the globals and both LUTs are this frame's.
-            Shader.SetGlobalFloat("_AtmActive", 1f);
+            // Only the OBSERVER's own air counts: a foreign body's dome is a real
+            // limb in the sky, not the column in front of the eye, and a disc that
+            // read it as its own would gain a veil the observer is not sitting under.
+            Shader.SetGlobalFloat("_AtmActive", cameraOverBody ? 1f : 0f);
 
             if (!loggedOnce)
             {

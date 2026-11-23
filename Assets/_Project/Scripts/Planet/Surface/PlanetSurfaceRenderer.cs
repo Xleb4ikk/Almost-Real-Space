@@ -1098,6 +1098,15 @@ namespace Galilego.Universe
         /// </summary>
         public float ViewCoverage { get; private set; } = 1f;
 
+        /// <summary>
+        /// True while this renderer actually rasterises its chunks this frame (the
+        /// body is the camera body, or inside the camera far plane and in front).
+        /// The far disc reads it: the real sphere is the better representation at
+        /// any distance it can be drawn, so the disc is a fallback for the
+        /// far-plane cut, not a replacement for a visible mesh.
+        /// </summary>
+        public bool SurfaceVisible { get; private set; }
+
         /// <summary>True while this body is the one the camera is over.</summary>
         private bool viewIsLive;
 
@@ -1876,31 +1885,48 @@ namespace Galilego.Universe
             ApplyWaterParams();
             if (body == null || terrain == null || Runner.Ship == null)
             {
+                SurfaceVisible = false;
                 SurfacePerf.EndFrame(perfAllocBefore);
                 return;
             }
+
+            // [GRAPHICS] Antialiasing (SMAA/TAA) lives on the same Main Camera:
+            // HDAdditionalCameraData in the scene (antialiasing / SMAAQuality / TAA*).
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                SurfaceVisible = false;
+                SurfacePerf.EndFrame(perfAllocBefore);
+                return;
+            }
+
+            body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPosition, out _);
+            double bodyDistance = (Runner.PlayerPosition - bodyPosition).Magnitude;
 
             // The surface belongs to the CAMERA, not to the ship (Runner.CameraBody, see
             // its doc): the player can fly a whole SOI away from the parked craft. Gating
             // on the ship's DominantBody made the Moon vanish on approach — its far disc
             // handed the body over to chunks this renderer had switched off every frame.
             //
-            // The proximity test is a safety net, not a second rule: two radii (one radius
-            // of altitude) from the centre the camera unambiguously hangs over THIS body,
-            // so a half-initialised system that puts a body at the origin and hands the
-            // point to it cannot hide the ground under the player.
-            if (Runner.CameraBody != body)
+            // But the SOI is a GRAVITY boundary, not a visibility one. Hiding every chunk
+            // the moment CameraBody changes made Terra pop out at 165 500 km — 0.8 deg
+            // (≈8 px) still on screen — and pop back in half-built on approach. Draw the
+            // body whenever its real LOD can actually be rasterised: the camera is over
+            // it (or within the 2R safety net against a half-initialised system), or the
+            // body is inside the camera far plane and in front of the eye. Beyond that
+            // the far disc is the representation; there is nothing to rasterise anyway.
+            bool underBody = Runner.CameraBody == body || bodyDistance <= body.Radius * 2d;
+            if (!underBody && !BodyVisibility.IsRasterised(body, camera, bodyPosition))
             {
-                body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyNow, out _);
-                if ((Runner.PlayerPosition - bodyNow).Magnitude > body.Radius * 2d)
-                {
-                    ViewCoverage = 0f;
-                    viewIsLive = false;
-                    SetAllInvisible();
-                    SurfacePerf.EndFrame(perfAllocBefore);
-                    return;
-                }
+                SurfaceVisible = false;
+                ViewCoverage = 0f;
+                viewIsLive = false;
+                SetAllInvisible();
+                SurfacePerf.EndFrame(perfAllocBefore);
+                return;
             }
+
+            SurfaceVisible = true;
 
             if (!viewIsLive)
             {
@@ -1913,17 +1939,6 @@ namespace Galilego.Universe
                 {
                     coldRefillUntilFrame = Time.frameCount + ColdRefillFrames;
                 }
-            }
-
-            body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPosition, out _);
-
-            // [GRAPHICS] Antialiasing (SMAA/TAA) lives on the same Main Camera:
-            // HDAdditionalCameraData in the scene (antialiasing / SMAAQuality / TAA*).
-            Camera camera = Camera.main;
-            if (camera == null)
-            {
-                SurfacePerf.EndFrame(perfAllocBefore);
-                return;
             }
 
             Vector3 cameraPosition = camera.transform.position;
@@ -2312,7 +2327,11 @@ namespace Galilego.Universe
         private void UpdateUnderwaterCameraDepth(Vector3 cameraPosition)
         {
             Shader.SetGlobalFloat("_UnderwaterCameraDepth", 0f);
-            if (Runner == null || Runner.DominantBody == null)
+            // The CAMERA's body, not the ship's: the eye can be over a different body
+            // than the parked craft (EVA), and the water under the eye is what the
+            // shader needs.
+            OrbitingBody cameraBody = Runner != null ? Runner.CameraBody : null;
+            if (cameraBody == null)
             {
                 return;
             }
@@ -2326,7 +2345,7 @@ namespace Galilego.Universe
             // the camera is visually underwater while the column below is land, leaving
             // _UnderwaterCameraDepth at 0. The shader then draws the ceiling with its upper
             // branch: surf foam and screen-door dither seen from below.
-            double depthMeters = WaterQuery.SubmersionDepthAt(Runner.DominantBody, observer, Runner.TimeSeconds);
+            double depthMeters = WaterQuery.SubmersionDepthAt(cameraBody, observer, Runner.TimeSeconds);
             if (!double.IsNaN(depthMeters) && depthMeters > 0d)
             {
                 Shader.SetGlobalFloat("_UnderwaterCameraDepth", (float)depthMeters);

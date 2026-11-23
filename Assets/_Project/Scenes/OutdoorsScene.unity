@@ -1196,6 +1196,7 @@ GameObject:
   - component: {fileID: 1081663223}
   - component: {fileID: 1081663224}
   - component: {fileID: 1081663225}
+  - component: {fileID: 1081663226}
   m_Layer: 0
   m_Name: Terra
   m_TagString: Untagged
@@ -1508,6 +1509,41 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.TerrainMods
   NewPadInnerRadiusMeters: 650
   NewPadOuterRadiusMeters: 950
+--- !u!114 &1081663226
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1081663215}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81e919fa16f80cd45acc241e520dcfd5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyFarDiscView
+  Runner: {fileID: 1332194275}
+  Star: {fileID: 0}
+  PlayerCamera: {fileID: 1823688466}
+  FarFraction: 0.28
+  MinScreenRadiusPixels: 4
+  HandoverRadii: 1.6
+  FadeStartRadii: 4
+  HandoverCoverage: 0.98
+  MinEnergyScale: 1
+  Brightness: 1
+  NightBrightness: 24
+  HazeStrength: 1
+  LimbDarkening: 0.15
+  Albedo: {r: 0.05, g: 0.15, b: 0.32, a: 1}
+  UseTerrainPalette: 0
+  OnlyWhenMeshMissing: 1
+  BakeTerrainAlbedo: 1
+  SurfaceMapIsColor: 1
+  SurfaceMap: {fileID: 0}
+  SurfaceMapStrength: 1
+  NormalMap: {fileID: 0}
+  NormalStrength: 1
+  Ambient: 0
 --- !u!1 &1250304429
 GameObject:
   m_ObjectHideFlags: 0
@@ -2718,6 +2754,9 @@ MonoBehaviour:
   LimbDarkening: 0.25
   Albedo: {r: 0.5, g: 0.49, b: 0.47, a: 1}
   UseTerrainPalette: 1
+  OnlyWhenMeshMissing: 0
+  BakeTerrainAlbedo: 0
+  SurfaceMapIsColor: 0
   SurfaceMap: {fileID: 2800000, guid: 65451f9aeac2c6b4c8bc9ae733fd530a, type: 3}
   SurfaceMapStrength: 1
   NormalMap: {fileID: 2800000, guid: 224cc261d1047914f85db561e83d8e51, type: 3}
@@ -2966,9 +3005,10 @@ MonoBehaviour:
   RenderNearSphere: 1
   RenderFarDisc: 1
   MinScreenRadiusPixels: 2
+  MeshHandoverPixels: 8
   SurfaceBrightness: 3
-  FarDiscBrightness: 12
-  MinEnergyScale: 0.08
+  FarDiscBrightness: 3
+  MinEnergyScale: 0.3
   MeshResolution: 128
   LogDiagnostics: 1
 --- !u!114 &2135535066

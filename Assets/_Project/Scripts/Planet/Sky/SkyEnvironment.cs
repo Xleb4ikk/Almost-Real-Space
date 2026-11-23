@@ -378,7 +378,14 @@ namespace Galilego.Universe
                     coeff, body.Radius, body.Radius + topAltitude, body.Radius + altitude, sinEl);
             }
 
-            double occlusion = SkyPhysics.SunOcclusion(sinEl, altitude, body.Radius);
+            // A star is not ground. When the camera body IS the root (interplanetary
+            // space), "up" points away from the star while sunDir points at it, so
+            // sinEl = -1 and the horizon formula returned 0.5: the HDRP sun was at half
+            // intensity for the whole leg. An observer outside the photosphere is not
+            // eclipsed by it.
+            double occlusion = body.Parent == null
+                ? 1d
+                : SkyPhysics.SunOcclusion(sinEl, altitude, body.Radius);
             double day = SkyPhysics.DayFactor(sinEl);
             double skyLuminance = SkyPhysics.SkyLuminance(sinEl, density);
             double starVisibility = SkyPhysics.StarVisibility(skyLuminance, StarVisibilityK);

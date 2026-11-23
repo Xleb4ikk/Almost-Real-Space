@@ -77,6 +77,78 @@ namespace Galilego.Universe
             }
 
             Runner.SystemView.Register(Body.Name, transform);
+
+            // Every body gets its distant representation here, not by hand in the
+            // scene: a new planet/moon/gas giant must look right from another body
+            // without a component-by-component setup. Authored components win; the
+            // auto path only fills a missing one.
+            EnsureFarProxy();
+        }
+
+        /// <summary>
+        /// Creates the far view a body needs to be visible beyond the camera's far
+        /// plane. A heightfield body gets a <see cref="BodyFarDiscView"/> configured
+        /// from its own terrain (macro maps if baked, otherwise a colour albedo baked
+        /// from the same palette/noise); a gas giant gets a <see cref="GasGiantView"/>
+        /// from its preset. Idempotent: an authored component is left untouched.
+        /// </summary>
+        private void EnsureFarProxy()
+        {
+            BodyAuthoring authoring = GetComponent<BodyAuthoring>();
+            if (authoring == null)
+            {
+                return;
+            }
+
+            HeightfieldTerrain terrain = Body.Terrain as HeightfieldTerrain;
+            PlanetSurfaceRenderer surface = GetComponent<PlanetSurfaceRenderer>();
+            if (terrain != null && surface != null && surface.enabled
+                && GetComponent<BodyFarDiscView>() == null)
+            {
+                BodyFarDiscView disc = gameObject.AddComponent<BodyFarDiscView>();
+                disc.Runner = Runner;
+                disc.PlayerCamera = Camera.main;
+
+                // The real mesh is always the better picture while it can be rasterised
+                // (the gate in PlanetSurfaceRenderer decides that); the disc is the
+                // far-plane fallback, and holds during the async mesh hand-over.
+                disc.OnlyWhenMeshMissing = true;
+                disc.MinScreenRadiusPixels = 2f;
+                disc.Brightness = 1f;
+                disc.NightBrightness = 24f;
+                disc.LimbDarkening = Body.Atmosphere != null ? 0.1f : 0.3f;
+
+                if (terrain.MacroAlbedo != null)
+                {
+                    // The lunar-style map is a scalar brightness factor (R×2), not RGB.
+                    disc.SurfaceMap = terrain.MacroAlbedo;
+                    disc.SurfaceMapIsColor = false;
+                    disc.SurfaceMapStrength = terrain.MacroAlbedoStrength;
+                }
+                else if (terrain.Palette != null)
+                {
+                    // No baked map: the palette/noise is the only source that knows
+                    // where the ocean, the beaches and the ice are. Lazy + on a worker.
+                    disc.BakeTerrainAlbedo = true;
+                }
+
+                if (terrain.MacroNormal != null)
+                {
+                    disc.NormalMap = terrain.MacroNormal;
+                    disc.NormalStrength = terrain.MacroNormalStrength;
+                }
+
+                // The palette's Snow albedo is only a last resort; the maps carry colour.
+                disc.UseTerrainPalette = terrain.MacroAlbedo == null && terrain.Palette == null;
+            }
+
+            if (authoring.GasGiantPreset != null && GetComponent<GasGiantView>() == null)
+            {
+                GasGiantView giant = gameObject.AddComponent<GasGiantView>();
+                giant.Runner = Runner;
+                giant.PlayerCamera = Camera.main;
+                giant.Profile = authoring.GasGiantPreset;
+            }
         }
 
         private void LateUpdate()

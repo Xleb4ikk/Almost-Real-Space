@@ -8,6 +8,11 @@ Shader "Galilego/BodyFarDisc"
     {
         [HideInInspector] _BFD_Map("Surface Map", 2D) = "white" {}
         [HideInInspector] _BFD_MapStrength("Map Strength", Float) = 0
+        // 0 — the lunar brightness map (factor/2 in R), 1 — a real RGB albedo map
+        // (the terrain-derived disc of an atmospheric planet, where a scalar would
+        // turn the oceans red). A material only carries declared properties: an
+        // undeclared switch reads 0 and a colour map would be sampled as R only.
+        [HideInInspector] _BFD_MapColor("Map Is Colour", Float) = 0
         [HideInInspector] _BFD_NormalMap("Surface Relief (body-space normal)", 2D) = "white" {}
         [HideInInspector] _BFD_NormalStrength("Relief Strength", Float) = 0
         [HideInInspector] _BFD_Albedo("Albedo", Color) = (0.5, 0.49, 0.47, 1)
@@ -75,6 +80,7 @@ Shader "Galilego/BodyFarDisc"
             float4 _BFD_Albedo;
             TEXTURE2D(_BFD_Map);
             float _BFD_MapStrength;
+            float _BFD_MapColor;
             TEXTURE2D(_BFD_NormalMap);
             float _BFD_NormalStrength;
             float4 _BFD_BodyRight;
@@ -178,9 +184,13 @@ Shader "Galilego/BodyFarDisc"
                 }
 
                 // The baked map stores factor/2 (0..1 in an 8-bit texture), so the albedo
-                // multiplier is read back at its true 0.28..1.8 range.
-                float mapValue = SAMPLE_TEXTURE2D(_BFD_Map, s_linear_clamp_sampler, uvMap).r * 2.0;
-                float3 albedo = _BFD_Albedo.rgb * lerp(1.0, mapValue, _BFD_MapStrength);
+                // multiplier is read back at its true 0.28..1.8 range. A colour map (the
+                // body's own terrain palette) is used as-is: it already IS albedo, and
+                // taking only R would paint an ocean world red. Repeat sampling: u spans
+                // the full 360 deg and the antimeridian is a real wrap, not a clamp edge.
+                float3 mapSample = SAMPLE_TEXTURE2D(_BFD_Map, s_linear_repeat_sampler, uvMap).rgb;
+                float3 mapAlbedo = _BFD_MapColor > 0.5 ? mapSample : (mapSample.r * 2.0).xxx;
+                float3 albedo = _BFD_Albedo.rgb * lerp(1.0, mapAlbedo, _BFD_MapStrength);
 
                 // Lunar eclipse: the Sun is hidden by the parent planet, and the only
                 // light is refracted through its atmosphere — a dim copper disc, not a

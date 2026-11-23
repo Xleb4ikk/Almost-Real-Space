@@ -384,8 +384,14 @@ namespace Galilego.Universe
             best.Score = double.NegativeInfinity;
 
             // The light of a moon is relevant only to its parent body: on Artemis
-            // there is no lunar moonlight to light the lunar ground.
-            if (Moon != null)
+            // there is no lunar moonlight to light the lunar ground. The star has no
+            // ground at all: its children are planets, not moons, and treating the
+            // nearest one as a moon at 1e11 m stole the shadow cascade mid-transfer.
+            if (body.Parent == null)
+            {
+                // best stays at -Infinity: the block below clears every moon global.
+            }
+            else if (Moon != null)
             {
                 MoonCandidate candidate = EvaluateCandidate(
                     Moon, bodyPosition, body.Radius, observerPosition, altitude,

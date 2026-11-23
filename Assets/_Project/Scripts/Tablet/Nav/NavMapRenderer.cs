@@ -1408,94 +1408,17 @@ namespace Galilego.Tablet
 
         internal static readonly TerrainPaletteData DefaultPalette = new TerrainPaletteData();
 
+        /// <summary>
+        /// Shared with the body far disc (BodyFarDiscView's baked albedo): one definition
+        /// of the palette rules, so the globe and the distant disc cannot diverge.
+        /// </summary>
         internal static Color32 TerrainColor(TerrainPaletteData palette, double height, double seaLevel,
             double amplitude, double latitude, double slopeEast, double slopeNorth, float light,
             double polarIce = 0d)
         {
-            if (palette == null)
-            {
-                palette = DefaultPalette;
-            }
-
-            bool hasSea = seaLevel > -1e29d;
-            double rel;
-            Color color;
-
-            if (hasSea && height < seaLevel)
-            {
-                double depth = Math.Min(1d, (seaLevel - height) / Math.Max(100d, amplitude * 0.5d));
-                color = Color.Lerp(palette.Sea, new Color(0.01f, 0.04f, 0.11f, 1f), (float)(depth * 0.8d));
-                float shade = 0.82f + (0.18f * light);
-                return ToColor32(color, shade);
-            }
-
-            if (hasSea)
-            {
-                rel = Math.Max(0d, Math.Min(1d, (height - seaLevel) / amplitude));
-            }
-            else
-            {
-                rel = Math.Max(0d, Math.Min(1d, ((height + (amplitude * 0.5d)) / amplitude)));
-            }
-
-            if (rel < 0.02d)
-            {
-                color = palette.Sand;
-            }
-            else if (rel < 0.08d)
-            {
-                color = Color.Lerp(palette.Sand, palette.Grass, (float)(rel / 0.08d));
-            }
-            else if (rel < 0.25d)
-            {
-                color = Color.Lerp(palette.Grass, palette.Forest, (float)((rel - 0.08d) / 0.17d));
-            }
-            else if (rel < 0.55d)
-            {
-                color = Color.Lerp(palette.Forest, palette.Rock, (float)((rel - 0.25d) / 0.30d));
-            }
-            else
-            {
-                color = Color.Lerp(palette.Rock, palette.Snow, (float)Math.Min(1d, (rel - 0.55d) / 0.45d));
-            }
-
-            double absLat = Math.Abs(latitude);
-            if (absLat > 1.0d)
-            {
-                color = Color.Lerp(color, palette.Tundra, (float)Math.Min(1d, (absLat - 1.0d) / 0.35d));
-            }
-
-            double slope = Math.Sqrt((slopeEast * slopeEast) + (slopeNorth * slopeNorth));
-            if (slope > 0.35d)
-            {
-                color = Color.Lerp(color, palette.Rock, (float)Math.Min(0.85d, (slope - 0.35d) / 1.1d));
-            }
-
-            if (slope > 1.2d || rel > 0.9d)
-            {
-                color = Color.Lerp(color, palette.Snow, (float)Math.Min(0.8d, Math.Max((slope - 1.2d) / 1.4d, (rel - 0.9d) / 0.1d)));
-            }
-
-            // Polar ice cap: same weight and curve as the 3D surface, so the globe
-            // map does not show beige sand where the player would stand on white ice.
-            if (polarIce > 0d)
-            {
-                float w = Mathf.Clamp01((float)(polarIce * 2d));
-                w = w * w * (3f - (2f * w));
-                color = Color.Lerp(color, palette.Snow, w);
-            }
-
-            float shading = 0.55f + (0.45f * light);
-            return ToColor32(color, shading);
-        }
-
-        private static Color32 ToColor32(Color color, float shade)
-        {
-            return new Color32(
-                (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * shade * 255f), 0, 255),
-                (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * shade * 255f), 0, 255),
-                (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * shade * 255f), 0, 255),
-                255);
+            return TerrainPalette.SurfaceColor(
+                palette ?? DefaultPalette, height, seaLevel, amplitude,
+                latitude, slopeEast, slopeNorth, light, polarIce);
         }
 
         private void DrawSurfaceHud(NavMapModel model, RectInt rect)

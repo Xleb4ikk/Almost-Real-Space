@@ -93,13 +93,13 @@ namespace Galilego.Universe
         /// </summary>
         private bool TryPlacePatch()
         {
-            if (Runner == null || Runner.DominantBody == null)
+            if (Runner == null || Runner.CameraBody == null)
             {
                 SetSurfaceEnabled(false);
                 return false;
             }
 
-            OrbitingBody body = Runner.DominantBody;
+            OrbitingBody body = Runner.CameraBody;
             if (!WaterQuery.HasOcean(body))
             {
                 SetSurfaceEnabled(false);
@@ -227,11 +227,11 @@ namespace Galilego.Universe
             }
 
             bool submerged = false;
-            if (patchActive && Runner != null && Runner.DominantBody != null
-                && WaterQuery.HasOcean(Runner.DominantBody))
+            if (patchActive && Runner != null && Runner.CameraBody != null
+                && WaterQuery.HasOcean(Runner.CameraBody))
             {
                 submerged = WaterQuery.IsSubmergedAt(
-                    Runner.DominantBody, Runner.PlayerPosition, Runner.TimeSeconds, out _);
+                    Runner.CameraBody, Runner.PlayerPosition, Runner.TimeSeconds, out _);
             }
 
             bool hdrpLeads = submerged && waterSurface != null

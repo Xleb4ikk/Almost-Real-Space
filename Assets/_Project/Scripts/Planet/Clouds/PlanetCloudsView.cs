@@ -229,7 +229,7 @@ namespace Galilego.Universe
 
             bool active = profile.VisualEnabled
                 && profile.TopAltitudeMeters > profile.BottomAltitudeMeters
-                && (Runner.DominantBody == body || IsCloudBodyRelevant(ViewCamera))
+                && (Runner.CameraBody == body || IsCloudBodyRelevant(ViewCamera))
                 && !UnderwaterEffect.CameraIsUnderwater;
             if (shell.gameObject.activeSelf != active)
             {
@@ -311,7 +311,8 @@ namespace Galilego.Universe
 
             Vector3d starLinear = SkyEnvironment.PhotosphereLinear;
             Vector3 cloudSunColor = new Vector3((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z);
-            if (skyEnvironment != null)
+            bool foreignBody = Runner.CameraBody != body;
+            if (skyEnvironment != null && !foreignBody)
             {
                 Vector3 transmittance = skyEnvironment.Transmittance;
                 float directVisibility = Mathf.Clamp01(skyEnvironment.DayFactor * skyEnvironment.SunOcclusion);
@@ -320,7 +321,13 @@ namespace Galilego.Universe
                     cloudSunColor.y * transmittance.y * directVisibility,
                     cloudSunColor.z * transmittance.z * directVisibility);
             }
-            Vector4 skyAmbientVector = Shader.GetGlobalVector("_SkyAmbientColor");
+            // A cloud deck seen from ANOTHER body is lit by direct sunlight only. The
+            // observer's sky — its night, its extinction, its ambient — has nothing to do
+            // with that planet; using it turned Terra's clouds black from Artemis at night
+            // and dimmed them by an atmosphere they never sat under.
+            Vector4 skyAmbientVector = foreignBody
+                ? Vector4.zero
+                : Shader.GetGlobalVector("_SkyAmbientColor");
             Vector3 cloudSkyAmbient = new Vector3(skyAmbientVector.x, skyAmbientVector.y, skyAmbientVector.z);
 
             float shapeFreq = 1f / Mathf.Max(1f, profile.ShapeCellMeters);
