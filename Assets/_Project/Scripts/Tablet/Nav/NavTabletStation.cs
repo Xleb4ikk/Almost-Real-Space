@@ -184,7 +184,9 @@ namespace Galilego.Tablet
             view.FrameChanged += _ =>
             {
                 framePinned = true;
-                overlayMap.ResetView();
+                // Keep the wheel zoom across an ИСК change: resetting it to the
+                // planet close-up made the orbit the player was looking at vanish,
+                // which read as "the orbit did not appear when I changed the ISK".
                 RebuildMap(true);
             };
             view.CenterChanged += _ => RebuildMap(true);

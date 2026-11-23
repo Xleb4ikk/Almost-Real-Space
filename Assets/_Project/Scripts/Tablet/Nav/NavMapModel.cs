@@ -126,16 +126,13 @@ namespace Galilego.Tablet
     public sealed class NavMapModel
     {
         /// <summary>
-        /// Samples per body rail / body trail arc. These are ephemeris evaluations,
-        /// not an integration, so they are cheap; 256 of them keep a zoomed rail a
-        /// curve even before the renderer's smoothing.
+        /// Samples per body trail arc. These are ephemeris evaluations, not an
+        /// integration, so they are cheap; 256 of them keep a zoomed trail a curve
+        /// even before the renderer's smoothing.
         /// </summary>
         public const int BodyOrbitSamples = 256;
         public const int ForecastSamples = 160;
         public const int MaxHistoryPoints = 512;
-
-        /// <summary>Reused buffer for one body's non-uniform orbit sample times.</summary>
-        private readonly double[] orbitSampleTimes = new double[BodyOrbitSamples];
 
         /// <summary>Longest forecast actually integrated for the map, seconds (visual/CPU budget).</summary>
         public const double MaxForecastSeconds = 60d * 86400d;
@@ -409,9 +406,7 @@ namespace Galilego.Tablet
                 CenterPosition = Vector3d.Zero;
             }
 
-            BuildBodyOrbits(system, timeSeconds, frameIndex, orbitVisible);
-            BuildFrameOrbit(system, timeSeconds, frameIndex, orbitVisible);
-            BuildBodyTrails(system, timeSeconds, frameIndex, centerIndex, orbitVisible,
+            BuildBodyTrails(system, timeSeconds, frameIndex, orbitVisible,
                 historySeconds, forecastSeconds);
 
             bool shipLinesVisible = orbitVisible == null
@@ -760,167 +755,7 @@ namespace Galilego.Tablet
             right = (right - (normal * Vector3d.Dot(right, normal))).Normalized;
         }
 
-        private void BuildBodyOrbits(StarSystem system, double time, int frameIndex, bool[] orbitVisible)
-        {
-            for (int i = 0; i < system.AllBodies.Count; i++)
-            {
-                if (i == frameIndex)
-                {
-                    continue;
-                }
-
-                if (orbitVisible != null && i < orbitVisible.Length && !orbitVisible[i])
-                {
-                    continue;
-                }
-
-                OrbitingBody body = system.AllBodies[i];
-                if (body.Parent == null)
-                {
-                    continue;
-                }
-
-                double period = OrbitalPeriodSeconds(body);
-                if (!double.IsFinite(period))
-                {
-                    continue;
-                }
-
-                double lo = body.Baked != null ? body.Baked.T0Seconds : double.NegativeInfinity;
-                double hi = body.Baked != null ? body.Baked.EndSeconds : double.PositiveInfinity;
-                double start = time - (period * 0.5d);
-                double end = time + (period * 0.5d);
-
-                var line = new NavLine
-                {
-                    Kind = NavLineKind.BodyOrbit,
-                    BodyIndex = i,
-                    ParentIndex = IndexOf(system, body.Parent),
-                    StartTimeS = start,
-                    EndTimeS = end,
-                };
-
-                int n = BodyOrbitSamples;
-                SampleOrbitTimes(body, time, n, period, orbitSampleTimes);
-                for (int k = 0; k < n; k++)
-                {
-                    double ts = orbitSampleTimes[k];
-                    if (ts < lo)
-                    {
-                        ts = lo;
-                    }
-
-                    if (ts > hi)
-                    {
-                        ts = hi;
-                    }
-
-                    try
-                    {
-                        body.EvaluateWorldState(ts, out Vector3d p, out _);
-                        OrbitingBody frame = system.AllBodies[frameIndex];
-                        frame.EvaluateWorldState(ts, out Vector3d fp, out _);
-                        line.Points.Add(p - fp);
-                    }
-                    catch (EphemerisRangeException)
-                    {
-                        break;
-                    }
-                }
-
-                if (line.Points.Count > n / 2)
-                {
-                    // The marker is evaluated at exactly `time`, which falls between
-                    // two samples. Insert it as a vertex so the body is visibly ON
-                    // its orbit at planet zoom instead of a chord passing wide.
-                    line.Points.Insert(n / 2, Bodies[i].Position);
-                }
-
-                if (line.Points.Count >= 2)
-                {
-                    Lines.Add(line);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Orbit of the reference body around its parent, translated so the body sits
-        /// at the map origin at the current time. Without this a body-centred map has
-        /// no orbit for the body itself — the "Земля не на своей орбите" view — and
-        /// the orbit toggle in its row does nothing.
-        /// </summary>
-        private void BuildFrameOrbit(StarSystem system, double time, int frameIndex, bool[] orbitVisible)
-        {
-            if (frameIndex < 0 || frameIndex >= system.AllBodies.Count)
-            {
-                return;
-            }
-
-            if (orbitVisible != null && frameIndex < orbitVisible.Length && !orbitVisible[frameIndex])
-            {
-                return;
-            }
-
-            OrbitingBody body = system.AllBodies[frameIndex];
-            OrbitingBody parent = body.Parent;
-            if (parent == null)
-            {
-                return;
-            }
-
-            double period = OrbitalPeriodSeconds(body);
-            if (!double.IsFinite(period))
-            {
-                return;
-            }
-
-            double start = time - (period * 0.5d);
-            double end = time + (period * 0.5d);
-            var line = new NavLine
-            {
-                Kind = NavLineKind.BodyOrbit,
-                BodyIndex = frameIndex,
-                ParentIndex = IndexOf(system, parent),
-                StartTimeS = start,
-                EndTimeS = end,
-            };
-
-            int n = BodyOrbitSamples;
-            SampleOrbitTimes(body, time, n, period, orbitSampleTimes);
-            for (int k = 0; k < n; k++)
-            {
-                double ts = orbitSampleTimes[k];
-                try
-                {
-                    // Path around the parent, shifted so the CURRENT body position
-                    // is the origin: the marker at the centre lies exactly on it.
-                    body.EvaluateWorldState(ts, out Vector3d p, out _);
-                    line.Points.Add(p - FramePosition);
-                }
-                catch (EphemerisRangeException)
-                {
-                    break;
-                }
-            }
-
-            if (line.Points.Count > n / 2)
-            {
-                // The frame body is at the map origin now; insert it as a vertex so
-                // its own orbit visibly passes through the body, not beside it.
-                line.Points.Insert(n / 2, Vector3d.Zero);
-            }
-
-            if (line.Points.Count >= 2)
-            {
-                Lines.Add(line);
-            }
-        }
-
-        /// <summary>
-        /// Orbital period of a body around its parent (parent + subtree μ), or +∞ if
-        /// the rail is not a drawable ellipse. One definition for the orbit line and
-        /// the trail caps.
-        /// </summary>
+        /// <summary>Orbital period of a body around its parent (parent + subtree μ), or +∞ if the rail is not an ellipse.</summary>
         private static double OrbitalPeriodSeconds(OrbitingBody body)
         {
             if (body == null || body.Parent == null)
@@ -942,140 +777,89 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
-        /// One full revolution of an elliptical rail, sampled uniformly in TRUE
-        /// anomaly. Uniform time clusters samples at apoapsis and leaves the fast,
-        /// high-curvature periapsis as a few long chords; equal anomaly steps keep the
-        /// drawn orbit smooth for any eccentricity. Falls back to uniform time for
-        /// circular rails and hyperbolic rails.
+        /// History/forecast of EVERY body with a parent, over the slider windows and
+        /// in the selected frame: point(t) = body(t) − frame(t). The per-body dot in
+        /// the frames table is the visibility switch.
+        ///
+        /// Only the selected span is drawn — never a full unflown period. At T+00:43
+        /// a complete lunar ellipse reads as a prediction that ignores the sliders
+        /// (the "green phantom" regression), and it is not the path the body took in
+        /// that ISK during the shown time. A body's path is a known ephemeris, so it
+        /// can be sampled into the past and the future; the sliders select the span.
         /// </summary>
-        private static void SampleOrbitTimes(
-            OrbitingBody body, double time, int count, double period, double[] times)
-        {
-            int n = Math.Max(2, count);
-            double twoPi = 2d * Math.PI;
-            double eccentricity = body.Eccentricity;
-            if (!(period > 0d) || !double.IsFinite(period))
-            {
-                for (int k = 0; k < n; k++)
-                {
-                    times[k] = time;
-                }
-
-                return;
-            }
-
-            if (!(eccentricity > 1e-9d)
-                || !double.IsFinite(body.MeanAnomalyAtEpochDegrees)
-                || !double.IsFinite(body.EpochTimeSeconds))
-            {
-                double start = time - (period * 0.5d);
-                for (int k = 0; k < n; k++)
-                {
-                    times[k] = start + (period * k / (n - 1d));
-                }
-
-                return;
-            }
-
-            double meanMotion = twoPi / period;
-            double meanNow = KeplerMath.NormalizeAngle(
-                KeplerMath.DegreesToRadians(body.MeanAnomalyAtEpochDegrees)
-                + (meanMotion * (time - body.EpochTimeSeconds)));
-            double eccentricNow = KeplerMath.SolveEccentricAnomaly(meanNow, eccentricity);
-            double trueNow = 2d * Math.Atan2(
-                Math.Sqrt(1d + eccentricity) * Math.Sin(0.5d * eccentricNow),
-                Math.Sqrt(1d - eccentricity) * Math.Cos(0.5d * eccentricNow));
-
-            for (int k = 0; k < n; k++)
-            {
-                double trueAnomaly = trueNow + (twoPi * ((k / (n - 1d)) - 0.5d));
-                double mean = MeanAnomalyFromTrueAnomaly(
-                    KeplerMath.NormalizeAngle(trueAnomaly), eccentricity);
-                double delta = mean - meanNow;
-                while (delta > Math.PI)
-                {
-                    delta -= twoPi;
-                }
-
-                while (delta < -Math.PI)
-                {
-                    delta += twoPi;
-                }
-
-                times[k] = time + (delta / meanMotion);
-            }
-        }
-
-        /// <summary>
-        /// History/forecast of the body the map is centred on. A body's path is a
-        /// known ephemeris, so unlike the ship's live trail it can be sampled both
-        /// into the past and into the future: the sliders select the span.
-        /// </summary>
-        private void BuildBodyTrails(StarSystem system, double time, int frameIndex, int centerIndex,
+        private void BuildBodyTrails(StarSystem system, double time, int frameIndex,
             bool[] orbitVisible, double historySeconds, double forecastSeconds)
         {
-            // When the map is centred on the craft, the planet it is standing on is
-            // the meaningful body trail (and the one the system view is fitted to).
-            int trailIndex = centerIndex;
-            if (trailIndex == ShipIndex && DominantBodyIndex >= 0)
-            {
-                trailIndex = DominantBodyIndex;
-            }
-
-            if (trailIndex < 0 || trailIndex >= system.AllBodies.Count || trailIndex == frameIndex)
-            {
-                return;
-            }
-
-            if (orbitVisible != null && trailIndex < orbitVisible.Length && !orbitVisible[trailIndex])
-            {
-                return;
-            }
-
-            OrbitingBody body = system.AllBodies[trailIndex];
             OrbitingBody frame = system.AllBodies[frameIndex];
 
-            // A short-period moon over a multi-day slider would be a scribble of
-            // dozens of overlapping revolutions sampled by 160 chords. The same
-            // three-revolution budget as the craft forecast keeps the line readable
-            // and dense enough to be a curve.
-            double historyWindow = Math.Min(historySeconds, MaxHistorySeconds);
             // Body paths are ephemeris samples, not an N-body integration: the
             // 60-day ship-forecast budget does not apply here. The slider value is
-            // honoured (up to the UI ceiling), so a 500-day orbit is drawn fully.
+            // honoured (up to the UI ceiling).
+            double historyWindow = Math.Min(historySeconds, MaxHistorySeconds);
             double forecastWindow = Math.Min(forecastSeconds, MaxHistorySeconds);
-            double period = OrbitalPeriodSeconds(body);
-            if (double.IsFinite(period))
+            if (!(historyWindow > 1d) && !(forecastWindow > 1d))
             {
-                double threeOrbits = 3d * period;
-                historyWindow = Math.Min(historyWindow, threeOrbits);
-                forecastWindow = Math.Min(forecastWindow, threeOrbits);
+                return;
             }
 
-            if (historyWindow > 1d)
+            for (int i = 0; i < system.AllBodies.Count; i++)
             {
-                NavLine history = SampleBodyPath(body, frame, time - historyWindow, time);
-                if (history != null)
+                if (i == frameIndex)
                 {
-                    history.Kind = NavLineKind.BodyHistory;
-                    history.BodyIndex = trailIndex;
-                    history.ParentIndex = IndexOf(system, body.Parent);
-                    Lines.Add(history);
-                    HasBodyHistory = true;
+                    // The frame body's path in its own frame is identically zero.
+                    continue;
                 }
-            }
 
-            if (forecastWindow > 1d)
-            {
-                NavLine forecast = SampleBodyPath(body, frame, time, time + forecastWindow);
-                if (forecast != null)
+                if (orbitVisible != null && i < orbitVisible.Length && !orbitVisible[i])
                 {
-                    forecast.Kind = NavLineKind.BodyForecast;
-                    forecast.BodyIndex = trailIndex;
-                    forecast.ParentIndex = IndexOf(system, body.Parent);
-                    forecast.Dashed = true;
-                    Lines.Add(forecast);
-                    HasBodyForecast = true;
+                    continue;
+                }
+
+                OrbitingBody body = system.AllBodies[i];
+                if (body.Parent == null)
+                {
+                    continue;
+                }
+
+                // A short-period moon over a multi-day slider would be a scribble of
+                // dozens of overlapping revolutions sampled by 160 chords. The same
+                // three-revolution budget as the craft forecast keeps the line
+                // readable and dense enough to be a curve.
+                double bodyHistory = historyWindow;
+                double bodyForecast = forecastWindow;
+                double period = OrbitalPeriodSeconds(body);
+                if (double.IsFinite(period))
+                {
+                    double threeOrbits = 3d * period;
+                    bodyHistory = Math.Min(bodyHistory, threeOrbits);
+                    bodyForecast = Math.Min(bodyForecast, threeOrbits);
+                }
+
+                if (bodyHistory > 1d)
+                {
+                    NavLine history = SampleBodyPath(body, frame, time - bodyHistory, time);
+                    if (history != null)
+                    {
+                        history.Kind = NavLineKind.BodyHistory;
+                        history.BodyIndex = i;
+                        history.ParentIndex = IndexOf(system, body.Parent);
+                        Lines.Add(history);
+                        HasBodyHistory = true;
+                    }
+                }
+
+                if (bodyForecast > 1d)
+                {
+                    NavLine forecast = SampleBodyPath(body, frame, time, time + bodyForecast);
+                    if (forecast != null)
+                    {
+                        forecast.Kind = NavLineKind.BodyForecast;
+                        forecast.BodyIndex = i;
+                        forecast.ParentIndex = IndexOf(system, body.Parent);
+                        forecast.Dashed = true;
+                        Lines.Add(forecast);
+                        HasBodyForecast = true;
+                    }
                 }
             }
         }

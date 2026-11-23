@@ -274,9 +274,10 @@ namespace Galilego.Tablet
 
             if (model.FrameIndex != lastFrameIndex)
             {
-                // Keep the user's orientation across a focus change; ease back to
-                // the default angles instead of snapping the map.
-                Zoom = 1f;
+                // A new reference body has its own equatorial plane, so the turntable
+                // angles ease back to the default north-up view. The ZOOM is kept:
+                // it used to snap back to 1 on every ИСК press, which hid the orbit
+                // the player had just zoomed out to look at.
                 TargetAzimuthRad = DefaultAzimuthRad;
                 TargetElevationRad = DefaultElevationRad;
                 lastFrameIndex = model.FrameIndex;
@@ -644,14 +645,12 @@ namespace Galilego.Tablet
             // 1. Reference frames are implied by the "ВЕРХ" cue and the turntable
             // camera; a full dashed ring around the planet reads as a fake orbit.
 
-            // Full body orbit rails are intentionally not drawn: with the short
-            // default history/forecast windows a complete ellipse reads as the
-            // predicted path ("why is the whole orbit green?"). Only the
-            // time-limited body/ship spans below are drawn.
+            // No full-period body rails: with the short history/forecast windows the
+            // player selects, a complete ellipse reads as a prediction that ignores
+            // the sliders (at T+00:43 it drew a whole lunar orbit). Every body's
+            // trail is the time-windowed body/ship span below, in the selected ISK.
 
-            // 2b. The centred body's own history/forecast over the slider windows.
-            // Same real ephemeris as its orbit rail, but the highlighted spans show
-            // where the body was and where it will be; the rail itself stays faint.
+            // 2b. Each body's history/forecast over the slider windows.
             // History/forecast keep the ship-trail colours so the sliders visibly
             // control the drawn span.
             for (int i = 0; i < model.Lines.Count; i++)
@@ -1457,7 +1456,11 @@ namespace Galilego.Tablet
                 for (int i = 0; i < model.Lines.Count; i++)
                 {
                     NavLine line = model.Lines[i];
-                    if (line.Kind == NavLineKind.BodyOrbit)
+                    // A ship-centred map fits the craft and the body it is near, not
+                    // the heliocentric trail of every other body: a 14 h moon trail
+                    // is billions of metres long and would zoom the planet to a dot.
+                    if ((line.Kind == NavLineKind.BodyHistory || line.Kind == NavLineKind.BodyForecast)
+                        && line.BodyIndex != model.DominantBodyIndex)
                     {
                         continue;
                     }
@@ -3271,9 +3274,9 @@ namespace Galilego.Tablet
             }
 
             int legendX = x;
-            // No full-orbit row: rails are not drawn. The plan row needs one more
-            // line; lift the legend while it is visible so it never collides with
-            // the status text at y.
+            // No full-orbit row: every body's trail is a time-windowed span, not a
+            // full period. The plan row needs one more line; lift the legend while
+            // it is visible so it never collides with the status text at y.
             int legendY = y - 33 - (model.PlannedWindowSeconds > 0d || model.BurnMarkers.Count > 0 ? 13 : 0);
             canvas.Line(legendX, legendY + 3, legendX + 16, legendY + 3,
                 model.HasSurfaceHistory ? SurfaceHistoryColor : TabletTheme.Main);

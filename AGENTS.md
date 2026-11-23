@@ -77,6 +77,47 @@ angles) and kept current automatically by `LunarMacroMapAutoBaker` (fingerprint 
 1.5 s debounce + background worker), so a profile edit or seed change rebakes itself.
 Full write-up: **[`Docs/Terminator.md`](Docs/Terminator.md)**.
 
+## Nav tablet — the trail is the selected time window, not a whole orbit
+
+The map draws **every** body's history/forecast over the slider windows, in the
+selected ISK: `point(t) = body(t) − frame(t)` for `t ∈ [now − history, now + forecast]`.
+It is not just the centred body's trail (that was the "the Moon has no orbit" bug), and
+it is **not** a full-period rail: a complete ellipse at T+00:43 ignores the sliders and
+is the "green phantom" the player complained about twice. Short-period moons are capped
+to three revolutions. The per-body dot in the frames table toggles that body's trail;
+the frame body has no trail (its path in its own frame is zero). An `ИСК` press must
+not reset the wheel zoom. Dim is not used for trails: history is bright green, forecast
+amber dashed, the manoeuvre path white. Full write-up and the headless render recipe:
+**[`Docs/NavOrbits.md`](Docs/NavOrbits.md)**.
+
+### How this was got wrong twice — do not repeat
+
+* **"Orbit" in this UI means the trail over the selected window.** The column is
+  `СЛЕД · ТЕЛО`, the bottom sliders are `ДЛИНА ИСТОРИИ / ПРОГНОЗА`, and the dots under
+  `СЛЕД` toggle the trail. Never draw a full-period conic as the thing those dots turn
+  on, and never label it `ОРБИТА`: at T+00:43 with a 14 h slider a whole 17-day lunar
+  ellipse is a phantom that ignores the sliders.
+* **The original "the Moon has no orbit" bug was a missing loop, not a missing renderer
+  pass.** `BuildBodyTrails` built only the centred body's path; with Terra centred the
+  Moon's row toggled nothing. Fix the model loop (`SampleBodyPath` per body), not the
+  renderer.
+* **A parent-anchored conic is frame-independent, so it is wrong here.** The camera
+  subtracts the same `frame(now)` offset, so a circle pasted on the parent looks
+  identical in every ISK and makes the `ИСК` buttons feel broken. The frame's motion
+  must be inside the sampled path: `body(t) − frame(t)`.
+* **Reproduce the reporter's exact state before changing semantics**: frame, centre,
+  mission time, both slider values, forecast on/off. It usually makes the bug obvious
+  (T+00:43 + 14 h + forecast off cannot produce a 17-day ellipse). One clarifying
+  question is cheaper than two wrong semantic rewrites.
+* **Do not recompile scripts while the user is in Play mode.** Runtime-created UI
+  Toolkit objects lose their references on a domain reload; the tablet then throws
+  `NullReferenceException` every frame (`NavTabletView.TickCardSliders`,
+  `ShipTablet.UpdateWorldPointer`). Stop Play (or wait for the user) before
+  `AssetDatabase.Refresh`; after a reload the session is already broken, so stopping it
+  is the honest move.
+* `Tools/P1bTests` currently does not compile for unrelated reasons; `Test572` is the
+  contract, but validate with the standalone probe until the harness is repaired.
+
 ## Debugging rendering at altitude
 
 * Freeze the frame first: `SimulationRunner.Paused = true` (the ship moves at km/s).

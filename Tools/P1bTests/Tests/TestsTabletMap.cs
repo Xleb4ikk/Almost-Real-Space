@@ -271,6 +271,143 @@ internal static partial class P1bTests
     }
 
     /// <summary>
+    /// Every body with a parent draws its history/forecast over the SELECTED slider
+    /// windows, in the SELECTED frame: point(t) = body(t) − frame(t). A full-period
+    /// rail is not emitted: at T+00:43 it drew a whole lunar ellipse that ignored the
+    /// sliders (the "green phantom"), and it is not the path during the shown time.
+    /// </summary>
+    private static int Test572_NavMapBodyTrailsEveryFrame()
+    {
+        var star = new OrbitingBody
+        {
+            Name = "Звезда",
+            StandardGravitationalParameter = 1.327e20d,
+            EpochTimeSeconds = 0d,
+        };
+        var planet = new OrbitingBody
+        {
+            Name = "Планета",
+            StandardGravitationalParameter = 3.986e14d,
+            Radius = 6.371e6d,
+            SemiMajorAxis = 1.5e11d,
+            Eccentricity = 0.01d,
+            EpochTimeSeconds = 0d,
+        };
+        planet.Parent = star;
+        star.Children.Add(planet);
+
+        double moonPeriod = 2d * 3600d;
+        double moonAxis = Math.Pow(
+            planet.StandardGravitationalParameter * moonPeriod * moonPeriod
+            / (4d * Math.PI * Math.PI), 1d / 3d);
+        var moon = new OrbitingBody
+        {
+            Name = "Спутник",
+            StandardGravitationalParameter = 4.9e12d,
+            Radius = 1.0e6d,
+            SemiMajorAxis = moonAxis,
+            Eccentricity = 0.02d,
+            EpochTimeSeconds = 0d,
+        };
+        moon.Parent = planet;
+        planet.Children.Add(moon);
+
+        var system = new StarSystem(star);
+        int frames = system.AllBodies.Count;
+        bool[] visible = { true, true, true };
+        double window = 3600d;
+
+        var sunFrame = new NavMapModel();
+        sunFrame.Rebuild(system, null, 0d, 0, 0, visible, window, window, null, true);
+        NavLine planetHistory = NavMapTestTrail(sunFrame, NavLineKind.BodyHistory, 1);
+        NavLine moonHistory = NavMapTestTrail(sunFrame, NavLineKind.BodyHistory, 2);
+        NavLine moonForecast = NavMapTestTrail(sunFrame, NavLineKind.BodyForecast, 2);
+
+        bool everyBody = planetHistory != null && moonHistory != null;
+        bool timeLimited = moonHistory != null
+            && moonHistory.Points.Count >= 100
+            && Math.Abs((moonHistory.EndTimeS - moonHistory.StartTimeS) - window) < 1d
+            && (moonHistory.EndTimeS - moonHistory.StartTimeS) < moonPeriod;
+        bool forecast = moonForecast != null && moonForecast.Dashed
+            && Math.Abs((moonForecast.EndTimeS - moonForecast.StartTimeS) - window) < 1d;
+
+        // The trail is the body's path in the selected frame, not a parent-centred
+        // conic and not the full orbit.
+        bool frameRelative = false;
+        if (moonHistory != null)
+        {
+            moon.EvaluateWorldState(moonHistory.StartTimeS, out Vector3d moonStart, out _);
+            star.EvaluateWorldState(moonHistory.StartTimeS, out Vector3d starStart, out _);
+            moon.EvaluateWorldState(moonHistory.EndTimeS, out Vector3d moonEnd, out _);
+            star.EvaluateWorldState(moonHistory.EndTimeS, out Vector3d starEnd, out _);
+            frameRelative =
+                (moonHistory.Points[0] - (moonStart - starStart)).Magnitude < 1e-3d
+                && (moonHistory.Points[moonHistory.Points.Count - 1] - (moonEnd - starEnd)).Magnitude < 1e-3d;
+        }
+
+        // A frame switch changes the geometry: Terra's ISK subtracts Terra, not Sol.
+        var terraFrame = new NavMapModel();
+        terraFrame.Rebuild(system, null, 0d, 1, 0, visible, window, window, null, true);
+        NavLine moonInTerra = NavMapTestTrail(terraFrame, NavLineKind.BodyHistory, 2);
+        bool frameChanges = moonInTerra != null && moonHistory != null
+            && (moonInTerra.Points[0] - moonHistory.Points[0]).Magnitude > 1e8d;
+
+        // The sliders select the span (history is the eighth argument).
+        var shortModel = new NavMapModel();
+        shortModel.Rebuild(system, null, 0d, 0, 0, visible, 0d, 600d, null, true);
+        var longModel = new NavMapModel();
+        longModel.Rebuild(system, null, 0d, 0, 0, visible, 0d, 7200d, null, true);
+        NavLine shortTrail = NavMapTestTrail(shortModel, NavLineKind.BodyHistory, 2);
+        NavLine longTrail = NavMapTestTrail(longModel, NavLineKind.BodyHistory, 2);
+        bool slidersWork = shortTrail != null && longTrail != null
+            && Math.Abs((shortTrail.EndTimeS - shortTrail.StartTimeS) - 600d) < 1d
+            && Math.Abs((longTrail.EndTimeS - longTrail.StartTimeS) - 7200d) < 1d;
+
+        // No full-period rails at all.
+        bool noFullRails = true;
+        for (int i = 0; i < sunFrame.Lines.Count; i++)
+        {
+            if (sunFrame.Lines[i].Kind == NavLineKind.BodyOrbit)
+            {
+                noFullRails = false;
+            }
+        }
+
+        // The per-body dot hides that body's trail.
+        bool[] moonHidden = { true, true, false };
+        var hiddenModel = new NavMapModel();
+        hiddenModel.Rebuild(system, null, 0d, 0, 0, moonHidden, window, window, null, true);
+        bool toggleWorks = NavMapTestTrail(hiddenModel, NavLineKind.BodyHistory, 2) == null
+            && NavMapTestTrail(hiddenModel, NavLineKind.BodyForecast, 2) == null;
+
+        bool pass = frames == 3 && everyBody && timeLimited && forecast && frameRelative
+            && frameChanges && slidersWork && noFullRails && toggleWorks;
+        Check(pass, "T572 nav map body trails",
+            "frames=" + frames
+            + " everyBody=" + everyBody
+            + " historySpan=" + (moonHistory != null
+                ? (moonHistory.EndTimeS - moonHistory.StartTimeS).ToString("F0")
+                : "n/a") + "s"
+            + " timeLimited=" + timeLimited + " forecast=" + forecast
+            + " frameRelative=" + frameRelative + " frameChanges=" + frameChanges
+            + " sliders=" + slidersWork + " noFullRails=" + noFullRails + " toggle=" + toggleWorks);
+        return 0;
+    }
+
+    private static NavLine NavMapTestTrail(NavMapModel model, NavLineKind kind, int bodyIndex)
+    {
+        for (int i = 0; i < model.Lines.Count; i++)
+        {
+            if (model.Lines[i].Kind == kind && model.Lines[i].BodyIndex == bodyIndex)
+            {
+                return model.Lines[i];
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Apsis markers are the dominant body's apse, placed in the SELECTED frame at
     /// the time the craft reaches it. The old code anchored the marker at "now", so
     /// switching TERRA → SOL left it where the previous frame had it instead of
