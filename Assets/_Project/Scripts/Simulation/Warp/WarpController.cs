@@ -43,10 +43,13 @@ namespace Galilego.Events
     ///    модельными. В кадр просто укладывается больше чанков.
     ///  • Full ×10 … ×1 000 000 — только баллистика: тяга принудительно ноль, вход
     ///    формально проверяется LongWarpDriver.CanEnterLongWarp (нет тяги и нет
-    ///    сопротивления). При невыполнении — физическая цепочка с капом ×3.
+    ///    сопротивления). При невыполнении — физическая цепочка с полосовым капом.
     ///
-    /// Кап в атмосфере/на посадке (×3) сохраняется: там модель шага теснее связана с
-    /// поверхностью и контактной зоной.
+    /// Кап по ВЫСОТЕ (WarpAltitudeGate, решение заказчика): ниже 15 км полный варп
+    /// запрещён, 15…80 км — не выше ×50, выше 80 км — вся лестница. Это не кап
+    /// эффективного фактора в контроллере, а вход планировщика: контроллер хранит
+    /// ЗАПРОС, полосу применяет WarpPlanner. Кап ×3 остался только для наземной
+    /// динамики (StepLanded), где корабль не «стоит», а едет по поверхности.
     ///
     /// Старый SetWarpFactor(double) остаётся: клавиши 1…7 и чит-меню работают по той же
     /// лестнице, ни одна ступень (включая 3000) не теряется.
@@ -68,15 +71,12 @@ namespace Galilego.Events
         /// <summary>Верхняя ступень полного варпа.</summary>
         public const double MaxWarpFactor = 1000000d;
 
-        /// <summary>Кап на эффективный фактор в атмосфере и на посадке.</summary>
-        public const double AtmosphereMaxWarpFactor = 3d;
-
         /// <summary>
-        /// Потолок для игрока ВНЕ корабля (EVA/на поверхности): тот же верх физической
-        /// цепочки, чтобы настройка ×6 не срезалась молча. Долгий варп без игрока в
-        /// корабле запрещён отдельно (playerCap конечен).
+        /// Кап наземной динамики (StepLanded): корабль едет/скользит по поверхности, там
+        /// шаг модели теснее связан с контактной зоной. Стоящий аппарат этим путём не
+        /// идёт — его ведёт парковочный варп без капа (см. TryParkedWarpStep).
         /// </summary>
-        public const double PlayerOutsideMaxWarpFactor = PhysicalMaxWarpFactor;
+        public const double AtmosphereMaxWarpFactor = 3d;
 
         /// <summary>
         /// Лестница старых клавиш 1…7 (историческое поведение): 1, 5, 10, 100, 500, 1000,
@@ -165,13 +165,24 @@ namespace Galilego.Events
         }
 
         /// <summary>
-        /// Фактор, который РЕАЛЬНО применён в этом кадре: в атмосфере кап ×3.
-        /// В режиме Full в атмосфере это значение относится к физической цепочке.
+        /// Фактор, который РЕАЛЬНО применён бы в режиме Full при этом полосовом капе
+        /// (WarpAltitudeGate.MaxFullFactor). Полный варп запрещён полосой — 1: кадр
+        /// должен идти физической цепочкой ×1, а не молча крутить полный запрос.
+        /// Физическая лестница полосой не режется: она и так ≤ ×6.
         /// </summary>
-        public double EffectiveWarpFactor(bool inAtmosphere)
+        public double EffectiveWarpFactor(double maxFullFactor)
         {
-            double cap = inAtmosphere ? AtmosphereMaxWarpFactor : MaxWarpFactor;
-            return Factor > cap ? cap : Factor;
+            if (Mode == WarpMode.Physical)
+            {
+                return Factor;
+            }
+
+            if (!(maxFullFactor >= FullRungs[0]))
+            {
+                return 1d;
+            }
+
+            return Factor > maxFullFactor ? maxFullFactor : Factor;
         }
 
         /// <summary>

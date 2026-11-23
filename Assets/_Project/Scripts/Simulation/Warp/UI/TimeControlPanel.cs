@@ -438,6 +438,13 @@ namespace Galilego.Universe
             {
                 readout = FormatFactor(FullFactors[hoverWarp]);
                 readoutCol = WarpCol;
+                if (FullFactors[hoverWarp] > model.MaxFullFactor + 1e-9d)
+                {
+                    // Полоса высоты не пускает эту ступень — говорим это под курсором,
+                    // а не молча глотаем клик.
+                    readout += " · недоступно";
+                    readoutCol = WithA(WarpCol, 0.55f);
+                }
             }
             else if (hoverPhys > 0)
             {
@@ -538,23 +545,31 @@ namespace Galilego.Universe
             for (int i = 0; i < FullFactors.Length; i++)
             {
                 Rect r = WarpButtonRect(i);
-                bool active = model.ActiveKind == WarpKind.Full && model.FullIndex == i;
-                float hv = Hov(IdWarp0 + i, r);
+                bool allowed = FullFactors[i] <= model.MaxFullFactor + 1e-9d;
+                bool active = allowed && model.ActiveKind == WarpKind.Full && model.FullIndex == i;
+                float hv = Hov(IdWarp0 + i, r, allowed);
 
                 if (active)
                 {
                     Box(Inflate(r, 4f), 12, WithA(WarpCol, 0.16f + (0.06f * hv)));
                     Box(r, 9, Color.Lerp(WarpCol, Color.white, 0.12f * hv));
                 }
-                else
+                else if (allowed)
                 {
                     Box(r, 9, Color.Lerp(MenuTheme.Card, new Color(0.17f, 0.15f, 0.11f, 1f), hv));
                 }
+                else
+                {
+                    // Ступень выше полосы высоты: кнопка гаснет и не нажимается.
+                    Box(r, 9, WithA(MenuTheme.Card, 0.35f));
+                }
 
-                Color idle = Color.Lerp(MenuTheme.Muted, WarpCol, hv);
+                Color idle = allowed
+                    ? Color.Lerp(MenuTheme.Muted, WarpCol, hv)
+                    : WithA(MenuTheme.Muted, 0.35f);
                 Txt(r, FullLabels[i], 13, true, TextAnchor.MiddleCenter, active ? OnWarp : idle);
 
-                if (Clicked(r, 0))
+                if (allowed && Clicked(r, 0))
                 {
                     model.RaiseFull(i);
                 }

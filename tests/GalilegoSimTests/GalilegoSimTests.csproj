@@ -33,6 +33,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\DynamicsContribution.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\IDynamicsSource.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\GravitySource.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\Dynamics\CachedGravitySource.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Spacecraft\SpacecraftPhysics.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDirection.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDetectors.cs" />
@@ -42,6 +43,7 @@
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\Detectors\SoiChangeDetector.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\TimedEvent.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Events\EventDrivenPropagator.cs" />
+    <Compile Include="..\..\Assets\_Project\Scripts\Simulation\Warp\WarpAltitudeGate.cs" />
     <Compile Include="*.cs" />
     <Compile Include="..\..\Assets\_Project\Scripts\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>

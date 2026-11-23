@@ -66,8 +66,17 @@ namespace Galilego.Universe
         /// <summary>true — применённый фактор меньше выбранного (сработал кап).</summary>
         public bool AppliedFactorClamped;
 
-        /// <summary>Почему фактор срезан: «площадка», «стройка», «поверхность», «атмосфера».</summary>
+        /// <summary>
+        /// Почему фактор срезан: «площадка», «стройка», «поверхность», «ниже 15 км»,
+        /// «ниже 80 км». Атмосферы тут больше нет: её место заняли полосы высоты.
+        /// </summary>
         public string ClampReason = string.Empty;
+
+        /// <summary>
+        /// Потолок ПОЛНОГО варпа прямо сейчас: 0 — запрещён (ниже 15 км), ×50 — полоса
+        /// 15…80 км, +∞ — выше 80 км или аппарат стоит. Панель гасит кнопки выше потолка.
+        /// </summary>
+        public double MaxFullFactor = double.PositiveInfinity;
 
         /// <summary>Короткое сообщение панели: почему откат отклонён и т. п. Пусто — нет сообщения.</summary>
         public string Notice = string.Empty;

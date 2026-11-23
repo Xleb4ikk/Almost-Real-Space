@@ -46,25 +46,30 @@ namespace Galilego.Universe
         }
 
         /// <summary>
-        /// Accelerated-time decision for this frame: atmosphere cap ×3, effective factor,
+        /// Accelerated-time decision for this frame: the altitude band
+        /// (<paramref name="maxFullFactor"/>, WarpAltitudeGate), effective factor,
         /// execution layer (physics vs long warp); the horizon is the end of the baked
         /// world. <paramref name="longWarpAllowed"/> — формальный результат
         /// LongWarpDriver.CanEnterLongWarp (нулевой вклад тяги и сопротивления): без него
         /// полный варп не выбирается вообще. After it the caller runs either the long-warp
         /// path (warp.PrepareForLongWarp + LongWarpDriver.AdvanceToTarget) or the physics
         /// chain with EffectiveThrottle.
+        ///
+        /// The altitude band is passed in, not derived here: a craft STANDING on the
+        /// surface is exempt from it (any factor at any altitude), and only the caller
+        /// (VesselStep + SimulationRunner) knows whether the vessel is parked. 0 — full
+        /// warp forbidden (physical ladder stays legal), +∞ — the whole ladder.
         /// Main thread only.
         /// </summary>
         public static WarpFrameDecision ComputeFrame(
             StarSystem sys, WarpController warp, Vector3d shipPosition, double timeSeconds, double realDtSeconds,
-            bool longWarpAllowed)
+            bool longWarpAllowed, double maxFullFactor)
         {
             if (sys == null)
             {
                 throw new ArgumentNullException(nameof(sys));
             }
 
-            bool inAtmosphere = sys.IsInsideAtmosphere(shipPosition, timeSeconds);
             double horizon = double.PositiveInfinity;
             double bakedEnd = sys.BakedEndSeconds();
             if (double.IsFinite(bakedEnd))
@@ -72,7 +77,7 @@ namespace Galilego.Universe
                 horizon = bakedEnd - timeSeconds;
             }
 
-            return WarpPlanner.ComputeFrame(warp, inAtmosphere, longWarpAllowed, realDtSeconds, horizon);
+            return WarpPlanner.ComputeFrame(warp, maxFullFactor, longWarpAllowed, realDtSeconds, horizon);
         }
     }
 }

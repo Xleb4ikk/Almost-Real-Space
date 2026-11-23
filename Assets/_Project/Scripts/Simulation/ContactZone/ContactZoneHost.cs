@@ -37,6 +37,20 @@ namespace Galilego.Simulation.ContactZone
         /// </summary>
         public double LastAltitudeMeters { get { return gate.LastAltitudeMeters; } }
 
+        /// <summary>
+        /// Точка корпуса (низ), которую зона записала в аппарат в этом кадре — авторитетная
+        /// поза стоящего корабля. Ship.Position после разрыва стыков уезжает от прокси на
+        /// сотни метров; решение «стоит ли» и парковочный варп обязаны идти от прокси,
+        /// иначе панель честно, но бесполезно говорит «не стоит» про ракету на столе.
+        /// </summary>
+        public Vector3d HeldShipPointWorld { get; private set; }
+
+        /// <summary>Скорость той же точки (мир), как её записала зона.</summary>
+        public Vector3d HeldShipVelocityWorld { get; private set; }
+
+        /// <summary>true — HeldShipPointWorld принадлежит текущей сессии зоны.</summary>
+        public bool HeldShipPointValid { get; private set; }
+
         private readonly ContactZoneGate gate = new ContactZoneGate();
         private SiteFrame frame;
 
@@ -93,6 +107,7 @@ namespace Galilego.Simulation.ContactZone
             entryBlocked = false;
             lastValidOk = false;
             lastPatchRebuildTime = double.NegativeInfinity;
+            HeldShipPointValid = false;
 
             if (!Active)
             {
@@ -253,8 +268,14 @@ namespace Galilego.Simulation.ContactZone
             }
 
             // The zone drives ship state: written back to the double world every frame.
+            // The same point is kept as the authoritative "where the craft actually is"
+            // for the parked-warp decision (Ship.Position can drift away from the proxy
+            // after a joint break).
             ship.Position = worldPosition;
             ship.Velocity = worldVelocity;
+            HeldShipPointWorld = worldPosition;
+            HeldShipVelocityWorld = worldVelocity;
+            HeldShipPointValid = true;
         }
 
         /// <summary>
@@ -408,6 +429,7 @@ namespace Galilego.Simulation.ContactZone
             Patch.Clear();
             gate.Reset();
             Active = false;
+            HeldShipPointValid = false;
             if (Log) Debug.Log("[ContactZone] выход");
         }
 

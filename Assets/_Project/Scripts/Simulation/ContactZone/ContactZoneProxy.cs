@@ -21,6 +21,19 @@ namespace Galilego.Simulation.ContactZone
 
         private readonly List<Rigidbody> bodies = new List<Rigidbody>();
         private readonly List<Joint> joints = new List<Joint>();
+
+        /// <summary>Design break force per joint, parallel to <see cref="joints"/>.</summary>
+        private readonly List<float> jointDesignForce = new List<float>();
+
+        /// <summary>
+        /// Speed below which the whole assembly counts as parked, m/s. A craft standing on
+        /// the pad must not lose joints to gravity + PhysX solver noise: measured spikes of
+        /// 0.4–5.5 MN on a 20 t stack tore it apart at rest, and the pad's own jitter is
+        /// 0.07…1.1 m/s — above a 0.5 m/s threshold the lift would never engage while the
+        /// craft shakes. Above this speed the design strengths are back, so a hard
+        /// touchdown (gate entry is up to 60 m/s) still breaks parts.
+        /// </summary>
+        private const float ParkedJointSpeedMps = 2f;
         private readonly List<Mesh> partMeshes = new List<Mesh>();
 
         // Joint breaks: indices of CHILD parts with a broken joint; the root-island
@@ -213,6 +226,7 @@ namespace Galilego.Simulation.ContactZone
                 var fj = bodies[i].gameObject.AddComponent<FixedJoint>();
                 fj.connectedBody = bodies[d.ParentIndex];
                 fj.breakForce = (float)d.JointStrengthNewtons;
+                jointDesignForce.Add((float)d.JointStrengthNewtons);
                 fj.breakTorque = (float)d.BreakTorqueNm;
                 fj.enableCollision = false; // adjacent parts of the same ship do not collide
                 joints.Add(fj);
@@ -236,6 +250,30 @@ namespace Galilego.Simulation.ContactZone
                 {
                     rb.AddForce(GravityWorld, ForceMode.Acceleration);
                 }
+            }
+
+            // Parked joints: lift the limit while the whole assembly is at rest (see
+            // ParkedJointSpeedMps). Setting it every step also restores the design value
+            // the moment the craft starts moving.
+            float maxSpeedSqr = 0f;
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                Rigidbody rb = bodies[i];
+                if (rb != null)
+                {
+                    maxSpeedSqr = Mathf.Max(maxSpeedSqr, rb.linearVelocity.sqrMagnitude);
+                }
+            }
+
+            bool parked = maxSpeedSqr <= ParkedJointSpeedMps * ParkedJointSpeedMps;
+            for (int j = 0; j < joints.Count && j < jointDesignForce.Count; j++)
+            {
+                if (joints[j] == null)
+                {
+                    continue;
+                }
+
+                joints[j].breakForce = parked ? 1e12f : jointDesignForce[j];
             }
 
             for (int i = deferredCollisionPairs.Count - 1; i >= 0; i--)
@@ -573,6 +611,7 @@ namespace Galilego.Simulation.ContactZone
             bodies.Clear();
             visualBody.Clear();
             joints.Clear();
+            jointDesignForce.Clear();
             partDefs = null;
             brokenChildren.Clear();
             stagedCuts.Clear();

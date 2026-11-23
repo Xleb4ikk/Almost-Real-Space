@@ -50,6 +50,7 @@ namespace Galilego.Universe
         private bool pointsDirty;
         private int pendingRewind = NoRequest;
         private int seenThrottleResets;
+        private int seenBandResets;
         private float noticeUntil;
 
         internal TimeControlModel Model { get; }
@@ -117,6 +118,14 @@ namespace Galilego.Universe
                 // letting the slot silently fall back to x1 (read as "the button is dead").
                 seenThrottleResets = runner.ParkedWarpThrottleResets;
                 SetNotice("ускорение снято: газ открыт", 2.5f);
+            }
+
+            if (runner.WarpBandResets != seenBandResets)
+            {
+                // Сближение с телом сбросило полный варп в ×1 (рубеж 80 или 15 км):
+                // срез показывается сообщением, а не тишиной.
+                seenBandResets = runner.WarpBandResets;
+                SetNotice("ускорение сброшено: " + runner.WarpBandResetReason, 3f);
             }
 
             SyncModel();
@@ -460,6 +469,8 @@ namespace Galilego.Universe
                 }
             }
 
+            Model.MaxFullFactor = runner.AllowedMaxFullWarpFactor;
+
             double applied = runner.EffectiveWarpFactor;
             Model.AppliedFactor = applied;
             Model.AppliedFactorClamped = applied < warp.Factor - 1e-9d;
@@ -479,9 +490,16 @@ namespace Galilego.Universe
             {
                 Model.ClampReason = "поверхность";
             }
+            else if (warp.Mode == WarpMode.Full)
+            {
+                // Полосу высоты и запрет длинного варпа называем прямо: «атмосфера» на
+                // безатмосферной Луне была ложью.
+                string band = WarpAltitudeGate.CapReason(runner.CurrentWarpBand);
+                Model.ClampReason = band.Length > 0 ? band : "тяга/сопротивление";
+            }
             else
             {
-                Model.ClampReason = "атмосфера";
+                Model.ClampReason = string.Empty;
             }
         }
 

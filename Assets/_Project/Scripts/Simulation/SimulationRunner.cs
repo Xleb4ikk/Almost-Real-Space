@@ -667,62 +667,188 @@ namespace Galilego.Universe
         public int ParkedWarpThrottleResets { get; private set; }
 
         /// <summary>
-        /// Аппарат стоит на поверхности: зона или Landed, точка — низ корпуса, скорость
-        /// относительно поверхности ниже 0.1 м/с (в зоне допускается контакт по высоте,
-        /// потому что скорость прокси приходит с задержкой кадра). По этому же признаку
-        /// снимаются восстановимые точки перемотки на площадке.
+        /// Сколько корабль реально сместился за окно наблюдения, м; −1 — окно ещё не
+        /// набрано (тогда решает мгновенная скорость).
+        /// </summary>
+        private const double StandWindowSeconds = 0.25d;
+
+        /// <summary>Порог сноса «стоит»: 5 см за 0.25 с ≈ 0.2 м/с.</summary>
+        private const double StandDriftMeters = 0.05d;
+
+        /// <summary>
+        /// Порог удержания парковочного варпа после входа: зона уже отпущена, прокси
+        /// пересобирается, и несколько сантиметров дребезга не должны его выбивать.
+        /// 12 см за окно ≈ 0.5 м/с.
+        /// </summary>
+        private const double ParkedHeldDriftMeters = 0.12d;
+
+        private OrbitingBody standBody;
+        private double standAnchorTime = double.NaN;
+        private Vector3d standAnchorOffset;
+        private int driftFrame = int.MinValue;
+        private double driftMeters = -1d;
+
+        /// <summary>
+        /// Аппарат стоит на поверхности: зона или Landed, точка — низ корпуса, и он
+        /// НЕ СДВИНУЛСЯ за последние 0.25 с (в системе координат тела, чтобы вращение
+        /// планеты не считалось движением). Мгновенная скорость COM в контактной зоне —
+        /// шум решателя (±1 м/с на стоящей стопке), поэтому «стоит» измеряется
+        /// перемещением, а не скоростью. По этому же признаку снимаются восстановимые
+        /// точки перемотки на площадке и включается парковочный варп.
         /// </summary>
         public bool IsVesselStandingOnSurface
         {
-            get
+            get { return StandingCheck(StandDriftMeters); }
+        }
+
+        /// <summary>Тот же признак с допуском удержания (после входа в парковку).</summary>
+        private bool IsParkedWarpHeld
+        {
+            get { return StandingCheck(ParkedHeldDriftMeters); }
+        }
+
+        private bool StandingCheck(double maxDriftMeters)
+        {
+            if (step == null || Ship == null)
             {
-                if (step == null || Ship == null)
-                {
-                    return false;
-                }
-
-                if (!ContactZoneHost.Active && Regime != VesselRegime.Landed)
-                {
-                    return false;
-                }
-
-                if (Ship.PositionIsCom)
-                {
-                    return false;
-                }
-
-                OrbitingBody body = step.DominantBody;
-                if (body == null)
-                {
-                    return false;
-                }
-
-                if (!(body.RotationPeriodSeconds > 0d))
-                {
-                    return true;
-                }
-
-                body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out Vector3d bodyVel);
-                Vector3d offset = Ship.Position - bodyPos;
-                Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
-                Vector3d surfaceVelocity = bodyVel + Vector3d.Cross(omega, offset);
-                if ((Ship.Velocity - surfaceVelocity).Magnitude <= ParkedMaxRelativeSpeed)
-                {
-                    return true;
-                }
-
-                if (ContactZoneHost.Active)
-                {
-                    if (zoneHostCache == null)
-                    {
-                        zoneHostCache = FindAnyObjectByType<ContactZoneHost>();
-                    }
-
-                    return zoneHostCache != null && zoneHostCache.LastAltitudeMeters < 1d;
-                }
-
                 return false;
             }
+
+            if (!ContactZoneHost.Active && Regime != VesselRegime.Landed)
+            {
+                return false;
+            }
+
+            if (Ship.PositionIsCom)
+            {
+                return false;
+            }
+
+            OrbitingBody body = step.DominantBody;
+            if (body == null)
+            {
+                return false;
+            }
+
+            if (!(body.RotationPeriodSeconds > 0d))
+            {
+                return true;
+            }
+
+            // In the contact zone the ZONE is the authority: its proxy lies on the pad,
+            // while Ship.Position can drift away from the proxy by hundreds of metres
+            // after a joint break. A proxy at deck level IS a parked craft.
+            if (ContactZoneHost.Active)
+            {
+                ContactZoneHost zone = ZoneHostCached();
+                if (zone != null && zone.HeldShipPointValid
+                    && zone.LastAltitudeMeters <= zone.EntryUnblockAltitudeMeters)
+                {
+                    return true;
+                }
+            }
+
+            // One evaluation per frame: the property is read by the step, by the panel
+            // and by the checkpoint capture in the same frame.
+            if (driftFrame != Time.frameCount)
+            {
+                driftFrame = Time.frameCount;
+                driftMeters = MeasureStandDrift(body);
+            }
+
+            if (driftMeters >= 0d)
+            {
+                return driftMeters <= maxDriftMeters;
+            }
+
+            return InstantStanding(body);
+        }
+
+        /// <summary>
+        /// Drift over the window in the body frame: the offset from the body centre is
+        /// rotated by the body's own spin before the difference is taken, so a craft
+        /// riding a rotating planet does not look like a moving one.
+        /// </summary>
+        private ContactZoneHost ZoneHostCached()
+        {
+            if (zoneHostCache == null)
+            {
+                zoneHostCache = FindAnyObjectByType<ContactZoneHost>();
+            }
+
+            return zoneHostCache;
+        }
+
+        /// <summary>
+        /// Точка, по которой меряется «стоит»: в зоне — точка, записанная зоной из прокси
+        /// (авторитетная), иначе — Ship.Position.
+        /// </summary>
+        private Vector3d StandingPoint()
+        {
+            ContactZoneHost zone = ZoneHostCached();
+            if (ContactZoneHost.Active && zone != null && zone.HeldShipPointValid)
+            {
+                return zone.HeldShipPointWorld;
+            }
+
+            return Ship.Position;
+        }
+
+        /// <summary>Скорость той же точки: в зоне — из прокси, иначе Ship.Velocity.</summary>
+        private Vector3d StandingVelocity()
+        {
+            ContactZoneHost zone = ZoneHostCached();
+            if (ContactZoneHost.Active && zone != null && zone.HeldShipPointValid)
+            {
+                return zone.HeldShipVelocityWorld;
+            }
+
+            return Ship.Velocity;
+        }
+
+        private double MeasureStandDrift(OrbitingBody body)
+        {
+            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+            Vector3d offset = StandingPoint() - bodyPos;
+
+            if (standBody != body || double.IsNaN(standAnchorTime) || TimeSeconds < standAnchorTime)
+            {
+                standBody = body;
+                standAnchorTime = TimeSeconds;
+                standAnchorOffset = offset;
+                return -1d;
+            }
+
+            double dt = TimeSeconds - standAnchorTime;
+            if (dt < StandWindowSeconds)
+            {
+                return -1d;
+            }
+
+            // A frame longer than the whole window (a warp jump, a hitch) says nothing
+            // about resting: re-anchor and fall back to the instantaneous check.
+            if (dt > 2d)
+            {
+                standAnchorTime = TimeSeconds;
+                standAnchorOffset = offset;
+                return -1d;
+            }
+
+            QuaternionD spin = QuaternionD.FromAxisAngle(body.SpinAxis, body.SpinAngularSpeed * dt);
+            double moved = (offset - spin.Rotate(standAnchorOffset)).Magnitude;
+            standAnchorTime = TimeSeconds;
+            standAnchorOffset = offset;
+            return moved;
+        }
+
+        /// <summary>Мгновенная проверка (первое окно после спавна): скорость COM относительно поверхности.</summary>
+        private bool InstantStanding(OrbitingBody body)
+        {
+            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out Vector3d bodyVel);
+            Vector3d offset = StandingPoint() - bodyPos;
+            Vector3d omega = body.SpinAxis * body.SpinAngularSpeed;
+            Vector3d surfaceVelocity = bodyVel + Vector3d.Cross(omega, offset);
+            return (StandingVelocity() - surfaceVelocity).Magnitude <= ParkedMaxRelativeSpeed;
         }
 
         /// <summary>Взгляд игрока на момент снимка; null — камеры в сцене нет.</summary>
@@ -815,28 +941,11 @@ namespace Galilego.Universe
                 return false;
             }
 
-            // ���� ��� ��������, ������� ��������� ���������� ����. ������� ����������:
-            // �������� ���� �� ������������� ������������ ������ � ��������� �������
-            // (�� ?100 000 ��� ����� ������ �� ����), � PhysX-������ ������� �� ����� �
-            // �� ������, � ����� ���������� ����� ���� ������� �� ������� �������.
-            // ForceExit �� ����� ��������� �������, ������� ����� ��������� ������� �����.
-            if (!parkedZoneReleased)
-            {
-                if (zoneHostCache == null)
-                {
-                    zoneHostCache = FindAnyObjectByType<ContactZoneHost>();
-                }
-
-                if (zoneHostCache != null)
-                {
-                    zoneHostCache.ForceExit();
-                    zoneHostCache.Enabled = false;
-                }
-
-                step.Regime = VesselRegime.Landed;
-                parkedZoneReleased = true;
-            }
-
+            // ALL refusals come BEFORE the zone is touched. Releasing the zone first and
+            // then bailing left the proxy to be rebuilt next frame, and
+            // ContactZoneHost.Enter() resets the warp to ×1: every click on ×N was
+            // swallowed within one frame, and the proxy rebuild shook the stack apart
+            // ("[ContactZone] принудительный выход" → "вход" on each click).
             if (Ship.PositionIsCom)
             {
                 return false;
@@ -861,9 +970,41 @@ namespace Galilego.Universe
                 return false;
             }
 
-            if (!IsVesselStandingOnSurface)
+            // Standing is required for the parked path; once the zone is already released
+            // the craft keeps the parked warp with a wider tolerance (proxy rebuild noise).
+            bool standing = parkedZoneReleased ? IsParkedWarpHeld : IsVesselStandingOnSurface;
+            if (!standing)
             {
                 return false;
+            }
+
+            // The craft is really standing (anywhere, the player may be on another body):
+            // release the PhysX zone so the pad rides inertial space with the planet
+            // instead of staying with the proxy (at ×100 000 it is hundreds of metres per
+            // frame) and let the rigid rotation of the surface hold the craft.
+            if (!parkedZoneReleased)
+            {
+                ContactZoneHost zone = ZoneHostCached();
+
+                // The zone is the authority on where the standing craft is: start the
+                // parked warp exactly on the proxy's point. Ship.Position may have drifted
+                // hundreds of metres away from the proxy after a joint break, and pinning
+                // THAT point would hang the rocket in the air for the whole warp.
+                if (ContactZoneHost.Active && zone != null && zone.HeldShipPointValid)
+                {
+                    Ship.Position = zone.HeldShipPointWorld;
+                    Ship.Velocity = zone.HeldShipVelocityWorld;
+                    Ship.InvalidateLocalState();
+                }
+
+                if (zone != null)
+                {
+                    zone.ForceExit();
+                    zone.Enabled = false;
+                }
+
+                step.Regime = VesselRegime.Landed;
+                parkedZoneReleased = true;
             }
 
             double dtSim = realDt * Warp.Factor;
@@ -934,6 +1075,16 @@ namespace Galilego.Universe
                 return false;
             }
 
+            // The hold exists to re-seat a PARKED craft that the parked warp let go of.
+            // A craft that is already flying (liftoff, teleport, long warp) has nothing to
+            // re-seat — and pinning it here every frame froze the orbital step at ×1
+            // forever (the zone can never re-enter 120 km up).
+            if (!IsVesselStandingOnSurface)
+            {
+                zoneReentryPending = false;
+                return false;
+            }
+
             OrbitingBody body = step.DominantBody;
             if (body == null || !(body.RotationPeriodSeconds > 0d))
             {
@@ -981,17 +1132,27 @@ namespace Galilego.Universe
             Ship.Velocity = bodyVelNew + Vector3d.Cross(omega, shipOffsetNew);
             Ship.InvalidateLocalState();
 
-            // ����� � ��� ��� ����� � ��� �� ���������: �������� ������������ �������
-            // ����������� ���-�-���, � ������� ������� ���� �� ������������ ������.
+            // Стоящий аппарат держим жёстким поворотом вместе с ЕГО планетой. Игрок
+            // может стоять на другом теле (варп с Луны, пока ракета стоит на площадке
+            // Terra) — его несёт ЕГО тело, иначе его утащило бы вокруг оси корабля.
+            QuaternionD lookSpin = spin;
             if (carryPlayer)
             {
-                PlayerPosition = bodyPosNew + spin.Rotate(PlayerPosition - bodyPos);
-                PlayerVelocity = bodyVelNew + Vector3d.Cross(omega, PlayerPosition - bodyPosNew);
-                PlayerSeatedPosition = bodyPosNew + spin.Rotate(PlayerSeatedPosition - bodyPos);
-                seatedShipAnchor = bodyPosNew + spin.Rotate(seatedShipAnchor - bodyPos);
-                smoothedShipPosition = bodyPosNew + spin.Rotate(smoothedShipPosition - bodyPos);
+                if (PlayerSeated || PlayerMode == PlayerMode.InShip)
+                {
+                    PlayerPosition = bodyPosNew + spin.Rotate(PlayerPosition - bodyPos);
+                    PlayerVelocity = bodyVelNew + Vector3d.Cross(omega, PlayerPosition - bodyPosNew);
+                    PlayerSeatedPosition = bodyPosNew + spin.Rotate(PlayerSeatedPosition - bodyPos);
+                    seatedShipAnchor = bodyPosNew + spin.Rotate(seatedShipAnchor - bodyPos);
+                    smoothedShipPosition = bodyPosNew + spin.Rotate(smoothedShipPosition - bodyPos);
+                }
+                else if (CarryPlayerWithBody(TimeSeconds, dtSim, out QuaternionD playerSpin))
+                {
+                    lookSpin = playerSpin;
+                }
 
-                // �����, ������� �������� �� �� ���� ������: � ���� ����� ���� ���.
+                // Взгляд игрока не копится: интенты ввода — действия следующего кадра,
+                // а не история; после поворота планеты они не должны «доехать» позже.
                 PlayerIntent.Jump = false;
                 PlayerIntent.JetpackToggle = false;
                 PlayerIntent.HoverToggle = false;
@@ -1019,7 +1180,7 @@ namespace Galilego.Universe
 
             if (lookCamera != null)
             {
-                lookCamera.RotateLook(AstroFrame.ToSimulation(spin));
+                lookCamera.RotateLook(AstroFrame.ToSimulation(lookSpin));
             }
 
             // Корень визуала: в зоне его поворот держит зеркало деталей, а на парковке
@@ -1039,6 +1200,34 @@ namespace Galilego.Universe
 
             FloatingOrigin.Anchor = PlayerPosition;
             LogSurfacePosition();
+        }
+
+        /// <summary>
+        /// Переносит игрока вместе с телом, под которым он стоит, за dtSim модельных
+        /// секунд: тело едет по орбите и вращается за это время, а игрок должен остаться
+        /// на его поверхности. false — переносить нечего (игрок на борту, тела нет или
+        /// оно не вращается); тогда вызывающий шагает игрока как обычно.
+        /// </summary>
+        private bool CarryPlayerWithBody(double fromTime, double dtSim, out QuaternionD spin)
+        {
+            spin = QuaternionD.Identity;
+            if (!(dtSim > 0d) || PlayerMode == PlayerMode.InShip || PlayerSeated)
+            {
+                return false;
+            }
+
+            OrbitingBody body = PlayerBody;
+            if (body == null || !(body.RotationPeriodSeconds > 0d))
+            {
+                return false;
+            }
+
+            body.EvaluateWorldState(fromTime, out Vector3d p0, out _);
+            body.EvaluateWorldState(fromTime + dtSim, out Vector3d p1, out Vector3d v1);
+            spin = QuaternionD.FromAxisAngle(body.SpinAxis, body.SpinAngularSpeed * dtSim);
+            PlayerPosition = p1 + spin.Rotate(PlayerPosition - p0);
+            PlayerVelocity = v1 + Vector3d.Cross(body.SpinAxis * body.SpinAngularSpeed, PlayerPosition - p1);
+            return true;
         }
 
         /// <summary>
@@ -1263,6 +1452,89 @@ namespace Galilego.Universe
 
             step.Driver.ClearCancel();
             step.ResetBudgetState();
+        }
+
+        // ─── Полоса высоты (WarpAltitudeGate) ────────────────────────────────
+
+        /// <summary>Высота аппарата над поверхностью доминирующего тела, м.</summary>
+        public double VesselAltitudeMeters
+        {
+            get
+            {
+                if (step == null || Ship == null || step.DominantBody == null)
+                {
+                    return double.PositiveInfinity;
+                }
+
+                OrbitingBody body = step.DominantBody;
+                body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+                return (Ship.Position - bodyPos).Magnitude - body.Radius;
+            }
+        }
+
+        /// <summary>
+        /// Потолок ПОЛНОГО варпа прямо сейчас: 0 — запрещён (ниже 15 км), ×50 — полоса
+        /// 15…80 км, +∞ — выше 80 км. Стоящий аппарат не ограничен ничем: у парковочного
+        /// варпа нет полосы высоты (owner's rule).
+        /// </summary>
+        public double AllowedMaxFullWarpFactor
+        {
+            get
+            {
+                if (IsVesselStandingOnSurface)
+                {
+                    return double.PositiveInfinity;
+                }
+
+                return WarpAltitudeGate.MaxFullFactor(VesselAltitudeMeters);
+            }
+        }
+
+        /// <summary>Полоса высоты, в которой сейчас аппарат (для панели/подсказок).</summary>
+        public WarpAltitudeBand CurrentWarpBand
+        {
+            get
+            {
+                return IsVesselStandingOnSurface
+                    ? WarpAltitudeBand.High
+                    : WarpAltitudeGate.BandAt(VesselAltitudeMeters);
+            }
+        }
+
+        /// <summary>
+        /// Сколько раз сближение с поверхностью сбросило варп в ×1 (пересечение рубежа
+        /// 80 или 15 км вниз). Панель показывает это сообщением, а не молчанием.
+        /// </summary>
+        public int WarpBandResets { get; private set; }
+
+        /// <summary>Почему последний раз сбросили: «ниже 80 км» / «ниже 15 км».</summary>
+        public string WarpBandResetReason { get; private set; } = string.Empty;
+
+        private WarpAltitudeBand lastWarpBand = WarpAltitudeBand.High;
+        private bool warpBandKnown;
+
+        /// <summary>
+        /// Пересечение рубежа ВНИЗ (80 км, потом 15 км) сбрасывает полный варп в ×1 —
+        /// игрок не должен влетать в атмосферу/к поверхности на ×1000. Вверх рубеж
+        /// ничего не сбрасывает: там просто открывается более высокая ступень.
+        /// </summary>
+        private void UpdateWarpBandGuard()
+        {
+            if (step == null || Ship == null || Warp == null)
+            {
+                return;
+            }
+
+            WarpAltitudeBand band = CurrentWarpBand;
+            if (warpBandKnown && (int)band < (int)lastWarpBand && Warp.Mode == WarpMode.Full)
+            {
+                Warp.ResetToPhysicalOne();
+                WarpBandResets++;
+                WarpBandResetReason = WarpAltitudeGate.CapReason(band);
+            }
+
+            lastWarpBand = band;
+            warpBandKnown = true;
         }
 
         private void SpawnShip()
@@ -1523,13 +1795,42 @@ namespace Galilego.Universe
             }
 
             SyncVesselRoot();
-            StepPlayer(frameStartTime);
+
+            // A long warp moves the model clock in ONE frame. Stepping the player through
+            // 50 000 s of surface substeps would freeze the game, so an on-foot player
+            // rides their own body across the jump (the same rigid rotation the parked
+            // warp uses); at ×1…×6 nothing changes — the player is stepped normally.
+            double warpAdvance = TimeSeconds - frameStartTime;
+            if (step.LastFrameUsedLongWarp && !playerInShip
+                && PlayerMode == PlayerMode.OnSurface && !PlayerSeated)
+            {
+                if (CarryPlayerWithBody(frameStartTime, warpAdvance, out QuaternionD carrySpin))
+                {
+                    if (lookCamera == null)
+                    {
+                        lookCamera = FindAnyObjectByType<FirstPersonCamera>();
+                    }
+
+                    if (lookCamera != null)
+                    {
+                        lookCamera.RotateLook(AstroFrame.ToSimulation(carrySpin));
+                    }
+                }
+
+                FloatingOrigin.Anchor = PlayerPosition;
+            }
+            else
+            {
+                StepPlayer(frameStartTime);
+            }
+
             step.DominantBody = SystemState.FindDominantBody(Ship.Position, TimeSeconds);
 
             // Render anchor � the player position (floating origin): views read the fresh
             // anchor in LateUpdate, so it is set at the very end of the physics step.
             FloatingOrigin.Anchor = PlayerPosition;
 
+            UpdateWarpBandGuard();
             LogSurfacePosition();
         }
 

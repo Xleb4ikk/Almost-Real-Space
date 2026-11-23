@@ -178,8 +178,34 @@ namespace Galilego.Universe
             }
 
             longWarpRefusalLogged = true;
-            Debug.LogWarning("[Warp] полный варп запрошен, но запрещён (атмосфера / тяга / сопротивление) — " +
-                "кадр идёт физической цепочкой с капом ×" + WarpController.AtmosphereMaxWarpFactor);
+            Debug.LogWarning("[Warp] полный варп запрошен, но запрещён (полоса высоты / тяга / сопротивление) — " +
+                "кадр идёт физической цепочкой: ниже 15 км ×1, 15…80 км не выше ×" +
+                WarpAltitudeGate.MidBandMaxFullFactor);
+        }
+
+        /// <summary>
+        /// true — последний кадр прожит длинным варпом (LongWarpDriver, баллистика).
+        /// SimulationRunner по нему решает, тащить игрока за его телом, а не
+        /// прошагивать десятки тысяч подшагов.
+        /// </summary>
+        public bool LastFrameUsedLongWarp { get; private set; }
+
+        /// <summary>
+        /// Высота корабля над поверхностью доминирующего тела (радиус + рельеф не нужен:
+        /// рубежи 15/80 км считаются по «уровню моря»). +∞ — тело не найдено.
+        /// </summary>
+        public double AltitudeAboveDominantMeters()
+        {
+            OrbitingBody body = DominantBody ?? (SystemState != null
+                ? SystemState.FindDominantBody(Ship.Position, TimeSeconds)
+                : null);
+            if (body == null)
+            {
+                return double.PositiveInfinity;
+            }
+
+            body.EvaluateWorldState(TimeSeconds, out Vector3d bodyPos, out _);
+            return (Ship.Position - bodyPos).Magnitude - body.Radius;
         }
 
         /// <summary>Upper bound on a surface substep (s), consistent with the control-tick grain.</summary>
@@ -260,14 +286,18 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Flight for a frame: orbital chain in chunks by the control-tick boundary,
-        /// the event is handled here too. playerInShip=false (player outside the
-        /// ship) forbids long warp and caps the physical factor — otherwise the player
-        /// could not be caught up by substeps.
+        /// the event is handled here too.
         ///
         /// Полный варп выбирается только при формальном разрешении
         /// (LongWarpDriver.CanEnterLongWarp): тяга и сопротивление должны быть ровно
-        /// нулевыми. Иначе кадр идёт физической цепочкой с капом ×3 и один раз логирует
-        /// отказ — молчаливой баллистики в атмосфере не бывает.
+        /// нулевыми, а полоса высоты — разрешать (ниже 15 км нельзя, 15…80 км ≤ ×50,
+        /// выше 80 км всё). Иначе кадр идёт физической цепочкой с полосовым капом и один
+        /// раз логирует отказ — молчаливой баллистики в атмосфере не бывает.
+        ///
+        /// playerInShip больше не режет варп: аппарат летит по инерции или стоит — он
+        /// один, и его часы не зависят от того, где стоит игрок (owner's rule). Игрока,
+        /// оставшегося на другом теле, SimulationRunner переносит вместе с ЕГО телом
+        /// (CarryPlayerWithBody), а не подшагами.
         /// </summary>
         public void StepFlying(float realDt, bool playerInShip)
         {
@@ -288,21 +318,23 @@ namespace Galilego.Universe
                 longWarpAllowed = Driver.CanEnterLongWarp(probe, TimeSeconds);
             }
 
+            double maxFullFactor = WarpAltitudeGate.MaxFullFactor(AltitudeAboveDominantMeters());
             WarpFrameDecision decision = EphemerisRuntime.ComputeFrame(
-                SystemState, Warp, Ship.Position, TimeSeconds, realDt, longWarpAllowed);
+                SystemState, Warp, Ship.Position, TimeSeconds, realDt, longWarpAllowed, maxFullFactor);
             if (decision.LongWarpRefused)
             {
                 NotifyLongWarpRefused();
             }
 
-            double playerCap = playerInShip ? double.PositiveInfinity : WarpController.PlayerOutsideMaxWarpFactor;
-            double factor = Math.Min(decision.EffectiveFactor, playerCap);
+            LastFrameUsedLongWarp = false;
+            double factor = decision.EffectiveFactor;
             LastEffectiveFactor = factor;
-            double frameEnd = TimeSeconds + (realDt * factor);
-            bool useLongWarp = decision.UseLongWarp && double.IsPositiveInfinity(playerCap);
+            double frameEnd = TimeSeconds + decision.SimSeconds;
+            bool useLongWarp = decision.UseLongWarp;
 
             if (useLongWarp)
             {
+                LastFrameUsedLongWarp = true;
                 // Long warp: ballistics entirely, thrust forbidden by construction.
                 if (Flight != null)
                 {
@@ -563,15 +595,19 @@ namespace Galilego.Universe
 
         /// <summary>
         /// Landing for a frame: constrained surface dynamics in chunks. Long warp is
-        /// forbidden, physical factor capped at ×3 (as in the atmosphere). Thrust above
+        /// forbidden, physical factor capped at ×3. This is the path of a craft that
+        /// MOVES on the surface; a genuinely standing craft is taken by the parked warp
+        /// (TryParkedWarpStep), which has no altitude band and no cap. Thrust above
         /// the press-down lifts the ship off (TryLiftoff) — returning to Flying here too.
         /// </summary>
         public void StepLanded(float realDt, bool playerInShip)
         {
+            LastFrameUsedLongWarp = false;
+            // maxFullFactor = 0: на наземной динамике полный варп запрещён, работает
+            // физическая лестница с капом ×3 (AtmosphereMaxWarpFactor).
             WarpFrameDecision decision = EphemerisRuntime.ComputeFrame(
-                SystemState, Warp, Ship.Position, TimeSeconds, realDt, false);
-            double playerCap = playerInShip ? double.PositiveInfinity : WarpController.PlayerOutsideMaxWarpFactor;
-            double factor = Math.Min(Math.Min(decision.EffectiveFactor, WarpController.AtmosphereMaxWarpFactor), playerCap);
+                SystemState, Warp, Ship.Position, TimeSeconds, realDt, false, 0d);
+            double factor = Math.Min(decision.EffectiveFactor, WarpController.AtmosphereMaxWarpFactor);
             LastEffectiveFactor = factor;
             double frameEnd = TimeSeconds + (realDt * factor);
             double throttle = Warp.EffectiveThrottle(RawThrottle, false);
