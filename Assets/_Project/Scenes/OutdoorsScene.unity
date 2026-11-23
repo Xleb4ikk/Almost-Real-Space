@@ -2859,6 +2859,7 @@ MonoBehaviour:
   ShadowMediumDistanceMeters: 400
   ShadowBlendWidthMeters: 25
   SunShadowMaxAngularDiameterDeg: 2
+  AirlessShadowDistanceMeters: 2000
 --- !u!114 &1982425603
 MonoBehaviour:
   m_ObjectHideFlags: 0

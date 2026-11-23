@@ -370,6 +370,14 @@ namespace Galilego.Universe
         public float MacroAlbedoStrength = 1f;
         public float MacroNormalStrength = 1f;
 
+        /// <summary>Baked body-fixed horizon, azimuth bins 0..3 and 4..7 (45° each).
+        /// A texel holds the highest terrain elevation angle seen from that point in the
+        /// bin's azimuth; the shader compares it with the sun's local elevation, so a
+        /// crater rim shadows kilometres of ground without a shadow map. Null = off.</summary>
+        public Texture2D MacroHorizonA;
+        public Texture2D MacroHorizonB;
+        public float MacroHorizonStrength = 1f;
+
         public double LowMidBlendStart = 30d;
         public double LowMidBlendEnd = 60d;
         public double MidHighBlendStart = 2500d;
@@ -480,6 +488,9 @@ namespace Galilego.Universe
             MacroNormal = profile.MacroNormal;
             MacroAlbedoStrength = profile.MacroAlbedoStrength;
             MacroNormalStrength = profile.MacroNormalStrength;
+            MacroHorizonA = profile.MacroHorizonA;
+            MacroHorizonB = profile.MacroHorizonB;
+            MacroHorizonStrength = profile.MacroHorizonStrength;
             LowMidBlendStart = profile.LowMidBlendStart;
             LowMidBlendEnd = profile.LowMidBlendEnd;
             MidHighBlendStart = profile.MidHighBlendStart;

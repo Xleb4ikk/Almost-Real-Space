@@ -111,6 +111,13 @@ namespace Galilego.Universe
                  "Сам диаметр берётся из орбиты, а не задаётся руками: у звезды в 1 а.е. это 0.53°.")]
         public float SunShadowMaxAngularDiameterDeg = 2f;
 
+        [Tooltip("Максимальная дистанция теней на БЕЗАТМОСФЕРНОМ теле (м). Тени HDRP живут " +
+                 "в объёме и общие для всей сцены, поэтому на Терре остаются авторские 250 м " +
+                 "(ракета 3 м), а на Луне дистанция поднимается до 2 км: иначе вал кратера в " +
+                 "сотне метров не отбрасывает тень, хотя при солнце в 1° она длиной в километры. " +
+                 "0 = не переопределять.")]
+        public float AirlessShadowDistanceMeters = 2000f;
+
         /// <summary>Angular diameter of Sol at 1 AU, used until the star data is ready.</summary>
         private const double FallbackSunAngularDiameterDeg = 0.53d;
 
@@ -424,6 +431,38 @@ namespace Galilego.Universe
             LastSunDirectionSim = AstroFrame.ToSimulation(sunDir);
             Shader.SetGlobalVector("_TerrainSunDir", LastSunDirectionSim);
 
+            // The same direction in the CAMERA BODY's fixed frame: the baked macro
+            // maps and the horizon map live there, so their azimuth/elevation cannot
+            // use the inertial frame (the body spins under it).
+            QuaternionD bodyOrientation = body.GetVisualOrientation(timeSeconds);
+            Vector3d sunBody = bodyOrientation.Conjugated.Rotate(sunDir);
+            Shader.SetGlobalVector("_TerrainSunDirBody",
+                new Vector3((float)sunBody.X, (float)sunBody.Y, (float)sunBody.Z));
+
+            // Angular diameter of the star's disc → the horizon shadow edge must be
+            // exactly as soft as the disc (the same number drives HDRP's PCSS below).
+            double sunAngularDeg = (root.Radius > 0d) && (starDistance > root.Radius)
+                ? 2d * System.Math.Atan(root.Radius / starDistance) * (180d / System.Math.PI)
+                : FallbackSunAngularDiameterDeg;
+            float sunAngularDegCapped = (float)System.Math.Min(sunAngularDeg, SunShadowMaxAngularDiameterDeg);
+            Shader.SetGlobalFloat("_SunAngularRadiusRad",
+                0.5f * sunAngularDegCapped * (float)(System.Math.PI / 180d));
+
+            // The baked horizon belongs to the CAMERA body and is a shader global.
+            // Setting it here, once per frame, instead of in PlanetSurfaceRenderer is
+            // deliberate: every visible body's renderer calls ApplyTerrainGlobals, so
+            // whichever ran last would own the map — Artemis's horizon would vanish
+            // while Terra was on screen. The sun direction above has the same owner.
+            HeightfieldTerrain horizonTerrain = body.Terrain as HeightfieldTerrain;
+            bool useHorizon = horizonTerrain != null && horizonTerrain.MacroHorizonA != null
+                && horizonTerrain.MacroHorizonB != null && horizonTerrain.MacroHorizonStrength > 0f;
+            Shader.SetGlobalFloat("_TerrainHorizonOn",
+                useHorizon ? Mathf.Clamp01(horizonTerrain.MacroHorizonStrength) : 0f);
+            Shader.SetGlobalTexture("_TerrainMacroHorizonMapA",
+                useHorizon ? horizonTerrain.MacroHorizonA : Texture2D.blackTexture);
+            Shader.SetGlobalTexture("_TerrainMacroHorizonMapB",
+                useHorizon ? horizonTerrain.MacroHorizonB : Texture2D.blackTexture);
+
             Shader.SetGlobalVector("_TerrainBodyCenterWS", FloatingOrigin.ToRender(bodyPos));
 
             // Terrain ambient — average sky luminance above the observer
@@ -480,11 +519,7 @@ namespace Galilego.Universe
                 var hdLight = SunLight.GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalLightData>();
                 if (hdLight != null)
                 {
-                    double starRadius = root.Radius;
-                    double angularDeg = (starRadius > 0d) && (starDistance > starRadius)
-                        ? 2d * System.Math.Atan(starRadius / starDistance) * (180d / System.Math.PI)
-                        : FallbackSunAngularDiameterDeg;
-                    float target = (float)System.Math.Min(angularDeg, SunShadowMaxAngularDiameterDeg);
+                    float target = sunAngularDegCapped;
                     if (System.Math.Abs(hdLight.angularDiameter - target) > 1e-4f)
                     {
                         hdLight.angularDiameter = target;
@@ -667,6 +702,76 @@ namespace Galilego.Universe
                 grad.middle.Override(sky * 0.65f);
                 grad.bottom.Override(ground);
                 grad.multiplier.Override(1f);
+            }
+
+            // Shadow range: HDRP has ONE global shadow distance, so an airless body
+            // gets its own override volume (priority below the player's settings volume).
+            if (Application.isPlaying)
+            {
+                ApplyShadowDistance(atmosphere == null);
+            }
+        }
+
+        private UnityEngine.Rendering.Volume shadowDistanceVolume;
+        private UnityEngine.Rendering.HighDefinition.HDShadowSettings shadowDistanceSettings;
+        private float appliedShadowDistance = -1f;
+
+        /// <summary>
+        /// Raises the HDRP shadow range on an airless body (2000 m by default) and
+        /// restores the scene's own value everywhere else (Terra keeps its 250 m, where
+        /// the 3 m rocket is the thing shadows are for).
+        ///
+        /// Why a volume: maxShadowDistance is a property of the HDShadowSettings volume
+        /// override, not of a light, and the scene's Sky and Fog Volume is shared. A
+        /// dedicated global volume at priority 999 wins over the scene profile but still
+        /// loses to GameSettingsVolume (1000), so a shadow distance chosen by the player
+        /// is never overridden.
+        /// </summary>
+        private void ApplyShadowDistance(bool airless)
+        {
+            float wanted = airless ? Mathf.Max(0f, AirlessShadowDistanceMeters) : 0f;
+            if (wanted <= 0f)
+            {
+                if (shadowDistanceVolume != null && shadowDistanceVolume.enabled)
+                {
+                    shadowDistanceVolume.enabled = false;
+                    appliedShadowDistance = -1f;
+                }
+
+                return;
+            }
+
+            if (shadowDistanceVolume == null)
+            {
+                var go = new GameObject("AirlessShadowDistance");
+                go.transform.SetParent(transform, false);
+                go.hideFlags = HideFlags.DontSave;
+                shadowDistanceVolume = go.AddComponent<UnityEngine.Rendering.Volume>();
+                shadowDistanceVolume.isGlobal = true;
+                shadowDistanceVolume.priority = 999f;
+                var profile = ScriptableObject.CreateInstance<UnityEngine.Rendering.VolumeProfile>();
+                profile.name = "AirlessShadowDistance";
+                shadowDistanceSettings = profile.Add<UnityEngine.Rendering.HighDefinition.HDShadowSettings>(true);
+                // Same split shape as the scene profile (5% / 18% / 45% of the range):
+                // the near cascade stays 100 m at 2 km, so a rocket shadow keeps its
+                // 5 cm texels while the far cascade reaches the crater rims.
+                shadowDistanceSettings.cascadeShadowSplitCount.Override(3);
+                shadowDistanceSettings.cascadeShadowSplit0.Override(0.05f);
+                shadowDistanceSettings.cascadeShadowSplit1.Override(0.18f);
+                shadowDistanceSettings.cascadeShadowSplit2.Override(0.45f);
+                shadowDistanceVolume.sharedProfile = profile;
+            }
+
+            if (!shadowDistanceVolume.enabled)
+            {
+                shadowDistanceVolume.enabled = true;
+            }
+
+            if (Mathf.Abs(appliedShadowDistance - wanted) > 0.01f)
+            {
+                shadowDistanceSettings.active = true;
+                shadowDistanceSettings.maxShadowDistance.Override(wanted);
+                appliedShadowDistance = wanted;
             }
         }
     }

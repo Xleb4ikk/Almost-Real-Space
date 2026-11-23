@@ -370,6 +370,29 @@ namespace Galilego.Universe
         [Tooltip("Сила макро-нормали. 1 = полный рельеф карты, 0 = только геометрия.")]
         public float MacroNormalStrength = 1f;
 
+        [Tooltip("Запечённый ГОРИЗОНТ тела, азимуты 0–135° (RGBA = 4 азимута, угол в " +
+                 "нелинейной 8-битной кодировке). Это единственный способ погасить солнце " +
+                 "за валом кратера дальше дистанции теней HDRP: на терминаторе солнце в " +
+                 "паре градусов над горизонтом, и без карты горизонта каждый обращённый к " +
+                 "солнцу склон светится из чёрного ландшафта. " +
+                 "Пекётся: Tools/Galilego/Airless Bodies/Bake lunar macro maps.")]
+        public Texture2D MacroHorizonA;
+
+        [Tooltip("Запечённый горизонт, азимуты 180–315° (продолжение MacroHorizonA).")]
+        public Texture2D MacroHorizonB;
+
+        [Tooltip("Сила запечённого горизонта: 0 = выключено (дальние валы не затеняют).")]
+        public float MacroHorizonStrength = 1f;
+
+        /// <summary>
+        /// Fingerprint of the exact authoring state the macro maps were baked from
+        /// (LunarParams + palette + baker version). Written by LunarMacroMapBaker; 0 =
+        /// never baked. LunarMacroMapAutoBaker compares it with the live state and
+        /// rebakes when it differs, so a slider edit cannot leave a stale terminator.
+        /// </summary>
+        [HideInInspector]
+        public long MacroBakeHash;
+
         [Header("Лунный рельеф (безатмосферные кратерированные тела)")]
         [Tooltip("Генератор кратеров, бассейнов и морей. При Enabled заменяет fBm/континенты этого профиля.")]
         public LunarReliefSettings Lunar = new LunarReliefSettings();

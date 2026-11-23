@@ -114,6 +114,10 @@ MonoBehaviour:
     MacroNormal: {fileID: 2800000, guid: 224cc261d1047914f85db561e83d8e51, type: 3}
     MacroAlbedoStrength: 1
     MacroNormalStrength: 1
+    MacroHorizonA: {fileID: 2800000, guid: e418371a4f2acca41a00986d765b2655, type: 3}
+    MacroHorizonB: {fileID: 2800000, guid: e6391ce1edde9554cb45f1d01ac6e1c9, type: 3}
+    MacroHorizonStrength: 1
+    MacroBakeHash: 8175080010622710843
     Lunar:
       Enabled: 1
       RadiusMeters: 412000

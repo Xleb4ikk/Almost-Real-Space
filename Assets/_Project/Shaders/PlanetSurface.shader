@@ -113,6 +113,20 @@ Shader "Galilego/PlanetSurface"
             float _TerrainMacroNormalStrength;
             float _TerrainMacroTexelAngular;
 
+            // Baked terrain horizon (equirect, body-fixed, 8 azimuth bins). A texel holds
+            // the highest terrain elevation angle seen from that point along the bin's
+            // azimuth, encoded nonlinearly (see DecodeHorizonAngle). This is what shadows
+            // a crater floor when the sun is 1° above the horizon but the rim is 10 km
+            // away — far beyond HDRP's cascades.
+            sampler2D _TerrainMacroHorizonMapA;
+            sampler2D _TerrainMacroHorizonMapB;
+            float _TerrainHorizonOn;
+
+            // Direction TO the sun in the same body-fixed frame as dirOS, and the sun's
+            // angular radius (radians) — the horizon edge must be as soft as the disc.
+            float3 _TerrainSunDirBody;
+            float _SunAngularRadiusRad;
+
             struct Attributes
             {
                 float3 positionOS : POSITION;
@@ -480,6 +494,15 @@ Shader "Galilego/PlanetSurface"
                 return c;
             }
 
+            // Inverse of LunarMacroMapBaker.EncodeHorizon: 8 bits, nonlinear so the
+            // precision is ~0.0014° near the horizon (where the terminator lives) and
+            // 0.7° near ±90°. Result in RADIANS.
+            float DecodeHorizonAngle(float encoded)
+            {
+                float u = (encoded * 2.0) - 1.0;
+                return sign(u) * u * u * 90.0 * 0.0174532925199433;
+            }
+
             float4 Frag(Varyings input) : SV_Target
             {
                 // ---- Albedo inputs, read BEFORE lighting: the macro map also supplies
@@ -521,6 +544,15 @@ Shader "Galilego/PlanetSurface"
                 float angular = max(max(fwidth(dir.x), fwidth(dir.y)), fwidth(dir.z));
                 float macroW = 0.0;
                 float2 macroUv = float2(0.5, 0.5);
+                if (_TerrainMacroOn > 0.5 || _TerrainHorizonOn > 0.0)
+                {
+                    // The horizon is sampled at every distance (a rim 10 km away still
+                    // shadows this pixel), so the UV is computed even when the albedo /
+                    // normal part of the macro map is faded out.
+                    macroUv = float2((atan2(dir.y, dir.x) * 0.15915494) + 0.5,
+                                     (asin(clamp(dir.z, -1.0, 1.0)) * 0.31830989) + 0.5);
+                }
+
                 if (_TerrainMacroOn > 0.5)
                 {
                     float texel = max(_TerrainMacroTexelAngular, 1e-6);
@@ -531,8 +563,6 @@ Shader "Galilego/PlanetSurface"
                     // The map is continuous over the same seam, so trusting it fully is both
                     // sharper and seamless.
                     macroW = saturate(angular / texel) * _TerrainMacroAlbedoStrength;
-                    macroUv = float2((atan2(dir.y, dir.x) * 0.15915494) + 0.5,
-                                     (asin(clamp(dir.z, -1.0, 1.0)) * 0.31830989) + 0.5);
                 }
 
                 if (macroW > 0.0 && _TerrainMacroNormalStrength > 0.0)
@@ -571,6 +601,54 @@ Shader "Galilego/PlanetSurface"
 
                 float ndl = saturate(dot(normal, sunDir));
                 float moonNdl = saturate(dot(normal, moonDir));
+
+                // Long-range sun occlusion from the BAKED HORIZON MAP. HDRP's cascades
+                // end at ShadowDistance (2 km airless / 250 m elsewhere); a crater rim
+                // 5–50 km away still blocks a sun that is only a degree above the local
+                // horizon. The map stores, per body-fixed texel and 45° azimuth bin, the
+                // highest terrain elevation seen along that azimuth, so this test makes
+                // the terminator follow the real terrain: crater floors go black, high
+                // rims keep catching the sun, and no cascade can be "out of range".
+                float horizonVis = 1.0;
+                if (_TerrainHorizonOn > 0.0)
+                {
+                    float3 sb = _TerrainSunDirBody;
+                    float sbLen2 = dot(sb, sb);
+                    if (sbLen2 > 1e-12)
+                    {
+                        sb *= rsqrt(sbLen2);
+
+                        // Local east/north in the bake's body frame: east = cross(Z, dir),
+                        // north = cross(dir, east); azimuth 0 = north, +90° = east.
+                        float2 eq = dir.xy;
+                        float eq2 = dot(eq, eq);
+                        float3 east = eq2 > 1e-8
+                            ? float3(-dir.y, dir.x, 0.0) * rsqrt(eq2)
+                            : float3(1.0, 0.0, 0.0);
+                        float3 north = cross(dir, east);
+                        float sunElevation = asin(clamp(dot(sb, dir), -1.0, 1.0));
+                        float azimuth = atan2(dot(sb, east), dot(sb, north));
+                        azimuth = azimuth < 0.0 ? azimuth + 6.283185307179586 : azimuth;
+
+                        float binPos = azimuth * 1.2732395447351628; // 8 / (2*pi)
+                        float binFloor = floor(binPos);
+                        int bin0 = (int)binFloor & 7;
+                        float binT = binPos - binFloor;
+
+                        float4 hA = tex2D(_TerrainMacroHorizonMapA, macroUv);
+                        float4 hB = tex2D(_TerrainMacroHorizonMapB, macroUv);
+                        float h[8] = { hA.x, hA.y, hA.z, hA.w, hB.x, hB.y, hB.z, hB.w };
+                        float horizon = lerp(DecodeHorizonAngle(h[bin0]),
+                            DecodeHorizonAngle(h[(bin0 + 1) & 7]), binT);
+
+                        // The sun is a disc, not a point: the shadow edge is as wide as
+                        // its angular radius (0.7° at 0.37 AU), like HDRP's PCSS penumbra.
+                        float sunRadius = max(_SunAngularRadiusRad, 0.0005);
+                        horizonVis = smoothstep(horizon - sunRadius, horizon + sunRadius,
+                            sunElevation);
+                        horizonVis = lerp(1.0, horizonVis, saturate(_TerrainHorizonOn));
+                    }
+                }
 
                 // NOTE: a far-side clip was tried here (a per-fragment test that would drop
                 // the FAR half of a chunk straddling the limb, which `Cull Off` paints as a
@@ -615,7 +693,7 @@ Shader "Galilego/PlanetSurface"
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale * dayLocal)
                     + (GalilegoMoonAmbient(normal) * _TerrainRadianceScale)
-                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow) * _TerrainRadianceScale)
+                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow * horizonVis) * _TerrainRadianceScale)
                      + (_MoonLightColor * (sun * moonNdl * shadow * cloudShadow) * _TerrainRadianceScale);
 
                 // --- Per-pixel albedo -----------------------------------------
@@ -717,6 +795,58 @@ Shader "Galilego/PlanetSurface"
             ZWrite On
             ColorMask 0
             Cull Off
+
+            HLSLPROGRAM
+            #pragma vertex Vert
+            #pragma fragment Frag
+            #pragma target 4.5
+
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+            #include "Packages/com.unity.render-pipelines.high-definition/Runtime/ShaderLibrary/ShaderVariables.hlsl"
+
+            struct Attributes
+            {
+                float3 positionOS : POSITION;
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+            };
+
+            Varyings Vert(Attributes input)
+            {
+                Varyings output;
+                output.positionCS = TransformObjectToHClip(input.positionOS);
+                return output;
+            }
+
+            float4 Frag(Varyings input) : SV_Target
+            {
+                return 0;
+            }
+            ENDHLSL
+        }
+
+        // The terrain MUST cast into HDRP's shadow map. Without this pass a crater
+        // rim has no shadow at all: near the terminator the sun is a degree above
+        // the horizon, so a 50 m rim shadows kilometres of ground — yet the shader
+        // only had ndl, and every sun-facing inner wall glowed out of a black
+        // landscape. The receiver already samples this map (GalilegoSunShadow);
+        // this pass is what puts the terrain into it.
+        //
+        // Cull Off matches the forward pass: the chunks are open shells with skirts,
+        // and a shadow ray must not slip through a chunk seam because the far side
+        // was culled.
+        Pass
+        {
+            Name "ShadowCaster"
+            Tags { "LightMode" = "ShadowCaster" }
+
+            Cull Off
+            ZWrite On
+            ZTest LEqual
+            ColorMask 0
 
             HLSLPROGRAM
             #pragma vertex Vert

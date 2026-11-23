@@ -65,6 +65,18 @@ gas giant's disc/mesh switch is by angular size (`MeshHandoverPixels`), not by
 → `GasGiantView`); authored components win. Full write-up and the measured numbers:
 **[`Docs/Interplanetary.md`](Docs/Interplanetary.md)**.
 
+## The terminator — light must follow the terrain horizon, not just the normal
+
+At 1° sun the *mesh normal* says a crater's inner wall is lit; the real world says the
+opposite rim blocks it. Three things must all hold, or craters glow in the dark:
+`PlanetSurface.shader` keeps its **`ShadowCaster` pass**, `maxShadowDistance` is
+**2000 m on airless bodies** (250 m on Terra) via the `AirlessShadowDistance` volume,
+and the terrain samples the **baked horizon map** beyond the cascades. The horizon is
+baked by `LunarMacroMapBaker` into `MacroHorizonA/B` (8 azimuth bins, nonlinear 8-bit
+angles) and kept current automatically by `LunarMacroMapAutoBaker` (fingerprint +
+1.5 s debounce + background worker), so a profile edit or seed change rebakes itself.
+Full write-up: **[`Docs/Terminator.md`](Docs/Terminator.md)**.
+
 ## Debugging rendering at altitude
 
 * Freeze the frame first: `SimulationRunner.Paused = true` (the ship moves at km/s).

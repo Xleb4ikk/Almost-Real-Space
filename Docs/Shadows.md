@@ -64,6 +64,23 @@ the wide brown halo. That halo is what looks "ugly" — it is not the rocket's s
   — the only place a rocket shadow is readable — therefore pays the PCSS cost and
   benefits from all of the above.
 
+## Airless bodies: terrain casts, and the range grows
+
+Two more rules apply where there is no atmosphere:
+
+* **`PlanetSurface.shader` must keep its `ShadowCaster` pass.** `PlanetSurfaceRenderer`
+  sets `shadowCastingMode = On` on the near chunks, but without the pass that request
+  is silently dropped — decor cast shadows, crater rims did not.
+* **`maxShadowDistance` is 250 m on Terra and 2000 m on an airless body.** At a 1° sun
+  a 50 m rim shadows kilometres of ground; 250 m never contains it. `SkyEnvironment`
+  raises the distance through a global volume at priority 999 (`AirlessShadowDistance`),
+  so `GameSettingsVolume` (1000) still wins when the player chose a distance, and the
+  volume is disabled on every body with an atmosphere. The cascade split shape is
+  unchanged, so the rocket keeps its 100 m near cascade.
+
+Beyond 2 km even that cannot help; the terrain terminator there comes from the baked
+horizon map. Full write-up: **[Terminator.md](Terminator.md)**.
+
 ## Night: the Moon owns the cascades
 
 HDRP stores **one** set of directional cascades (`HDShadowManager`:

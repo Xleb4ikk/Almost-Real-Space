@@ -36,7 +36,9 @@ map is a smear, and the hand-over to the chunks was a change of material, not a 
 
 `Tools/Galilego/Airless Bodies/Bake lunar macro maps`
 (`Scripts/Editor/AssetSetup/LunarMacroMapBaker.cs`) samples **`LunarRelief` — the same
-function the mesh and the physics use** — over an equirect grid into two 2048×1024 maps:
+function the mesh and the physics use** — over an equirect grid into two 2048×1024 maps
+(plus the horizon maps added later, see [Terminator.md](Terminator.md)). The bake is
+kept current automatically by `LunarMacroMapAutoBaker`; the menu is the explicit path.
 
 | Map | Channels | Use |
 |---|---|---|
