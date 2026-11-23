@@ -159,3 +159,8 @@ Tools/P1bTests/Study/integrators/results/Test559_PureGravity.md
 Tools/P1bTests/Study/integrators/results/make_all_matrix.py
 Tools/P1bTests/Study/integrators/results/mode_margins.py
 Tools/P1bTests/Study/integrators/results/regime_analysis.py
+
+# Отладочные скриншоты и рендеры (pipeline-screenshots, sceneview_*).
+# Пересоздаются за минуту, в репозитории не нужны.
+Assets/Temp/
+Assets/Temp.meta
