@@ -421,7 +421,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d79bac471c083a40bd345864d557347, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
-  StandardGravitationalParameter: 2.65433e+19
+  StandardGravitationalParameter: 4.894302168404e+19
   Radius: 695700000
   CrashToleranceMps: 5
   J2: 0
@@ -2713,7 +2713,7 @@ MonoBehaviour:
   J2ReferenceRadius: 0
   SurfaceStaticFrictionMu: 0.7
   SurfaceKineticFrictionMu: 0.5
-  SemiMajorAxis: 90000000
+  SemiMajorAxis: 73400000
   Eccentricity: 0.0824049375671231
   InclinationDegrees: 5.14
   LongitudeOfAscendingNodeDegrees: 0
