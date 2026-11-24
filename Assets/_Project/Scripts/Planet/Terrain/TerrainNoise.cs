@@ -294,6 +294,9 @@ namespace Galilego.Universe
         /// </summary>
         public LunarParams Lunar;
 
+        /// <summary>Mars-like relief. Enabled = 0 (default) → not used at all.</summary>
+        public MartianReliefParams Martian;
+
         /// <summary>
         /// Flat pads at planet points (analogous to KSP PQS FlattenArea).
         /// NativeArray — blittable, so the table passes through this struct and
@@ -414,6 +417,7 @@ namespace Galilego.Universe
                 BeachShelfWidthNoiseOctaves = terrain.BeachShelfWidthNoiseOctaves,
                 BeachShelfSeawardWidth = terrain.BeachShelfSeawardWidth,
                 PolarIceLatitudeDeg = terrain.PolarIceLatitudeDeg,
+                Martian = terrain.Martian,
                 PolarIceFadeDeg = terrain.PolarIceFadeDeg,
                 PolarIceThicknessMeters = terrain.PolarIceThicknessMeters,
                 PolarIceEdgeAmplitudeDeg = terrain.PolarIceEdgeAmplitudeDeg,
@@ -482,6 +486,37 @@ namespace Galilego.Universe
             return b + ((a - b) * t) + (k * t * (1d - t));
         }
 
+        /// <summary>
+        /// Mars-like relief (MartianRelief) plus flat pads. Used by SampleHeight and by the
+        /// tile job, so visuals and physics see the same surface.
+        /// </summary>
+        private static double SampleMartian(TerrainNoiseParams p, double3 direction)
+        {
+            double h = MartianRelief.SampleHeight(p.Martian, p.Seed, direction, (p.PolarIceLatitudeDeg > 0d ? SamplePolarIceWeight(p, direction) : -1d));
+            if (p.Mods.IsCreated && p.Mods.Length > 0)
+            {
+                h = ApplyModifiers(p, h, direction);
+            }
+
+            return h;
+        }
+
+        /// <summary>
+        /// Same as SampleHeight for a Mars-like body, plus the colour mask with the bed tones
+        /// of exposed strata mixed in (one evaluation instead of two). baseMask = the usual
+        /// SampleColorNoise.
+        /// </summary>
+        public static double SampleMartianAndMask(TerrainNoiseParams p, double3 direction, double baseMask, out double mask)
+        {
+            double h = MartianRelief.SampleHeightAndMask(p.Martian, p.Seed, direction, (p.PolarIceLatitudeDeg > 0d ? SamplePolarIceWeight(p, direction) : -1d), baseMask, out mask);
+            if (p.Mods.IsCreated && p.Mods.Length > 0)
+            {
+                h = ApplyModifiers(p, h, direction);
+            }
+
+            return h;
+        }
+
         public static double SampleHeight(TerrainNoiseParams p, double3 direction)
         {
             if (p.Lunar.Enabled != 0)
@@ -489,6 +524,11 @@ namespace Galilego.Universe
                 // Lunar generator returns metres; the callers multiply by AmplitudeMeters.
                 double lunarAlbedo;
                 return LunarRelief.Sample(p.Lunar, direction, false, out lunarAlbedo) / p.AmplitudeMeters;
+            }
+
+            if (p.Martian.Enabled != 0)
+            {
+                return SampleMartian(p, direction);
             }
 
             double gain = EffectiveGain(p.Gain);
@@ -1935,8 +1975,19 @@ namespace Galilego.Universe
                 return;
             }
 
-            Heights[index] = TerrainNoise.SampleHeight(Params, direction);
-            ColorMasks[index] = Params.ComputeMask ? (float)TerrainNoise.SampleColorNoise(Params, direction) : 0f;
+            if (Params.Martian.Enabled != 0 && Params.ComputeMask)
+            {
+                double martianMask;
+                Heights[index] = TerrainNoise.SampleMartianAndMask(
+                    Params, direction, TerrainNoise.SampleColorNoise(Params, direction), out martianMask);
+                ColorMasks[index] = (float)martianMask;
+            }
+            else
+            {
+                Heights[index] = TerrainNoise.SampleHeight(Params, direction);
+                ColorMasks[index] = Params.ComputeMask ? (float)TerrainNoise.SampleColorNoise(Params, direction) : 0f;
+            }
+
             if (ColorDetails.IsCreated)
             {
                 ColorDetails[index] = Params.ComputeDetail

@@ -22,6 +22,7 @@ namespace Galilego.Universe.EditorTools
         private static bool showColor = true;
         private static bool showPalette;
         private static bool showLunar;
+        private static bool showMartian;
 
         public override void OnInspectorGUI()
         {
@@ -164,6 +165,46 @@ Slider("Profile.ContinentDepth", 0f, 1.5f);
                 Field("Profile.WarpFrequency");
                 Field("Profile.WarpOctaves");
                 Field("Profile.WarpSeedOffset");
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            showMartian = EditorGUILayout.BeginFoldoutHeaderGroup(showMartian, "Марсианский рельеф (заменяет форму выше)");
+            if (showMartian)
+            {
+                EditorGUI.indentLevel++;
+                var asset = (TerrainProfileAsset)target;
+                if (asset.Profile != null && asset.Profile.Martian.Enabled == 0)
+                {
+                    EditorGUILayout.HelpBox("Выключен (Enabled = 0): работает обычная форма. Включите кнопкой ниже или создайте планету через Tools/Galilego/Planets.", MessageType.Info);
+                }
+
+                SerializedProperty martian = serializedObject.FindProperty("Profile.Martian");
+                if (martian != null)
+                {
+                    EditorGUILayout.PropertyField(martian, true);
+                }
+
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("Заполнить: Марс-подобный"))
+                {
+                    Undo.RecordObject(asset, "Mars-like relief preset");
+                    asset.Profile.Martian = MartianReliefParams.CreateMarsLike();
+                    EditorUtility.SetDirty(asset);
+                    serializedObject.Update();
+                }
+
+                if (GUILayout.Button("Вариант по сиду…"))
+                {
+                    Undo.RecordObject(asset, "Mars-like relief variant");
+                    asset.Profile.Martian = MartianReliefParams.CreateVariant(Random.Range(1, 100000));
+                    EditorUtility.SetDirty(asset);
+                    serializedObject.Update();
+                }
+
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.HelpBox("AmplitudeMeters профиля должна равняться HeightUnitMeters × (R / 3389.5 км), SeaLevelMeters — глубокий «нуль» (≈ −17000 м × то же), ColorRockSlopeTan = 0. Это делает Tools/Galilego/Planets.", MessageType.None);
                 EditorGUI.indentLevel--;
             }
 

@@ -1843,6 +1843,7 @@ namespace Galilego.Universe
                 && a.PolarIceEdgeAmplitudeDeg == b.PolarIceEdgeAmplitudeDeg
                 && a.PolarIceEdgeFrequency == b.PolarIceEdgeFrequency
                 && a.PolarIceEdgeOctaves == b.PolarIceEdgeOctaves
+                && a.Martian.SameAs(b.Martian)
                 && a.ColorNoiseFrequency == b.ColorNoiseFrequency
                 && a.ColorNoiseOctaves == b.ColorNoiseOctaves
                 && a.ColorNoiseSeedOffset == b.ColorNoiseSeedOffset

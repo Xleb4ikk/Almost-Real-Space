@@ -465,6 +465,7 @@ Transform:
   - {fileID: 1081663216}
   - {fileID: 1982425600}
   - {fileID: 2135535064}
+  - {fileID: 2116467482}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &306252428
@@ -1642,6 +1643,7 @@ MonoBehaviour:
   FlyToBodyName: Aeolus
   OrbitBodyName: Terra
   OrbitAltitudeMeters: 200000
+  MarsBodyName: Mars
   OpenOnStart: 0
   MenuKey: 96
   ShowPerformance: 1
@@ -2961,6 +2963,196 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2116467481
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2116467482}
+  - component: {fileID: 2116467485}
+  - component: {fileID: 2116467484}
+  - component: {fileID: 2116467483}
+  m_Layer: 0
+  m_Name: Mars
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2116467482
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2116467481}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 230795297}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2116467483
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2116467481}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c4f8a1b2d3e64f5a9b0c1d2e3f4a5b6c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.PlanetSurfaceRenderer
+  Runner: {fileID: 1332194275}
+  TileResolution: 129
+  MaxDepth: 12
+  SplitFactor: 3
+  MergeHysteresis: 1.3
+  SkirtFactor: 0.03
+  WaterSkirtFactor: 0.03
+  ShoreWetMeters: 3
+  ShoreWetTint: {r: 0.42, g: 0.52, b: 0.56, a: 1}
+  BuildsPerFrame: 16
+  DecorBuildsPerFrame: 8
+  DecorBuildBudgetMs: 4
+  DecorRescanCooldownSeconds: 0.2
+  MaxDecorBuildSessions: 8
+  LogDecorAllocation: 0
+  MaxNodes: 6000
+  MaxCachedChunks: 1024
+  MaxEvictionsPerFrame: 4
+  TerrainShadowDepthBand: 3
+  AsyncChunkBuild: 1
+  MaxChunkJobsInFlight: 12
+  ChunkFinalizeBudgetMs: 3
+  MaxChunkQueueAgeFrames: 6
+  EnableQualityTiers: 0
+  TierFastSpeed: 1000
+  TierExtremeSpeed: 1200
+  TierDownDelaySeconds: 1.5
+  TierDepthDropFast: 1
+  TierDepthDropExtreme: 2
+  TierSplitScaleFast: 0.9
+  TierSplitScaleExtreme: 0.8
+  TierAutoRaise: 0
+  TierTargetFrameMs: 22
+  PrefetchEnabled: 1
+  PrefetchSeconds: 1.5
+  PrefetchVelSmoothSeconds: 0.15
+  PrefetchMinLeadMeters: 400
+  MaxPrefetchNodes: 512
+  MaxPrefetchQueued: 256
+  TierHalveResolution: 0
+  DecorPauseSpeed: 120
+  DecorShadowMaxAltitude: 300
+  DecorSpeedSmoothSeconds: 0.25
+  DecorCollisionMaxAltitude: 150
+  DecorScanSpeedGate: 150
+  DecorScanMinInterval: 0.05
+  CullBeyondHorizon: 0
+  HorizonMargin: 1.15
+  MinTileResolution: 9
+  ResolutionHalveEveryLevels: 99
+  LogGeometryStats: 0
+  BlobShadowColor: {r: 0.05, g: 0.08, b: 0.04, a: 1}
+  BlobScaleFactor: 1.5
+  BlobSunOffset: 0.6
+  WaterWaveStrength: 0.35
+  WaterWaveScale: 0.18
+  WaterAmplitudeMeters: 0.25
+  WaterSparkleStrength: 0.35
+  WaterSparkleScale: 8
+  WaterFoamCrest: 0.03
+  WaterShadingFadeFloor: 0.85
+  WaterDetailFadeFloor: 0
+  WaterRippleStrength: 0.45
+  WaterRippleScale: 10
+  WaterRippleSpeed: 2.2
+  WaterFoamSlopeGain: 0
+  WaterFoamDepthMeters: 1.5
+  WaterShoreFadeMeters: 8
+  WaterMinAlpha: 0.93
+  WaterShallowAlphaMeters: 0.35
+  WaterAbsorbShallow: 4.5
+  WaterAbsorbDeep: 28
+  WaterShallowAlpha: 0.5
+  WaterSurfStrength: 0
+  WaterSurfSpeed: 2
+  WaterFresnelStrength: 0.7
+  WaterSpecularIntensity: 0.65
+  WaterSpecularPower: 600
+  WaterNormalA: {fileID: 0}
+  WaterNormalB: {fileID: 0}
+  WaterNormalStrength: 0.7
+  UseHdrpWaterPatch: 0
+  HdrpWaterPatchSizeMeters: 512
+  UseLitWaterFallback: 0
+  LitWaterColor: {r: 0.06, g: 0.42, b: 0.62, a: 0.82}
+  LitWaterSmoothness: 0.9
+  WaterBobAmplitude: 0
+  WaterBobLength: 28
+  WaterBobSpeed: 1.1
+  WaterBobRadius: 700
+  HitchLogThresholdMs: 0.04
+--- !u!114 &2116467484
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2116467481}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7bb586c9cc3da549bc90d89a0c0a345, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyView
+  Runner: {fileID: 1332194275}
+--- !u!114 &2116467485
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2116467481}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d79bac471c083a40bd345864d557347, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.BodyAuthoring
+  StandardGravitationalParameter: 2997985900000.0005
+  Radius: 800000
+  CrashToleranceMps: 5
+  J2: 0.00196045
+  J2ReferenceRadius: 800000
+  SurfaceStaticFrictionMu: 0.7
+  SurfaceKineticFrictionMu: 0.5
+  SemiMajorAxis: 665000000000
+  Eccentricity: 0.08270676691729323
+  InclinationDegrees: 1.85
+  LongitudeOfAscendingNodeDegrees: 49.58
+  ArgumentOfPeriapsisDegrees: 286.5
+  MeanAnomalyAtEpochDegrees: 19.4
+  EpochTimeSeconds: 0
+  RotationPeriodSeconds: 88642.66
+  TidallyLocked: 0
+  PrimeMeridianOffsetDegrees: 0
+  NorthPoleDirection:
+    X: 0.4256213629686185
+    Y: 0
+    Z: 0.9049013511895844
+  TerrainPreset: {fileID: 11400000, guid: c0fcb45727f30a54aa96bc90e477cf53, type: 2}
+  AtmospherePreset: {fileID: 0}
+  CloudsPreset: {fileID: 0}
+  GasGiantPreset: {fileID: 0}
+  GroundDecorPreset: {fileID: 0}
+  TerrainSeed: 4242
+  TerrainPads: []
 --- !u!1 &2135535063
 GameObject:
   m_ObjectHideFlags: 0

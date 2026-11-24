@@ -47,6 +47,9 @@ namespace Galilego.Universe
         [Tooltip("Высота круговой орбиты для кнопки «на орбиту в кресле», м.")]
         public double OrbitAltitudeMeters = 200000d;
 
+        [Tooltip("Тело для кнопки «К Марсу» (добавлено вместе с планетой Mars).")]
+        public string MarsBodyName = "Mars";
+
         [Tooltip("Показывать окно сразу при старте (для отладки и скриншотов).")]
         public bool OpenOnStart;
 
@@ -83,7 +86,7 @@ namespace Galilego.Universe
 
         /// <summary>Window size: fits all content without scrolling, with some slack.</summary>
         private const float WindowWidth = 520f;
-        private const float WindowHeight = 560f;
+        private const float WindowHeight = 620f;
 
         private const float HudWidth = 540f;
         private const float HudHeight = 108f;
@@ -266,6 +269,14 @@ namespace Galilego.Universe
 
             GUILayout.Label("2.2 R, фаза 35°, ноуклип включится сам", CheatGuiSkin.LabelMuted);
 
+            string marsLabel = string.IsNullOrEmpty(MarsBodyName) ? "Mars" : MarsBodyName;
+            if (GUILayout.Button("  К " + marsLabel + " (облёт)", CheatGuiSkin.Button))
+            {
+                FlyToBody(marsLabel);
+            }
+
+            GUILayout.Label("Марс: 2.2 R, фаза 35°, ноуклип включится сам", CheatGuiSkin.LabelMuted);
+
             if (NoclipExternallyDriven)
             {
                 GUILayout.Label("  Ноуклип ведёт бенчмарк (см. блок ниже)", CheatGuiSkin.LabelMuted);
@@ -350,6 +361,12 @@ namespace Galilego.Universe
         /// </summary>
         public void FlyToBody()
         {
+            FlyToBody(string.IsNullOrEmpty(FlyToBodyName) ? "Aeolus" : FlyToBodyName);
+        }
+
+        /// <summary>Flyby to an explicit body (the dedicated Mars button).</summary>
+        public void FlyToBody(string targetName)
+        {
             ResolveReferences();
             if (Runner == null || Runner.SystemState == null)
             {
@@ -357,8 +374,12 @@ namespace Galilego.Universe
                 return;
             }
 
+            if (string.IsNullOrEmpty(targetName))
+            {
+                targetName = "Aeolus";
+            }
+
             OrbitingBody body = null;
-            string targetName = string.IsNullOrEmpty(FlyToBodyName) ? "Aeolus" : FlyToBodyName;
             foreach (OrbitingBody candidate in Runner.SystemState.AllBodies)
             {
                 if (candidate.Name == targetName)

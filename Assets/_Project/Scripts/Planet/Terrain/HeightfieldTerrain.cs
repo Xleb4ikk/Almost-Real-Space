@@ -257,6 +257,9 @@ namespace Galilego.Universe
         /// </summary>
         public double PolarIceLatitudeDeg = 0d;
 
+        /// <summary>Mars-like procedural relief (Enabled = 0 → the legacy shape, bit-for-bit).</summary>
+        public MartianReliefParams Martian;
+
         /// <summary>Width of the ice-edge transition in degrees of latitude (full width, w=0..1).</summary>
         public double PolarIceFadeDeg = 1.2d;
 
@@ -455,6 +458,7 @@ namespace Galilego.Universe
             BeachShelfWidthNoiseOctaves = profile.BeachShelfWidthNoiseOctaves;
             BeachShelfSeawardWidth = profile.BeachShelfSeawardWidth;
             PolarIceLatitudeDeg = profile.PolarIceLatitudeDeg;
+            Martian = profile.Martian;
             PolarIceFadeDeg = profile.PolarIceFadeDeg;
             PolarIceThicknessMeters = profile.PolarIceThicknessMeters;
             PolarIceEdgeAmplitudeDeg = profile.PolarIceEdgeAmplitudeDeg;

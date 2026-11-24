@@ -329,6 +329,10 @@ namespace Galilego.Universe
         [Tooltip("Сдвиг потока цветовой детали (целый).")]
         public int ColorDetailSeedOffset = 0;
 
+        [Header("Марсианский рельеф (Enabled = 0 → не используется, legacy бит-в-бит)")]
+        [Tooltip("Процедурный рельеф «Марс-подобной» планеты: дихотомия, вулканы, каньоны, кратеры, слои пород, полярные отложения. Когда Enabled = 1, он ЗАМЕНЯЕТ обычную форму (fBm, континенты, океан). Готовые значения: Tools/Galilego/Planets/Create Mars-like Planet.")]
+        public MartianReliefParams Martian;
+
         [Header("Палитра")]
         public TerrainPaletteData Palette = new TerrainPaletteData();
 

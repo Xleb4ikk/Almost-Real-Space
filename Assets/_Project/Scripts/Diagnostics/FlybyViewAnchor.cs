@@ -1,3 +1,4 @@
+using Galilego.Core;
 using UnityEngine;
 
 namespace Galilego.Universe
@@ -21,6 +22,12 @@ namespace Galilego.Universe
         public float NearClip = 1000f;
         public float FarClip = 4e8f;
         public float LifeSeconds = 60f;
+
+        [Tooltip("Ниже этой высоты над целевым телом якорь отпускает клип-плоскости: " +
+            "обычная камера считает near/far по телу под камерой. Иначе near = 1000 м " +
+            "срезает землю прямо под ногами при посадке.")]
+        public float ReleaseAltitudeMeters = 20000f;
+
         public GameObject[] Hide;
 
         private bool[] hideStates;
@@ -55,6 +62,21 @@ namespace Galilego.Universe
             if (Runner != null && Body != null)
             {
                 Runner.SetDominantBodyForDebug(Body);
+
+                // The flyby near plane (1000 m) is right for a 2 R view and
+                // catastrophic for a landing: the whole foreground is inside
+                // the near plane and the surface appears to vanish exactly when
+                // the player touches down. Hand the clip planes back to the
+                // regular camera once the eye is close to the body (or the
+                // player is on the ground / in the ship).
+                Body.EvaluateWorldState(Runner.TimeSeconds, out Vector3d bodyPosition, out _);
+                double altitude = (Runner.PlayerPosition - bodyPosition).Magnitude - Body.Radius;
+                bool landed = Runner.PlayerMode == PlayerMode.OnSurface || Runner.PlayerMode == PlayerMode.InShip;
+                if (altitude < ReleaseAltitudeMeters || landed)
+                {
+                    Destroy(gameObject);
+                    return;
+                }
             }
 
             if (Hide != null)

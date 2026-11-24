@@ -1,0 +1,242 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d445d08b279aaf1468ccc32db002e7a2, type: 3}
+  m_Name: MarsLike_Mars
+  m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.TerrainProfileAsset
+  Profile:
+    AmplitudeMeters: 14161.380734621625
+    BaseFrequency: 3
+    Octaves: 5
+    SeaLevelMeters: -4012.391208142794
+    Lacunarity: 2
+    Gain: 0.5
+    RidgedMix: 0
+    RidgedMode: 0
+    RidgedSharpness: 2
+    RidgedWeightGain: 2
+    RidgedGamma: 1
+    SlopeDamp: 0
+    SlopeDampMode: 0
+    NoiseStyle: 0
+    MaskNoiseStyle: -1
+    ContinentFrequency: 0
+    ContinentOctaves: 3
+    ContinentThreshold: 0
+    ContinentSharpness: 0.25
+    ContinentDepth: 0
+    ContinentGain: 0
+    ContinentWarpStrength: 0
+    ContinentWarpFrequency: 0
+    ContinentWarpOctaves: 3
+    ContinentRidgeMix: 0
+    ContinentRidgeFrequency: 0
+    ContinentRidgeOctaves: 2
+    ContinentLatitudeBias: 0
+    OceanFloorDepth: 0
+    OceanShelfDepth: 0
+    InteriorFloor: 0
+    OrogenyFrequency: 0
+    OrogenyOctaves: 3
+    OrogenyThreshold: 0
+    OrogenySharpness: 0.3
+    OrogenyFloor: 1
+    OrogenyGain: 0
+    PlainMix: 0
+    PlainFrequency: 0
+    PlainOctaves: 2
+    PlainThreshold: 0
+    PlainSharpness: 0.3
+    PlainElevation: 0.1
+    TailKnee: 0
+    TailThreshold: 0
+    DepthKnee: 0
+    DepthThreshold: 0
+    BeachHeightMeters: 0
+    BeachShelfAltitudeMeters: 0
+    BeachShelfWidth: 0
+    BeachShelfWidthMaxScale: 1
+    BeachShelfWidthNoiseFrequency: 0
+    BeachShelfWidthNoiseOctaves: 4
+    BeachShelfSeawardWidth: 0
+    PolarIceLatitudeDeg: 81.5
+    PolarIceFadeDeg: 1.2
+    PolarIceThicknessMeters: 0
+    PolarIceEdgeAmplitudeDeg: 2.2
+    PolarIceEdgeFrequency: 5
+    PolarIceEdgeOctaves: 3
+    DetailMix: 0
+    DetailFrequency: 0
+    DetailOctaves: 5
+    WarpStrength: 0
+    WarpFrequency: 1
+    WarpOctaves: 2
+    WarpSeedOffset: 0
+    ColorRockSlopeTan: 0
+    ColorRockSlopeWidth: 0.1
+    ColorRockHeightMin: 0
+    ColorSnowSlopeTan: 0
+    ColorNoiseFrequency: 4
+    ColorNoiseOctaves: 3
+    ColorNoiseStrength: 0.03
+    ColorNoiseSeedOffset: 4
+    ColorDetailFrequency: 60
+    ColorDetailOctaves: 4
+    ColorDetailStrength: 0.35
+    ColorDetailSeedOffset: 7
+    Martian:
+      Enabled: 1
+      HeightUnitMeters: 60000
+      DichotomyAxisLatDeg: 52
+      DichotomyAxisLonDeg: 200
+      DichotomyThreshold: 0.12
+      DichotomyWidth: 0.1
+      DichotomyBoundaryWarp: 0.22
+      DichotomyDepthKm: 5
+      HighlandBaseKm: 1.6
+      SwellAmplitudeKm: 0.9
+      SwellFrequency: 1.5
+      RoughAmplitudeKm: 0.55
+      RoughFrequency: 10
+      RoughOctaves: 9
+      RoughLowlandFactor: 0.22
+      MassifAmplitudeKm: 1.6
+      MassifFrequency: 6
+      WrinkleAmplitudeKm: 0.16
+      HummockAmplitudeKm: 0.05
+      HummockFrequency: 600
+      HummockOctaves: 5
+      WarpStrength: 0.07
+      WarpFrequency: 3
+      CraterDensity: 1
+      CraterClasses: 8
+      CraterLargestDiameterKm: 420
+      CraterLowlandFactor: 0.3
+      CraterDepthScale: 1
+      CraterDegradation: 0.65
+      BasinCount: 3
+      BasinRadiusKm: 1000
+      BasinDepthKm: 6
+      VolcanicProvinces: 2
+      RiseHeightKm: 6.5
+      RiseRadiusDeg: 24
+      ShieldHeightKm: 11
+      ShieldRadiusKm: 210
+      GrandShieldHeightKm: 19
+      GrandShieldRadiusKm: 310
+      CalderaDepthKm: 3
+      ScatteredVolcanoes: 9
+      CanyonLengthDeg: 62
+      CanyonWidthKm: 95
+      CanyonDepthKm: 7.5
+      OutflowChannels: 3
+      ChannelWidthKm: 28
+      ChannelDepthKm: 1.3
+      Fossae: 7
+      StrataMajorKm: 0.8
+      StrataMinorKm: 0.11
+      StrataMix: 0.3
+      StrataWallBoost: 1
+      StrataRegionFrequency: 2.2
+      StrataRegionThreshold: 0.05
+      StrataTilt: 0.9
+      StrataColorStrength: 0.85
+      PolarCapLatitudeDeg: 81.5
+      PolarCapFadeDeg: 1.2
+      PolarCapEdgeJitterDeg: 2.2
+      PolarCapHeightKm: 2.6
+      PolarSpiralArms: 6
+      PolarTroughDepthKm: 0.65
+      PolarLayerKm: 0.1
+    Palette:
+      Sand: {r: 0.78, g: 0.6, b: 0.42, a: 1}
+      Desert: {r: 0.66, g: 0.38, b: 0.22, a: 1}
+      DryGrass: {r: 0.74, g: 0.52, b: 0.32, a: 1}
+      Grass: {r: 0.45, g: 0.25, b: 0.17, a: 1}
+      Forest: {r: 0.24, g: 0.17, b: 0.14, a: 1}
+      Tundra: {r: 0.5, g: 0.38, b: 0.3, a: 1}
+      Rock: {r: 0.3, g: 0.2, b: 0.15, a: 1}
+      Snow: {r: 0.88, g: 0.82, b: 0.76, a: 1}
+      Sea: {r: 0.2, g: 0.12, b: 0.1, a: 1}
+      Soil: {r: 0.38, g: 0.24, b: 0.17, a: 1}
+      Lush: {r: 0.3, g: 0.28, b: 0.28, a: 1}
+    TextureLow: {fileID: 0}
+    TextureMid: {fileID: 0}
+    TextureHigh: {fileID: 0}
+    TextureSteep: {fileID: 0}
+    TextureOcclusion: {fileID: 0}
+    TextureScale: 0.04
+    DetailAlbedoMean: 0
+    MacroAlbedo: {fileID: 0}
+    MacroNormal: {fileID: 0}
+    MacroAlbedoStrength: 1
+    MacroNormalStrength: 1
+    MacroHorizonA: {fileID: 0}
+    MacroHorizonB: {fileID: 0}
+    MacroHorizonStrength: 1
+    MacroBakeHash: 0
+    Lunar:
+      Enabled: 0
+      RadiusMeters: 1737400
+      MeanOffsetMeters: 300
+      GlobalReliefMeters: 1800
+      GlobalFrequency: 1.4
+      NearFarOffsetMeters: 1000
+      NearX: 1
+      NearY: 0
+      NearZ: 0
+      RoughnessMeters: 700
+      RoughnessFrequency: 6
+      RoughnessOctaves: 8
+      RoughnessHurst: 0.8
+      CraterDensity: 0.3
+      ProductionSlope: 2.1
+      BasinDensityScale: 0.55
+      MaxCraterDiameterMeters: 1400000
+      MinCraterDiameterMeters: 24
+      ComplexTransitionMeters: 18000
+      FreshnessExponent: 2.5
+      MareAge: 0.6
+      RayDensity: 0.12
+      GiantBasinDiameterMeters: 2400000
+      GiantX: -0.8
+      GiantY: 0.25
+      GiantZ: -0.55
+      GiantDepthScale: 0.8
+      MareCoverage: 0.45
+      MareFrequency: 1.5
+      MareNearsideBias: 0.9
+      MareLevelMeters: -500
+      MareLevelVariationMeters: 450
+      MareUndulationMeters: 35
+      MareShoreSmoothMeters: 40
+      WrinkleRidgeMeters: 110
+      WrinkleRidgeFrequency: 26
+      RilleDepthMeters: 140
+      RilleFrequency: 70
+      RilleAmount: 0.25
+      DomeHeightMeters: 140
+      ScarpHeightMeters: 0
+      ScarpFrequency: 14
+      ScarpAmount: 0.25
+      RegolithMeters: 2.5
+      RegolithFrequency: 1700
+      RegolithOctaves: 5
+      MareDarkness: 0.85
+      HighlandVariation: 0.18
+      FreshEjectaBrightness: 1
+    NormalEpsilonMeters: 0
+    LowMidBlendStart: 30
+    LowMidBlendEnd: 60
+    MidHighBlendStart: 2500
+    MidHighBlendEnd: 3500
+    SteepBlendStart: 0.7
+    SteepBlendEnd: 1.4
