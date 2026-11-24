@@ -523,14 +523,27 @@ namespace Galilego.Universe
             SceneIntensity = (float)colorScale;
             if (Sky != null)
             {
+                // The pupil reads the PHYSICAL illuminance, before the night gain is
+                // folded in below — otherwise the gain would feed itself.
                 // Exposure follows the luminous, not the peak channel: a reddened
                 // low moon should open the night exposure less.
                 Sky.MoonlightLevel = (float)(colorScale * colorLuminance);
             }
 
-            Vector3 lightColor = normalised * (float)colorScale;
+            // Where the night lift lives. The moon is physical (NightAdaptationGainEv = 0),
+            // the scene's pupil is not: it is fully open at night (SkyEnvironment.EyeEv),
+            // and its linear factor multiplies the moon's light exactly as _TerrainSun
+            // multiplies the star's. Keeping it here (and not in the shader's `sun`) is
+            // what keeps the star term at 1x at night — otherwise a sunlit planet seen
+            // from its own night side was bleached white (measured 2026-11-24: _TerrainSun
+            // = 1 745 at 54 000 km with the sun 5.5 deg below the horizon).
+            // In daylight / in orbit the gain is ~1 and the moon stays physical.
+            double moonGain = Sky != null && Sky.MoonlightGain > 0.1f ? Sky.MoonlightGain : 1d;
+            double litScene = colorScale * moonGain;
+
+            Vector3 lightColor = normalised * (float)litScene;
             Vector3 ambientColor = normalised
-                * (float)(colorScale * Math.Max(0d, MoonSkyAmbient));
+                * (float)(litScene * Math.Max(0d, MoonSkyAmbient));
 
             Shader.SetGlobalVector(TerrainMoonDirId, MoonDirectionSim);
             Shader.SetGlobalVector(MoonLightColorId, lightColor);
@@ -539,13 +552,13 @@ namespace Galilego.Universe
             bool wantMoonShadows = applyToLight
                 && ShareShadowCascades
                 && best.SinElevation > Math.Sin(MoonShadowMinElevationDeg * Math.PI / 180d)
-                && colorScale > 1e-5d
+                && litScene > 1e-5d
                 && SunElevationDeg < MoonShadowEnterSunElevationDeg;
 
             if (moonOwnsShadows
                 && (SunElevationDeg > MoonShadowExitSunElevationDeg
                     || best.SinElevation <= Math.Sin(MoonShadowMinElevationDeg * Math.PI / 180d)
-                    || colorScale <= 1e-5d))
+                    || litScene <= 1e-5d))
             {
                 moonOwnsShadows = false;
             }
@@ -560,7 +573,6 @@ namespace Galilego.Universe
             {
                 float calibration = Sky != null
                     ? Sky.TerrainRadianceScale * Sky.TerrainSunIntensity * Sky.MaterialLightScale
-                        * Sky.EyeGain
                     : 1f;
 
                 // The custom ground shaders live in the normalised "sun = 1" scale;
@@ -569,14 +581,13 @@ namespace Galilego.Universe
                 // additionally carries SceneLightScale; that is the sun's calibration,
                 // not the moon's.)
                 //
-                // EyeGain is what the ground's moon term already gets through
-                // _TerrainSun (= star scale x pupil): leaving it out made the HDRP/Lit
-                // props (launch pad, roads, VAB) 1.55x darker than the custom terrain
-                // at night and 256x darker at Mars. One pupil per frame, both scales.
+                // litScene already carries the night pupil (moonGain), the same factor the
+                // ground's moon term gets through _MoonLightColor — so the HDRP/Lit props
+                // (launch pad, roads, VAB) and the custom terrain share one exposure.
                 MoonLight.color = new Color(normalised.x, normalised.y, normalised.z, 1f);
-                MoonLight.intensity = (float)(Math.PI * colorScale * calibration);
+                MoonLight.intensity = (float)(Math.PI * litScene * calibration);
 
-                if (colorScale > 1e-9d)
+                if (litScene > 1e-9d)
                 {
                     MoonLight.transform.rotation = Quaternion.LookRotation(-MoonDirectionSim);
                 }

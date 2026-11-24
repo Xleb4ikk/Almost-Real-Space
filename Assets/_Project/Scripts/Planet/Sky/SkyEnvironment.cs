@@ -174,14 +174,30 @@ namespace Galilego.Universe
         public float StarVisibility { get; private set; } = 1f;
 
         /// <summary>
-        /// Current pupil opening in EV: 0 in full daylight (Terra's noon), positive when
-        /// the observer's light is below it. The scene's lit surfaces are scaled by
-        /// <see cref="EyeGain"/>, which is what a real eye does with its iris.
+        /// The STAR's opening in EV: 0 in full daylight (Terra's noon), positive when the
+        /// star's light at the eye is below it (Mars, dusk), and exactly 0 when there is
+        /// no star light at all. It drives `_TerrainSun`, `_SkyAmbient`, the sun's
+        /// Directional Light and `_EyeGain` (discs, atmosphere, clouds).
+        /// </summary>
+        public float SunEv { get; private set; }
+
+        /// <summary>
+        /// The NIGHT scene's opening in EV: the pupil fully open on the moon's
+        /// illuminance (0 in daylight). It is where the night lift lives now that the
+        /// moon is physical — <see cref="MoonlightGain"/> and `_NightAmbient`.
         /// </summary>
         public float EyeEv { get; private set; }
 
-        /// <summary>Linear scene-light multiplier of the current pupil opening.</summary>
-        public float EyeGain => (float)EyeAdaptation.Gain(EyeEv);
+        /// <summary>Linear multiplier of the star's opening (<see cref="SunEv"/>).</summary>
+        public float EyeGain => (float)EyeAdaptation.Gain(SunEv);
+
+        /// <summary>
+        /// Linear multiplier for the moon's light. `MoonlightSystem` multiplies
+        /// `_MoonLightColor` and the HDRP moon light by it: the moon is physical
+        /// (2.9e-6 of noon), so this factor *is* the dark adaptation. In daylight, or
+        /// in orbit where the star is visible, it is ~1 and the moon stays physical.
+        /// </summary>
+        public float MoonlightGain => (float)EyeAdaptation.Gain(EyeEv);
 
         // False until the first frame the star is known: the pupil must SNAP there,
         // not ramp, or a spawn in full sun flashes for a quarter of a second.
@@ -632,9 +648,27 @@ namespace Galilego.Universe
             // fully open and follows the MOON — it opens at moonrise, closes at
             // moonset, and a moonless night simply has nothing to scale (it stays
             // black). Blended through civil twilight, where the sun still sets the level.
-            double night = 1d - SkyPhysics.Smoothstep(-0.18d, -0.02d, sinEl);
+            //
+            // The night branch also needs SunOcclusion: in ORBIT the sun is "below the
+            // local horizon" (sinEl < 0) while the planet in front of the camera is
+            // fully sunlit. Without this factor the eye opened 10-14 EV in space and
+            // _TerrainSun (1 745x measured at 54 000 km, sunEl = -5.5 deg) bleached the
+            // day side to a white disc. On the ground at night SunOcclusion is 0, so
+            // nothing changes there.
+            double night = (1d - SkyPhysics.Smoothstep(-0.18d, -0.02d, sinEl))
+                * (1d - SkyPhysics.Clamp(SunOcclusion, 0d, 1d));
             double nightTargetEv = EyeAdaptation.TargetEv(illuminance, 1d, NightAdaptationMaxEv);
             targetEv = (targetEv * (1d - night)) + (nightTargetEv * night);
+
+            // The STAR's own opening is a separate number, and it is ZERO when there is
+            // no star light at the eye. `TargetEv(0)` returns maxEv ("black frame, open
+            // the iris"), which is right for the moonlit night and catastrophic for the
+            // sun term: the shaders multiply the moon by the same `sun` global, and a
+            // sunlit planet seen from its night side would be lifted 8 EV for nothing.
+            double sunIlluminance = dayGround + (ambientAmount * starLightScale);
+            double sunTargetEv = sunIlluminance > 1e-9d
+                ? EyeAdaptation.TargetEv(sunIlluminance, EyeAdaptationShare, EyeAdaptationMaxEv)
+                : 0d;
 
             // The eye is a PHYSICAL object at spawn: snapping to the target on the first
             // frame the star is known is what stops the "spawn under the sun" flash. The
@@ -644,22 +678,28 @@ namespace Galilego.Universe
             if (!eyeReady)
             {
                 EyeEv = (float)targetEv;
+                SunEv = (float)sunTargetEv;
                 eyeReady = Star == null || Star.IsReady;
             }
             else
             {
                 EyeEv = (float)EyeAdaptation.Approach(
                     EyeEv, targetEv, step, EyeAdaptBrightSeconds, EyeAdaptDarkSeconds);
+                SunEv = (float)EyeAdaptation.Approach(
+                    SunEv, sunTargetEv, step, EyeAdaptBrightSeconds, EyeAdaptDarkSeconds);
             }
 
-            double eyeGain = EyeAdaptation.Gain(EyeEv);
+            double eyeGain = EyeAdaptation.Gain(EyeEv);   // the night scene: moon, sky fill
+            double sunGain = EyeAdaptation.Gain(SunEv);   // the star's own light
             ExposureCompensation = EyeEv;
-            Shader.SetGlobalFloat(EyeGainId, (float)eyeGain);
+            // The discs, the atmosphere and the clouds are SUNLIT bodies: they follow the
+            // star's opening, never the night one (2^14 would clip them white).
+            Shader.SetGlobalFloat(EyeGainId, (float)sunGain);
 
-            // Everything lit by the star: physical flux x the pupil. The star's own
+            // Everything lit by the star: physical flux x the star's pupil. The star's own
             // disc/glare/corona are NOT in this scale (their surface brightness is
             // physical, only the observer's sensitivity changes).
-            double starLightingScale = starLightScale * eyeGain;
+            double starLightingScale = starLightScale * sunGain;
             Shader.SetGlobalFloat("_SkyAmbient", SkyAmbient * (float)starLightingScale);
             Shader.SetGlobalFloat("_TerrainSun", TerrainSunIntensity * (float)starLightingScale);
             Shader.SetGlobalFloat("_TerrainRadianceScale", TerrainRadianceScale);
@@ -711,7 +751,7 @@ namespace Galilego.Universe
                         SunLight,
                         Transmittance,
                         occlusion,
-                        TerrainRadianceScale * TerrainSunIntensity * MaterialLightScale * eyeGain);
+                        TerrainRadianceScale * TerrainSunIntensity * MaterialLightScale * sunGain);
                 }
                 else
                 {

@@ -313,7 +313,8 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
 
      So the camera is a **fixed-exposure daylight camera**: `limitMin = −1` in
      `StarRenderer.ConfigureVolume`. Do not widen it "for Mars" — the pupil
-     already scales the sun's and the moon's Directional Light by `EyeGain`, so the
+     already scales the sun's Directional Light (and the moon's, through
+     `MoonlightGain`), so the
      props stay readable at 4.1 AU without the exposure inventing a night the
      terrain can never match. And the pupil stays in the scene light
      (`SkyEnvironment`), never in `Exposure.compensation`, until every custom

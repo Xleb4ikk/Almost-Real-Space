@@ -756,11 +756,11 @@ namespace Galilego.Universe
             // the whole "the pupil made the ground insanely bright" report.
             //
             // The rule: this camera is a FIXED-EXPOSURE daylight camera. The pupil
-            // (SkyEnvironment: _TerrainSun / _EyeGain / the Directional Light) owns all
-            // adaptation, for the custom shaders AND the HDRP/Lit props (MoonlightSystem
-            // multiplies the moon light by Sky.EyeGain for the same reason). Raising the
-            // floor above 0 throws the night away; lowering it below -1 lets the camera
-            // invent a night of its own that the terrain will never match.
+            // (SkyEnvironment: _TerrainSun for the star, Sky.MoonlightGain for the moon,
+            // the Directional Light) owns all adaptation, for the custom shaders AND the
+            // HDRP/Lit props (MoonlightSystem folds the same moon gain into the light).
+            // Raising the floor above 0 throws the night away; lowering it below -1 lets
+            // the camera invent a night of its own that the terrain will never match.
             exposure.limitMin.Override(-1f);
             exposure.limitMax.Override(14f);
             // Fixed EV100 2.26 and -12.74 gave a pixel-identical frame when every

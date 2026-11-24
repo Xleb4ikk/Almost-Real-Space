@@ -55,7 +55,15 @@ gone and the gain is 0. `NightAdaptationGainEv > 0` still restores the baked loo
 then the pupil barely opens), but do not mix the two.
 
 Measured 2026-11-24 in Play (physical moon, midnight, `t = 32 400 s`):
-`EyeEv = 14.00`, `_EyeGain = 16 384`, `_TerrainSun = 16 956`.
+`EyeEv = 14.00` and `SunEv = 0`, so `MoonlightGain = 16 384` while
+`_TerrainSun = 1.03`. The night lift lives in the moon's own colour
+(`_MoonLightColor` = 2.9e-6 × 16 384) and in the HDRP moon light, **not** in
+`_TerrainSun`: the shaders multiply the moon term by `sun`, and putting the night
+opening there bleached the sunlit half of Terra to a white disc when the camera sat
+just past the terminator in orbit (`_TerrainSun` = 1 745 at 54 000 km, `sunEl`
+= −5.5°). The star and the moon are two lights with two gains, and the night branch
+additionally requires `SunOcclusion ≈ 0` — at altitude the sun is "below the local
+horizon" while the planet in front of you is fully lit.
 
 ## What the 14 EV is measured against
 
@@ -99,11 +107,13 @@ The custom shaders add the same Lambert term as the sun:
 + (_MoonLightColor * (sun * moonNdl * shadow * cloudShadow) * _TerrainRadianceScale)
 ```
 
-`sun` is `_TerrainSun`, which carries `EyeGain` (the pupil). The HDRP/Lit props
-(launch pad, roads, VAB, ship) get the same pupil through `MoonLight.intensity`:
-`MoonlightSystem` multiplies its calibration by `Sky.EyeGain`, exactly as
-`SkyEnvironment` multiplies the sun's `ApplyLight`. Without that term the pad and the
-ground were 1.55x apart at night (and 256x at Mars).
+`sun` is `_TerrainSun`, which carries the **star's** pupil (`SkyEnvironment.SunEv`,
+0 EV when there is no star light at the eye). The moon's own night gain is folded
+into `_MoonLightColor` by `MoonlightSystem` (`SkyEnvironment.MoonlightGain`), and
+into the HDRP/Lit moon light in the same place — one exposure for the pad, the road
+and the terrain, and the star term stays at 1x at night. Without that split a camera
+just past the terminator in orbit drew a white planet: the ground's sun term was
+multiplied by the 2¹⁴ night opening.
 
 **The camera exposure must not chase the night.** `SkyEnvironment.ExposureVolume` is
 a *fixed-exposure daylight camera* (`StarRenderer` keeps `Exposure.limitMin = −1`).
