@@ -163,21 +163,6 @@ namespace GalilegoPhysicsTests
         }
 
         [Fact]
-        public void CiliaryCoronaIsAPointSourcePhenomenon()
-        {
-            const double pointScale = 0.1d * Deg;
-            const double sunAlpha = 0.0128d;   // 0.73°: the solar disc in this system
-
-            Assert.Equal(1d, LensOptics.CiliaryCoronaVisibility(0d, pointScale), 9);
-            Assert.Equal(1d, LensOptics.CiliaryCoronaVisibility(0.5d * pointScale, pointScale), 9);
-            Assert.Equal(0.5d, LensOptics.CiliaryCoronaVisibility(1.5d * pointScale, pointScale), 9);
-            Assert.Equal(0d, LensOptics.CiliaryCoronaVisibility(2d * pointScale, pointScale), 9);
-
-            // The Sun's image is ~400× the eye's diffraction core: no star at all.
-            Assert.Equal(0d, LensOptics.CiliaryCoronaVisibility(sunAlpha, pointScale), 9);
-        }
-
-        [Fact]
         public void PointSourcesScaleWithSolidAngle()
         {
             const double psf = 0.1d * Deg;

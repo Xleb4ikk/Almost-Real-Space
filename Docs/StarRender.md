@@ -19,9 +19,9 @@ double, no UnityEngine). No appearance value is hand-tuned in the renderer.
   colour/intensity come from the preset (the atmosphere only multiplies its
   transmittance).
 * `StarLensFlare` — the **observer's** optics on the same `SunVisual ` object
-  (created automatically, `StarRenderer.OpticalFlare`). Veiling glare, the
-  ciliary corona of the eye or, in `CameraLens` mode, aperture ghosts and the
-  diffraction star. See “Observer glare” below.
+  (created automatically, `StarRenderer.OpticalFlare`). Veiling glare or, in
+  `CameraLens` mode, aperture ghosts and the diffraction star. See “Observer
+  glare” below.
 * `StarRenderer` applies the derived radius to the system's root body. Gravity
   (μ) and the orbits are untouched.
 
@@ -123,7 +123,7 @@ scene radiance that exposure, bloom and tonemapping handle exactly like the disc
 |---|---|---|
 | pupil | round | N-blade polygonal iris |
 | internal reflections | none | aperture ghosts |
-| star shape | ciliary corona, point sources only | λ/D spikes, N-fold |
+| star shape | none — no sun star | λ/D spikes, N-fold |
 | veil normalised to | fraction of the source **radiance** | fraction of the source **flux** |
 
 ### Human eye
@@ -150,7 +150,7 @@ which is exactly 1 at the ground and exactly 0 above the atmosphere. That split 
 what keeps the sun in space a hard, blazing disc instead of a fog ball: a wide
 haze around the Sun is an *atmospheric* phenomenon, not an intraocular one.
 
-A source smaller than the eye's PSF core (`CiliaryCoronaPointDegrees`, 0.1°) only
+A source smaller than the eye's PSF core (`EyePointSpreadDegrees`, 0.1°) only
 delivers its flux, so the veil is multiplied by `(α/α_psf)²`
 (`LensOptics.PointSourceFactor`). The Sun at 0.37 AU (α = 0.73°) is resolved; the
 same star at 5 AU is down to ≈0.3.
@@ -158,27 +158,23 @@ same star at 5 AU is down to ≈0.3.
 In EVA the veil is multiplied by `HelmetGlareMultiplier` (1.6): the observer looks
 through a scratched, dusty visor, which scatters more than the cornea.
 
-**The eye has no hexagonal ghosts and no diffraction spikes around the Sun**, and
-nothing draws any:
+**The eye has no hexagonal ghosts, no diffraction spikes and no sun star**,
+and nothing draws any:
 
 * aperture ghosts are reflections between the coated surfaces of a multi-element
   objective — a biological eye has no such surfaces;
 * the spikes are the Fourier transform of a polygonal iris — the pupil is round,
   and even if it were not, λ/D at a 3–5 mm pupil is ≈0.01°, ~70× smaller than the
-  solar disc, so a resolved disc cannot show them.
+  solar disc, so a resolved disc cannot show them;
+* the ciliary corona (the soft rays the literature describes around a very bright
+  point light) is not drawn either: a 12-ray starburst is a lens/iris artefact, not
+  something the Sun shows at any distance in this game, and at Mars or the gas
+  giant it read as exactly the old “rays” the realistic star was supposed to
+  remove.
 
-What an eye does show around a bright **point** source (a lamp, a distant star) is
-the **ciliary corona**: 8–14 broad, unequal rays from diffraction on the radial
-fibres of the crystalline lens. It needs a coherent wavefront across the pupil and
-disappears once the source image is a few times the PSF core:
-
-```
-visibility = 1 − smoothstep(1, 2, α / α_psf)
-```
-
-For the Sun α/α_psf ≈ 400 → exactly zero. That is why `CiliaryCorona` is a
-point-source effect (`CiliaryCoronaRays`, `...PointDegrees`, `...ExtentDegrees`,
-`...WidthDegrees`), not a sun star.
+So the HumanEye flare is a smooth two-term Moffat veil only — no radial structure
+at any distance. Only `CameraLens` mode, which is a view through an instrument,
+draws the λ/D diffraction star.
 
 ### Camera lens
 
@@ -200,8 +196,8 @@ photometer. The eye's veil is normalised to V′ (the only brightness the observ
 sees), and the camera's ghost peaks carry `GhostGain`, which exists solely to
 compensate that compression.
 
-Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes,
-5 ciliary corona; `DebugHud` prints the mode, the scatter and the disc radiance.
+Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
+`DebugHud` prints the mode, the scatter and the disc radiance.
 
 ## Assumptions
 
@@ -261,8 +257,8 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes,
     and *scaling with altitude/distance/transmittance* are physical; the absolute
     photometric ratio to a real photometer is not, by construction of V′.
 17. **`HumanEye` has no aperture ghosts and no sun star**, and that is a feature,
-    not an omission — see “Observer glare”. The ciliary corona exists in code and
-    switches itself off for the Sun's resolved disc.
+    not an omission — see “Observer glare”. The veil is smooth at every distance;
+    nothing draws radial rays around the Sun.
 
 ## Tests
 

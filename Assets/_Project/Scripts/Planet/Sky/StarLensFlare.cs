@@ -11,8 +11,7 @@ namespace Galilego.Universe
     {
         /// <summary>
         /// A living observer: round pupil, no lens elements, no coatings. Strong
-        /// intraocular veiling glare; no aperture ghosts; the ciliary corona only
-        /// around point sources.
+        /// intraocular veiling glare; no aperture ghosts and no diffraction star.
         /// </summary>
         HumanEye = 0,
 
@@ -60,10 +59,8 @@ namespace Galilego.Universe
     ///  * HumanEye (default) — a living being. Intraocular stray light, normalised
     ///    to the star's rendered radiance: a strong soft glare that washes out the
     ///    sky next to the Sun out to tens of degrees. The pupil is round and there
-    ///    are no lens elements, so there are NO aperture ghosts and no hexagonal
-    ///    bokeh. The ciliary corona (soft radial rays from the crystalline lens
-    ///    fibres) is a point-source phenomenon and switches itself off for the
-    ///    Sun's resolved disc.
+    ///    are no lens elements, so there are NO aperture ghosts, no hexagonal bokeh
+    ///    and no diffraction star.
     ///  * CameraLens — a view through an instrument: flux-conserving veiling glare,
     ///    aperture ghosts reflected through the optical axis and the diffraction
     ///    star of the iris blades (λ/D wide, N-blade symmetric).
@@ -124,22 +121,9 @@ namespace Galilego.Universe
         [Tooltip("Спад широкой глазной вуали. Меньше — шире и мягче дымка.")]
         public double EyeGlareWideBeta = 1.6d;
 
-        [Tooltip("Пик цилиарной короны (лучи от дифракции на радиальных волокнах хрусталика) " +
-                 "относительно диска. Корона видна только у точечных источников; у диска Солнца её нет.")]
-        public double CiliaryCorona = 0.35d;
-
-        [Tooltip("Число волоконных лучей короны (у реального хрусталика 8–14).")]
-        public int CiliaryCoronaRays = 12;
-
-        [Tooltip("Угловой радиус источника, ниже которого он считается точечным, градусы: " +
-                 "ядро PSF глаза. Солнце (0.5–1.5°) сюда не попадает.")]
-        public double CiliaryCoronaPointDegrees = 0.1d;
-
-        [Tooltip("Длина лучей короны, градусы.")]
-        public double CiliaryCoronaExtentDegrees = 3.5d;
-
-        [Tooltip("Ширина луча короны, градусы: волокна дают широкие мягкие лучи, а не нити.")]
-        public double CiliaryCoronaWidthDegrees = 0.25d;
+        [Tooltip("Угловой радиус ядра PSF глаза, градусы: источник меньше него отдаёт глазу только поток, " +
+                 "поэтому вуаль масштабируется как (α/α_psf)². Солнце (0.5–1.5°) много больше ядра.")]
+        public double EyePointSpreadDegrees = 0.1d;
 
         [Tooltip("Множитель вуали в скафандре (EVA): щиток шлема рассеивает сильнее глаза, " +
                  "а его микроцарапины дают заметно более широкий ореол.")]
@@ -211,8 +195,8 @@ namespace Galilego.Universe
 
         [Header("Отладка")]
         [Tooltip("0 — обычный вид; 1 — покрытие диска (видимость); 2 — только вуаль; 3 — только призраки; " +
-                 "4 — только лучи; 5 — только цилиарная корона.")]
-        [Range(0, 5)]
+                 "4 — только лучи.")]
+        [Range(0, 4)]
         public int DebugMode;
 
         [Tooltip("HUD с параметрами блика.")]
@@ -235,7 +219,6 @@ namespace Galilego.Universe
         private static readonly int VeilId = Shader.PropertyToID("_FlareVeil");
         private static readonly int VeilWideId = Shader.PropertyToID("_FlareVeilWide");
         private static readonly int StarId = Shader.PropertyToID("_FlareStar");
-        private static readonly int CoronaId = Shader.PropertyToID("_FlareCorona");
         private static readonly int GhostPoseId = Shader.PropertyToID("_FlareGhostPose");
         private static readonly int GhostColorId = Shader.PropertyToID("_FlareGhostColor");
         private static readonly int GhostCountId = Shader.PropertyToID("_FlareGhostCount");
@@ -433,7 +416,6 @@ namespace Galilego.Universe
             double spikePeak = 0d;
             double spikeWidth = 0d;
             double spikeExtent = 0d;
-            double coronaPeak = 0d;
 
             if (Mode == ObserverMode.CameraLens)
             {
@@ -466,8 +448,7 @@ namespace Galilego.Universe
                 // star's RADIANCE (that is what the observer sees), so the glare is
                 // a visible fraction of the disc out to several degrees and washes
                 // the sky out next to it. The pupil is round and there are no
-                // lens-element reflections, so no ghosts and no aperture star; the
-                // ciliary corona appears only for point sources.
+                // lens-element reflections, so no ghosts and no aperture star.
                 theta0 = EyeGlareTheta0Degrees * DegToRad;
                 beta = Math.Max(1.01d, EyeGlareBeta);
                 wideTheta0 = EyeGlareWideTheta0Degrees * DegToRad;
@@ -482,7 +463,7 @@ namespace Galilego.Universe
                     scatter *= Math.Max(1d, HelmetGlareMultiplier);
                 }
 
-                double pointScale = Math.Max(0.01d, CiliaryCoronaPointDegrees) * DegToRad;
+                double pointScale = Math.Max(0.01d, EyePointSpreadDegrees) * DegToRad;
 
                 // The wide haze around the Sun on the ground is the AIR COLUMN in
                 // front of the eye, not the eye: it is the same forward-scattered
@@ -506,9 +487,6 @@ namespace Galilego.Universe
                 widePeak = LensOptics.EyeGlareRadiance(
                         discRadiance, scatter * wideShare * resolved, 0d, wideTheta0, wideBeta)
                     * airColumn;
-
-                double visibility = LensOptics.CiliaryCoronaVisibility(angularRadius, pointScale);
-                coronaPeak = discRadiance * Math.Max(0d, CiliaryCorona) * visibility;
             }
 
             material.SetVector(SunId, new Vector4(
@@ -525,11 +503,6 @@ namespace Galilego.Universe
                 (float)(spikePeak * scale),
                 (float)spikeWidth,
                 (float)spikeExtent));
-            material.SetVector(CoronaId, new Vector4(
-                (float)(coronaPeak * scale),
-                Math.Max(1f, CiliaryCoronaRays),
-                (float)Math.Tan(Math.Max(0.01d, CiliaryCoronaWidthDegrees) * DegToRad),
-                (float)Math.Tan(Math.Max(0.1d, CiliaryCoronaExtentDegrees) * DegToRad)));
             material.SetFloat(BladePhaseId, (float)(BladePhaseDegrees * DegToRad));
             material.SetFloat(ChromaId, (float)Math.Max(0d, ChromaticFringe));
             material.SetFloat(GhostRimId, (float)Math.Max(0d, GhostRim));
@@ -704,11 +677,7 @@ namespace Galilego.Universe
             EyeGlareWideShare = Math.Max(0d, Math.Min(0.95d, EyeGlareWideShare));
             EyeGlareWideTheta0Degrees = Math.Max(0.05d, EyeGlareWideTheta0Degrees);
             EyeGlareWideBeta = Math.Max(1.01d, EyeGlareWideBeta);
-            CiliaryCorona = Math.Max(0d, CiliaryCorona);
-            CiliaryCoronaRays = Math.Max(0, Math.Min(32, CiliaryCoronaRays));
-            CiliaryCoronaPointDegrees = Math.Max(0.01d, CiliaryCoronaPointDegrees);
-            CiliaryCoronaExtentDegrees = Math.Max(0.1d, CiliaryCoronaExtentDegrees);
-            CiliaryCoronaWidthDegrees = Math.Max(0.01d, CiliaryCoronaWidthDegrees);
+            EyePointSpreadDegrees = Math.Max(0.01d, EyePointSpreadDegrees);
             HelmetGlareMultiplier = Math.Max(1d, Math.Min(6d, HelmetGlareMultiplier));
             ChromaticFringe = Math.Max(0d, Math.Min(0.2d, ChromaticFringe));
 
@@ -733,11 +702,10 @@ namespace Galilego.Universe
             }
 
             GUI.Label(new Rect(10f, 60f, 1200f, 44f), string.Format(
-                "Глаз/оптика: {0}, вуаль {1:P1}, корона {2:F2}, призраков {3}, " +
-                "N̂=({4:F2},{5:F2}), α={6:F3}°, V'={7:F1}, шейдер={8}",
+                "Глаз/оптика: {0}, вуаль {1:P1}, призраков {2}, " +
+                "N̂=({3:F2},{4:F2}), α={5:F3}°, V'={6:F1}, шейдер={7}",
                 Mode == ObserverMode.HumanEye ? "глаз" : "объектив f/" + FNumber.ToString("F1"),
                 Mode == ObserverMode.HumanEye ? EyeGlare : VeilingGlare,
-                Mode == ObserverMode.HumanEye ? CiliaryCorona : DiffractionStrength,
                 ghostCount,
                 Star != null ? Star.SunDirectionSim.x : 0f,
                 Star != null ? Star.SunDirectionSim.y : 0f,

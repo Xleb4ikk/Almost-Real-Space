@@ -65,9 +65,6 @@ Shader "Galilego/StarLensFlare"
             // x: iris blades, y: spike peak radiance, z: spike width (tan units),
             // w: spike extent (tan units).
             float4 _FlareStar;
-            // Ciliary corona of the human eye: x: peak radiance, y: fibre count,
-            // z: ray width (tan units), w: extent (tan units).
-            float4 _FlareCorona;
             // xy: ghost centre NDC, z: ghost angular radius NDC-y, w: peak radiance.
             float4 _FlareGhostPose[6];
             // rgb: coating tint × star colour; a: aperture image rotation (rad).
@@ -281,26 +278,6 @@ Shader "Galilego/StarLensFlare"
                     spikes *= fade;
                 }
 
-                // ---- ciliary corona (human eye, point sources only) -----------------
-                // Diffraction on the radial fibres of the crystalline lens: broad,
-                // soft, unequal rays. It needs a coherent wavefront across the
-                // pupil, so the CPU sets the peak to zero as soon as the source's
-                // image is bigger than the eye's diffraction core — the Sun, at
-                // 0.5–1.5°, never shows it.
-                float corona = 0.0;
-                if (_FlareCorona.x > 0.0)
-                {
-                    float theta = atan(length(dTan));
-                    float ang = atan2(dTan.y, dTan.x);
-                    float wobble = (0.6 * sin((ang * 3.0) + 1.7)) + (0.35 * sin((ang * 5.0) + 4.1));
-                    float lobes = pow(
-                        saturate(0.5 + (0.5 * cos((_FlareCorona.y * ang) + wobble))),
-                        6.0);
-                    float radial = exp(-theta / max(_FlareCorona.w, 1e-5))
-                        * (_FlareCorona.z / (theta + _FlareCorona.z));
-                    corona = _FlareCorona.x * lobes * radial;
-                }
-
                 float3 flare;
                 if (_FlareDebug > 1.5 && _FlareDebug < 2.5)
                 {
@@ -310,18 +287,14 @@ Shader "Galilego/StarLensFlare"
                 {
                     flare = ghosts;
                 }
-                else if (_FlareDebug > 3.5 && _FlareDebug < 4.5)
+                else if (_FlareDebug > 3.5)
                 {
                     flare = _FlareColor.rgb * (_FlareStar.y * spikes);
-                }
-                else if (_FlareDebug > 4.5)
-                {
-                    flare = _FlareColor.rgb * corona;
                 }
                 else
                 {
                     flare = _FlareColor.rgb
-                        * (veil + (_FlareStar.y * spikes) + corona)
+                        * (veil + (_FlareStar.y * spikes))
                         + ghosts;
                 }
 

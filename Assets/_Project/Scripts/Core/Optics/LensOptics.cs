@@ -95,28 +95,6 @@ namespace Galilego.Core
             return ratio * ratio;
         }
 
-        /// <summary>
-        /// Visibility of the ciliary corona — the radial "star" the human eye sees
-        /// around a bright light. It is diffraction on the radial fibres of the
-        /// crystalline lens, so the wavefront must be coherent across the pupil:
-        /// a POINT source shows the rays, and once the source's image is a few
-        /// times wider than the eye's diffraction core (~0.1°) the rays are buried
-        /// under the source's own image and the veiling glare. The Sun (0.5–1.5°
-        /// in this game) has none; a distant star or a bare lamp does.
-        /// </summary>
-        public static double CiliaryCoronaVisibility(
-            double sourceAngularRadiusRad,
-            double pointSourceScaleRad)
-        {
-            if (!(sourceAngularRadiusRad >= 0d) || !(pointSourceScaleRad > 0d))
-            {
-                return 0d;
-            }
-
-            double ratio = sourceAngularRadiusRad / pointSourceScaleRad;
-            return 1d - Smoothstep(1d, 2d, ratio);
-        }
-
         /// <summary>Hermite smoothstep (Core has no Unity Mathf).</summary>
         public static double Smoothstep(double edge0, double edge1, double x)
         {
