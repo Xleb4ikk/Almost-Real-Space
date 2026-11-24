@@ -32,6 +32,7 @@ float3 _TerrainSunDir;     // direction TOWARD the sun
 float3 _SkyUp;             // observer's local up
 float _SkyAmbient;         // daytime ambient multiplier
 float _TerrainSun;         // strength of the scene's sun term
+float _EyeGain;            // the observer's pupil (SkyEnvironment; 2^14 at night)
 float _TerrainRadianceScale; // ground HDR boost (set by SkyEnvironment)
 float _NightAmbient;       // night ambient
 float _StarVisibility;     // star visibility 0..1 (0 by day, 1 by night)
@@ -139,7 +140,10 @@ float3 GalilegoSunAureole(float3 dir, float3 sunDir, float3 radiance, float sigm
 /// scaled far above _MoonLightColor (that is ground illuminance): the moon's own
 /// surface is ~10^5 times brighter than the ground it lights, and the eye is
 /// adapted to the ground, so the disc must read as a bright lamp on the water.
-/// Zero when MoonlightSystem has no moon, so the night window rests on the stars.
+/// Since the moon itself is physical (NightAdaptationGainEv = 0), the scene's
+/// pupil (_EyeGain) is what lifts it to the ground's exposure — the same eye that
+/// reads the ground reads this reflection. Zero when MoonlightSystem has no moon,
+/// so the night window rests on the stars.
 /// </summary>
 float3 GalilegoMoonRadiance(float3 dir, float normalSigmaAngle)
 {
@@ -149,8 +153,8 @@ float3 GalilegoMoonRadiance(float3 dir, float normalSigmaAngle)
     }
 
     float3 moonDir = GalilegoMoonDir(_TerrainSunDir);
-    float3 disc = GalilegoSunDisc(dir, moonDir, _MoonLightColor * 12.0, normalSigmaAngle);
-    float3 halo = GalilegoSunAureole(dir, moonDir, _MoonLightColor * 0.35, normalSigmaAngle);
+    float3 disc = GalilegoSunDisc(dir, moonDir, _MoonLightColor * 12.0 * _EyeGain, normalSigmaAngle);
+    float3 halo = GalilegoSunAureole(dir, moonDir, _MoonLightColor * 0.35 * _EyeGain, normalSigmaAngle);
     return disc + halo;
 }
 

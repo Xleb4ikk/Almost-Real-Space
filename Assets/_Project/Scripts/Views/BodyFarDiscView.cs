@@ -501,7 +501,10 @@ namespace Galilego.Universe
                 : 1d;
             // 0 = SkyEnvironment has not written the global yet (first frame): the disc
             // must not go black for that frame, so fall back to a fully open pupil.
-            float eyeGain = Shader.GetGlobalFloat(EyeGainId);
+            // The disc takes only the DAY share of the pupil: its surface brightness is
+            // physical (like the star's own disc), and the night opening reaches 2^14 —
+            // through that, the Moon would be a white blob with no maria.
+            float eyeGain = Mathf.Min(Shader.GetGlobalFloat(EyeGainId), EyeAdaptation.DiscMaxGain);
             double bodyLightScale = bodyStarScale * (eyeGain > 0f ? eyeGain : 1f);
             material.SetVector("_BFD_SunColor",
                 new Vector4((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z, 0f));

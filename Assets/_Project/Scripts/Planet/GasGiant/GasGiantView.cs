@@ -480,7 +480,9 @@ namespace Galilego.Universe
             double bodyStarScale = starRenderer != null
                 ? starRenderer.StarLightAt(body, Runner.TimeSeconds)
                 : 1d;
-            float eyeGain = Shader.GetGlobalFloat(EyeGainId);
+            // A body's disc is capped like the far disc (EyeAdaptation.DiscMaxGain):
+            // the night pupil is 2^14, and that would clip the giant to a white ball.
+            float eyeGain = Mathf.Min(Shader.GetGlobalFloat(EyeGainId), EyeAdaptation.DiscMaxGain);
             float starLightScale = (float)bodyStarScale * (eyeGain > 0f ? eyeGain : 1f);
 
             float far = Mathf.Max(1f, camera.farClipPlane);

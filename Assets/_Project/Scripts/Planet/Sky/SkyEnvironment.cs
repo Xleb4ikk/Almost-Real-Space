@@ -106,19 +106,19 @@ namespace Galilego.Universe
                  "1e-4 ≈ 10 лк: днём на безатмосферном теле звёзд не видно (Аполлон). 0 = не гасить.")]
         public float StarHideDayLevel = 1e-4f;
 
-        [Tooltip("Пол компенсации ночью (EV): ночь остаётся ночью, звёздный свет читается.")]
-        public float NightExposure = 0.5f;
-
-        [Tooltip("Дополнительная адаптация глаза в лунную ночь (EV): полная луна над горизонтом " +
-                 "раскрывает экспозицию на столько сверх NightExposure. Без этого физический свет луны " +
-                 "(~0.15 сцены при gain 16) читается как почти чёрная земля. 0 = выключено.")]
-        public float MoonlightExposureBoost = 0.5f;
+        [Tooltip("Потолок ночного раскрытия зрачка, EV. Ночь физическая (луна — 2.9e-6 полудня), " +
+                 "поэтому глаз раскрывается целиком (share = 1) и упирается в этот потолок: " +
+                 "14 EV = 0.036 полудня ≈ 2.4 лк — самый тёмный уровень, который ещё читается " +
+                 "как освещённый пейзаж. Это и есть «зрачок максимально открыт ночью»; " +
+                 "уменьшать — ночь станет темнее, увеличивать — асфальт снова станет дневным.")]
+        public float NightAdaptationMaxEv = 14f;
 
         /// <summary>
         /// Scene-space moon intensity (0..~0.4), written by MoonlightSystem before this
-        /// component's LateUpdate. The eye's night adaptation follows it: a moonlit
-        /// landscape is visible because the pupil opens, not because the moon is bright.
-        /// A property, not a field: it must never be serialized into the scene.
+        /// component's LateUpdate. With a physical moon the value is the real
+        /// E_moon/E_sun at the eye (~2.9e-6 at full); the pupil opens on it, so a
+        /// moonlit landscape is visible because the eye adapts, not because the moon
+        /// is brightened. A property, not a field: it must never be serialized.
         /// </summary>
         public float MoonlightLevel { get; set; }
 
@@ -610,31 +610,31 @@ namespace Galilego.Universe
             // ---- The pupil ---------------------------------------------------------
             // Illuminance at the eye in reference units (1 = Terra's noon): the star's
             // flux at this observer, times how far the sun is above the local horizon,
-            // plus the sky's diffuse share. It is PHYSICAL, independent of frame content:
-            // a histogram meter would be dragged around by the ground filling the view,
-            // and the whole point is that the eye's state must not depend on where the
-            // camera happens to point.
-            double dayIlluminance = dayGround + (ambientAmount * starLightScale);
+            // plus the sky's diffuse share, plus the moon's reflected light. It is
+            // PHYSICAL and independent of frame content: a histogram meter would be
+            // dragged around by the ground filling the view, and the whole point is that
+            // the eye's state must not depend on where the camera happens to point.
+            //
+            // The moon is physical too (MoonlightSystem.NightAdaptationGainEv = 0): a
+            // full moon is ~2.9e-6 of noon, so the night is 18…20 EV down and the eye
+            // must do the whole lift itself — that IS the night adaptation, there is no
+            // second baked-in gain. A dark-adapted eye is open all the way (share = 1 for
+            // the night branch); the ceiling NightAdaptationMaxEv is the authored night
+            // level, not a share: raising it makes the moonlit ground brighter, lowering
+            // it darker. The day branch keeps the 0.66 share, because a distant star's
+            // noon (`share = 1`) would read as Terra's noon.
+            double moonIlluminance = System.Math.Max(0f, MoonlightLevel);
+            double illuminance = dayGround + (ambientAmount * starLightScale) + moonIlluminance;
             double targetEv = EyeAdaptation.TargetEv(
-                dayIlluminance, EyeAdaptationShare, EyeAdaptationMaxEv);
+                illuminance, EyeAdaptationShare, EyeAdaptationMaxEv);
 
-            // Night is not "a very dim landscape": the sun is gone and there is nothing
-            // to adapt to but starlight. Keep the authored night floor (plus the moon's
-            // own boost) instead of clamping the pupil fully open on a scene the moon
-            // already lights. Blended through civil twilight, where the sun still sets
-            // the level.
+            // Night is not "a very dim landscape": the sun is gone, so the pupil is
+            // fully open and follows the MOON — it opens at moonrise, closes at
+            // moonset, and a moonless night simply has nothing to scale (it stays
+            // black). Blended through civil twilight, where the sun still sets the level.
             double night = 1d - SkyPhysics.Smoothstep(-0.18d, -0.02d, sinEl);
-            double nightEv = NightExposure;
-            if (MoonlightExposureBoost > 0f && MoonlightLevel > 0f)
-            {
-                // A full moon on the ground is ~0.1 of the scene's noon; without this the
-                // moonlit landscape would be rendered at a daylight exposure.
-                double moonAdapt = System.Math.Sqrt(
-                    SkyPhysics.Clamp(MoonlightLevel / 0.15f, 0d, 1d));
-                nightEv += MoonlightExposureBoost * moonAdapt;
-            }
-
-            targetEv = (targetEv * (1d - night)) + (nightEv * night);
+            double nightTargetEv = EyeAdaptation.TargetEv(illuminance, 1d, NightAdaptationMaxEv);
+            targetEv = (targetEv * (1d - night)) + (nightTargetEv * night);
 
             // The eye is a PHYSICAL object at spawn: snapping to the target on the first
             // frame the star is known is what stops the "spawn under the sun" flash. The

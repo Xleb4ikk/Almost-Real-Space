@@ -43,6 +43,16 @@ namespace Galilego.Universe
         public const double DefaultMaxEv = 8d;
 
         /// <summary>
+        /// Ceiling of the pupil factor applied to a BODY's own disc (`BodyFarDiscView`,
+        /// `GasGiantView`). A disc's surface brightness is physical, like the star's own
+        /// disc, so it must not be multiplied by the night opening: the pupil reaches
+        /// 2^14 at night, and 16 384x turns the Moon into a featureless white blob (its
+        /// maria are 0.35 scene units before the gain). 4x (2 EV) keeps a sunlit disc
+        /// bright and readable while the GROUND under it still gets the full pupil.
+        /// </summary>
+        public const float DiscMaxGain = 4f;
+
+        /// <summary>
         /// Target opening in EV for an eye standing in <paramref name="illuminance"/>
         /// (1 = Terra's noon, 0 = darkness). 0 EV at full daylight, positive when dark.
         /// </summary>

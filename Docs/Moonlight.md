@@ -23,30 +23,48 @@ For Artemis (R = 412 km, a = 90 000 km) full moon is **2.85·10⁻⁶ of the sta
 real Moon/Earth ratio. That ratio is independent of the star: a brighter star lights
 both the Moon and Terra more.
 
-## Why 14 EV is applied
+## Night adaptation: the pupil, not a baked-in gain
 
 A moonlit landscape is ~2.9·10⁻⁶ of daylight. On a display calibrated for day it is
-black, which is why every game boosts it. Here the boost is **one explicit number**:
+black, so the night has to be lifted somewhere. The lift is **one system**: the
+observer's pupil.
 
-* `MoonlightPhysics.SceneIntensity(ratio, 14)` — the simulated eye's dark adaptation;
-* `SkyEnvironment.MoonlightExposureBoost` (0.5 EV) — the camera exposure follows the
-  same light, a little, so the night is visible without becoming dusk.
+* `MoonlightSystem.NightAdaptationGainEv = 0` — the moon is **physical**:
+  `_MoonLightColor` is the real `E_moon/E_sun` (2.9·10⁻⁶ at full), the light on the
+  ground follows phase, distance, eclipse and the air column with no artistic scale.
+* `SkyEnvironment` feeds that illuminance into the pupil (`MoonlightLevel`) and opens
+  **fully** at night (`share = 1`), capped by `NightAdaptationMaxEv = 14 EV`. 14 EV is
+  the authored night level (0.036 of noon ≈ 2.4 lx — the darkest that still reads as a
+  lit landscape), so the pupil *is* at its ceiling on any moonlit night: "максимально
+  открыт" is the normal state, not an exception. 13 EV is darker, 15–16 EV reads as a
+  day-for-night grade.
+* The consequence, and the point: the ground is `moon ratio × 2¹⁴`, so a full moon is
+  ~11× a quarter moon — the phase stays visible in the ground as well as in the disc.
+  A moonless night has nothing to scale and stays black.
 
-With 14 EV a full moon is ~0.036 of the noon sun in the scene's `albedo·ndl` scale
-(~0.048 before Sol's warm peak and the air column) — 4.8 stops below day, the darkest
-level that still reads as a lit landscape; 2.4 lux physically. 15 EV (0.071) is the
-classic day-for-night grade, 16 EV (0.14) is the exposure of a long-time photograph
-and reads as an overcast day. Quarter moon is 1/11 of the full; the phase is never
-flattened. `NightAdaptationGainEv = 0` restores the strictly physical (black) night.
+Nothing else adds adaptation. `Exposure.limitMin` stays at −1 (a fixed-exposure
+daylight camera, see [StarRender.md](StarRender.md)): with −8 the auto exposure lifted
+the HDRP/Lit asphalt to 118/255 on the same frame where −1 gives ~10, which is the
+"the night ground is insanely bright" bug of 2026-11-24.
 
-Measured on the pad at `t = 24 000 s` (Game view, sRGB of the VAB wall / asphalt):
+Historical note: before the pupil existed the lift was baked into the moon
+(`NightAdaptationGainEv = 14`, "the one non-physical step"), and `SkyEnvironment` had
+`NightExposure`/`MoonlightExposureBoost` fields to open the eye a little on top. Two
+adaptations stacked is exactly how the asphalt ended up looking daylit; the fields are
+gone and the gain is 0. `NightAdaptationGainEv > 0` still restores the baked look (and
+then the pupil barely opens), but do not mix the two.
 
-| `NightAdaptationGainEv` | wall | asphalt |
+Measured 2026-11-24 in Play (physical moon, midnight, `t = 32 400 s`):
+`EyeEv = 14.00`, `_EyeGain = 16 384`, `_TerrainSun = 16 956`.
+
+## What the 14 EV is measured against
+
+| `NightAdaptationMaxEv` | ground, share of noon | reads as |
 |---|---|---|
-| 16 | 133 | 13 |
-| 15 | 86 | 5 |
-| **14** | **51** | **1** |
-| 13 | 28 | 0 |
+| 13 | 0.018 | dark night, asphalt at 0 |
+| **14** | **0.036** | the authored night (2.4 lx) |
+| 15 | 0.071 | day-for-night grade |
+| 16 | 0.14 | overcast day |
 
 ## Sky position, atmosphere, horizon
 
@@ -143,7 +161,9 @@ At `t = 32 400 s` the pad is at local midnight and Artemis is high:
 teleport to SurfaceFrame (lat, lon, ground + 1.6 m) after SetTime(32400)
 ```
 
-Expected diagnostics:
+Expected diagnostics (the moon's position depends on the authored orbit — pick a night
+when Artemis is actually up; at `t = 32 400 s` in the current scene it sits on the
+horizon and the night is moonless):
 
 | | |
 |---|---|
@@ -152,8 +172,9 @@ Expected diagnostics:
 | `PhaseAngleDeg` | 8.6° (99.4 % lit) |
 | `EclipseVisibility` | 1 |
 | `IrradianceRatioToSun` | 2.82·10⁻⁶ |
-| `SceneIntensity` | 0.035 (gain 14; the peak of Sol's warm vector and T) |
+| `SceneIntensity` | 2.8·10⁻⁶ (physical: no gain) |
 | `IlluminanceLux` | 2.4 lx |
+| `SkyEnvironment.EyeEv` | 14.0 (the night ceiling) |
 | `SunElevationDeg` | −88.7° |
 
 A/B test: set `MoonlightSystem.MoonlightScale = 0`; the terrain and the VAB go
@@ -170,9 +191,9 @@ the 11 px `BodyFarDiscView` floor at long range.
 | Field | Default | Effect |
 |---|---|---|
 | `GeometricAlbedo` | 0.136 | real regolith; 0 disables the light |
-| `NightAdaptationGainEv` | 14 | the one perceptual gain; 0 = physical black night |
-| `MoonlightScale` | 1 | global artistic multiplier |
+| `NightAdaptationGainEv` | **0** | physical moon; >0 bakes an adaptation into the light (14 = the old look, then the pupil barely opens) |
+| `MoonlightScale` | 1 | global artistic multiplier (it also drives the pupil, so the night stays put) |
 | `MoonlightTint` | (0.78, 0.88, 1) | slight Purkinje blue; the reflected spectrum is nearly neutral |
 | `MoonSkyAmbient` | 0.01 | fraction of direct light used as sky fill |
 | `ShareShadowCascades` | true | sun by day / moon by night cascade ownership |
-| `SkyEnvironment.MoonlightExposureBoost` | 0.5 EV | eye adaptation added on top of `NightExposure` |
+| `SkyEnvironment.NightAdaptationMaxEv` | 14 EV | the night ceiling of the pupil: the authored night level (the pupil is at this ceiling all night) |

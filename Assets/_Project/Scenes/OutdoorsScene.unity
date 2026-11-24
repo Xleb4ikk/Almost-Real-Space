@@ -2863,9 +2863,12 @@ MonoBehaviour:
   SkyAmbient: 0.1
   ShadowStrength: 0.85
   ExposureVolume: {fileID: 432432460}
-  TwilightExposureMax: 2
-  NightExposure: 0.5
-  MoonlightExposureBoost: 0.5
+  EyeAdaptationShare: 0.66
+  EyeAdaptationMaxEv: 8
+  EyeAdaptBrightSeconds: 0.25
+  EyeAdaptDarkSeconds: 1.2
+  StarHideDayLevel: 0.0001
+  NightAdaptationMaxEv: 14
   ShadowHighDistanceMeters: 150
   ShadowMediumDistanceMeters: 400
   ShadowBlendWidthMeters: 25
@@ -2905,7 +2908,7 @@ MonoBehaviour:
   MoonName: 
   GeometricAlbedo: 0.136
   MoonlightScale: 1
-  NightAdaptationGainEv: 14
+  NightAdaptationGainEv: 0
   MoonlightTint: {r: 0.78, g: 0.88, b: 1, a: 1}
   MoonSkyAmbient: 0.01
   ShareShadowCascades: 1

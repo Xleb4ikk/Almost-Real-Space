@@ -266,12 +266,14 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
    * *spawn*: on the first frame the star is known the pupil **snaps** to its target
      instead of ramping — that is what stops a spawn in full sun from flashing. Measured
      at `t = 0.02 s` on Aeolus: `eyeEv = 2.745` = the exact target, not a ramp from 0;
-   * *night* is blended out of the pupil: with the sun below civil twilight the authored
-     `NightExposure` (+ the moon's own boost) takes over, so the night sky is unchanged;
+   * *night* is blended out of the pupil: with the sun below civil twilight the eye is
+     fully open (`share = 1`) up to `NightAdaptationMaxEv = 14 EV`, following the
+     moon's real illuminance, so the night ground scales with the moon itself;
    * it scales `_TerrainSun`, `_SkyAmbient`, the Directional Light (ship, props,
      `HDRP/Lit`) and, through the `_EyeGain` global, `BodyFarDiscView` and
      `GasGiantView` — one eye for the whole frame, so a disc never disagrees with the
-     ground it hands over to;
+     ground it hands over to (the discs cap it at `EyeAdaptation.DiscMaxGain = 4x`:
+     a body's surface brightness is physical, and 2^14 would clip the Moon);
    * the star's own disc/glare/corona are NOT scaled: their surface brightness is
      physical, only the observer's sensitivity changes.
 

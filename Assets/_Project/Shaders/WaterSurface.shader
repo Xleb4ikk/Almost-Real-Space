@@ -739,9 +739,11 @@ Shader "Galilego/WaterSurface"
                 float sunPath = pow(saturate(dot(reflectDir, sunDir)), 10.0);
                  skyRef += _SunLightColor * (sunPath * 0.05 * waterRad * cloudShadow) * dayLocal;
                 // Moon path: a broad silver streak plus the glitter above. Separate
-                // from the sun term because dayLocal is zero at night.
+                // from the sun term because dayLocal is zero at night. The moon is
+                // physical (NightAdaptationGainEv = 0), so the scene's pupil lifts the
+                // reflection to the ground's exposure, exactly like the Snell window.
                 float moonPath = pow(saturate(dot(reflectDir, moonDir)), 10.0);
-                skyRef += _MoonLightColor * ((0.25 + (0.75 * moonPath)) * waterRad * cloudShadow) * moonUp;
+                skyRef += _MoonLightColor * ((0.25 + (0.75 * moonPath)) * waterRad * cloudShadow) * moonUp * _EyeGain;
                 color = lerp(color, skyRef, saturate(fresnelF * _FresnelStrength));
                 // Distant water haze: the horizon merges into the sky.
                 // Boosted for open sea — oceans all the way to the horizon.
