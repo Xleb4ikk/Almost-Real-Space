@@ -54,6 +54,13 @@ is not subject to this rule: a person in the umbra really does see the Sun cover
 
 ## What the current rails actually produce
 
+> **Stale after the 0.369-scale Sun (2026-11-24).** The table below was measured with
+> the old `StarPreset_Sol` (R = 1 R☉, 1.444° disc) and the old 90 000 km Artemis orbit.
+> The scene now uses a 0.3689 R☉ star (0.533° disc) and Artemis at 73 400 km
+> (0.59–0.70°), so the Moon is **larger** than the Sun and a total solar eclipse is
+> geometrically possible. Re-measure the times and `f` with `Tools/Eclipse/EclipseScan`
+> before quoting them; do not reuse the numbers below.
+
 Measured from `OutdoorsScene` (Sol R = 695 700 km, Terra R = 1143 km at
 55.1876e6 km, Artemis R = 412 km at 90 000 km), with the Kepler rails and a 10-minute
 scan:

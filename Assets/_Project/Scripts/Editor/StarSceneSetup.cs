@@ -127,9 +127,12 @@ namespace Galilego.EditorTools
         }
 
         /// <summary>
-        /// The scene's star is deliberately a solar analogue: mass = 1 M☉, so
-        /// StarPhysics derives the Sun's R, L, Teff, g and colour. This is the
-        /// explicit exception to the 0.2 M☉ reference preset used by the checks.
+        /// The scene's star is a 0.369-scale solar analogue: M = 0.3688 M☉, R = 0.3689 R☉,
+        /// L = 0.1361 L☉, Teff = 5772 K. At Terra's 0.3689 AU this is exactly 1 E_sun
+        /// (1361 W/m²) and a 0.533° disc — the real Sun seen from Earth. The mass and
+        /// radius/luminosity overrides are deliberate (the preset logs the
+        /// mass–luminosity warning); this is the explicit exception to the 0.2 M☉
+        /// reference preset used by the checks.
         /// </summary>
         private static StarPreset CreateOrLoadSolarPreset()
         {
@@ -138,12 +141,17 @@ namespace Galilego.EditorTools
             if (preset == null)
             {
                 preset = ScriptableObject.CreateInstance<StarPreset>();
-                preset.MassSolar = 1d;
+                preset.MassSolar = 0.36879d;
+                preset.RadiusSolarOverride = 0.3689063d;
+                preset.LuminositySolarOverride = 0.1360919d;
+                preset.EffectiveTemperatureKOverride = 5772d;
+                preset.Adaptation01 = 1d;
                 preset.name = "StarPreset_Sol";
                 preset.ApplyDerivedRadiusToStarBody = true;
                 AssetDatabase.CreateAsset(preset, SolarPresetPath);
                 AssetDatabase.SaveAssets();
-                Debug.Log("[StarSceneSetup] Создан солнечный пресет " + SolarPresetPath + " (M = 1 M☉).");
+                Debug.Log("[StarSceneSetup] Создан солнечный пресет " + SolarPresetPath +
+                    " (0.369-масштаб Солнца: M = 0.3688 M☉, L = 0.1361 L☉).");
             }
 
             return preset;

@@ -119,8 +119,8 @@ namespace Galilego.Universe
         /// <summary>
         /// Temporary negative EV applied while the auto exposure is finding the
         /// scene level. Prevents the first visible frames from flashing when the
-        /// star is much brighter than the E_ref baseline (e.g. a solar star at
-        /// 0.368 AU is +2.9 EV).
+        /// star is much brighter than the E_ref baseline (e.g. a 1 L☉ star at
+        /// 0.368 AU is +2.9 EV; the scene's 0.369-scale Sun is 1.0 by design).
         /// </summary>
         public double StartupExposureBiasEv { get; private set; }
 
@@ -707,8 +707,17 @@ namespace Galilego.Universe
             exposure.fixedExposure.Override(StartupFixedExposureEv);
             exposure.meteringMode.Override(MeteringMode.CenterWeighted);
             exposure.compensation.Override((float)Preset.ExposureBias);
-            exposure.limitMin.Override(-1f);
+            exposure.limitMin.Override(-8f);
             exposure.limitMax.Override(14f);
+            // -8 EV100, not the old -1: a 0.369-scale Sun at 4.1 AU is ~7 EV below
+            // Terra's daylight. NOTE (2026-11-24): widening this floor did NOT make
+            // Mars readable - measured in Play, EV100 2.26 and -12.74 produce a
+            // pixel-identical frame while _ExposureTexture reports the value, so this
+            // Volume's Exposure never reaches the image on the project's pipeline.
+            // The distance adaptation is done by the pupil instead (EyeAdaptation /
+            // SkyEnvironment), on the scene's light. Keep these limits sane for the
+            // scene view and for the day the chain is fixed; do not expect them to
+            // change the game view.
             // AdaptationMode.Fixed means "the exposure changes instantly": it is
             // what makes the hand-over invisible. Afterwards the artistic speeds
             // apply: 3 (darken quickly) and 0.7 (brighten slowly).

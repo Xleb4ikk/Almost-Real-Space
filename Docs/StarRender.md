@@ -2,14 +2,18 @@
 
 One star = one `StarPreset` asset. The component `StarRenderer` derives every
 photometric value from `massSolar` through `Galilego.Core.StarPhysics` (pure C#,
-double, no UnityEngine). No appearance value is hand-tuned in the renderer.
+double, no UnityEngine); the three explicit overrides (R, L, Teff) exist for the
+scale-model scene star and are warned about (assumption 13). No appearance value is
+hand-tuned in the renderer.
 
 ## What is wired in `OutdoorsScene`
 
-* `Sol/SunVisual ` — `StarRenderer` with `StarPreset_Sol` (**M = 1.0 M☉**,
-  a solar analogue: R = 1 R☉, Teff = 5772 K, L = 1 L☉). This is the explicit
-  exception for the scene's star; `StarPreset_Default` (M = 0.2 M☉) remains the
-  reference preset used by the checks, not by the scene.
+* `Sol/SunVisual ` — `StarRenderer` with `StarPreset_Sol` (**M = 0.3688 M☉**,
+  a 0.369-scale solar analogue: R = 0.3689 R☉, Teff = 5772 K, L = 0.1361 L☉).
+  At Terra's 0.3689 AU this is exactly 1 E_sun (1361 W/m²) and a 0.533° disc — the
+  real Sun seen from Earth. This is the explicit scale-model exception for the
+  scene's star; `StarPreset_Default` (M = 0.2 M☉) remains the reference preset used
+  by the checks, not by the scene.
   `Runner`, `PlayerCamera`, `SunLight`, `SkyEnvironment`.
 * `Star Volume` — global Volume (priority 100) with `StarVolumeProfile`:
   ACES tonemapping, subtle bloom (threshold 1, scatter 0.5, gain from the preset,
@@ -28,7 +32,7 @@ double, no UnityEngine). No appearance value is hand-tuned in the renderer.
 Menu helpers:
 
 * `Tools/Galilego/Stars/Create Or Update Default Preset` (0.2 M☉ reference)
-* `Tools/Galilego/Stars/Create Or Update Solar Preset` (1 M☉ scene preset)
+* `Tools/Galilego/Stars/Create Or Update Solar Preset` (0.369-scale Sun: M = 0.3688 M☉, L = 0.1361 L☉)
 * `Tools/Galilego/Stars/Setup Star Renderer In Open Scene`
 * `Tools/Galilego/Stars/Validate Star Physics` (logs M = 0.1…10 M☉)
 
@@ -217,11 +221,72 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
 6. **Overrides are allowed but warned**: radius/luminosity/Teff overrides leave
    the mass–luminosity relation and log
    `«вне зависимости масса–светимость»`.
-7. **The existing planet shaders keep their normalized solar scale.** The star's
-   own Directional Light follows `E/E_ref`; the custom terrain/atmosphere
-   shaders still use `_TerrainSun`/`_TerrainRadianceScale` as before, and the
-   atmosphere/cloud scattering source remains the existing 5772 K photosphere.
-   Re-lighting the whole planet from the preset is a separate change.
+7. **The planet shaders follow the star's flux through `_TerrainSun`.** Every body's
+   direct term is `_SunLightColor · _TerrainSun · ndl · _TerrainRadianceScale`, with
+   `_TerrainSun = TerrainSunIntensity · StarRenderer.SceneLightScale` and `_SkyAmbient`
+   scaled the same way; `SceneLightScale = (E/E_ref)(η/η_sun)`, so Terra at 1 E_sun is
+   unchanged while a body at 4.1 AU is ~124× darker, and the ground matches the
+   Directional Light (which already carried the same scale). The gas giant multiplies
+   its `SurfaceBrightness`/`FarDiscBrightness` by the star's flux at the body, and the
+   far disc uses the flux at the body rather than at the camera. The atmosphere/cloud
+   scattering (`_AtmIntensity` from the profile) still uses its own artistic scale and
+   is not yet star-scaled; that is a separate change.
+
+   **The pupil (`EyeAdaptation`).** The physical scale alone renders a sunlit distant
+   planet as a black disc — Mars at 4.1 AU receives 11 W/m², a dull but perfectly
+   legible day to an eye, yet a fixed-exposure camera shows only 1/128 of the reference
+   and the player sees a hole in the star field. A real eye fixes that with its iris, so
+   `SkyEnvironment` models the iris and multiplies every lit surface by it:
+
+   * *target opening* `EV = clamp(−log₂(illuminance) · share, 0, maxEv)`, where
+     `illuminance = E/E_sun · max(0, sinEl) · eclipse + sky ambient / E_sun`. It is
+     physical and **independent of the frame content** — a histogram meter would swing
+     with where the camera points;
+   * *defaults* `share = 0.66`, `maxEv = 8`. The share keeps the physical gradient
+     (1 AU > Mars > 20 AU), the cap keeps the far system from looking like noon;
+   * *time*: the pupil closes in `EyeAdaptBrightSeconds` = 0.25 s and opens in
+     `EyeAdaptDarkSeconds` = 1.2 s (the real reflex is asymmetric), exponential approach;
+   * *spawn*: on the first frame the star is known the pupil **snaps** to its target
+     instead of ramping — that is what stops a spawn in full sun from flashing. Measured
+     at `t = 0.02 s` on Aeolus: `eyeEv = 2.745` = the exact target, not a ramp from 0;
+   * *night* is blended out of the pupil: with the sun below civil twilight the authored
+     `NightExposure` (+ the moon's own boost) takes over, so the night sky is unchanged;
+   * it scales `_TerrainSun`, `_SkyAmbient`, the Directional Light (ship, props,
+     `HDRP/Lit`) and, through the `_EyeGain` global, `BodyFarDiscView` and
+     `GasGiantView` — one eye for the whole frame, so a disc never disagrees with the
+     ground it hands over to;
+   * the star's own disc/glare/corona are NOT scaled: their surface brightness is
+     physical, only the observer's sensitivity changes.
+
+   What it costs, stated plainly: it is an **adaptation** applied as light, so the
+   rendered brightness range of the system compresses. Terra's 1.03 E_sun and the 8 EV
+   cap (2.25·10⁻⁴ E_sun, ≈ 908 au for the 0.1361 L☉ scene star) are 6.3·10⁶× apart
+   physically; with the 0.66 share the scene's ground spans 1.03 → 0.058, i.e. 18× (a
+   3.4·10⁵× compression), and only past the cap does it fall as `1/d²` again. The Sun's
+   disc size and the local illumination still follow `L/d²`; only the *perceived* ground
+   brightness flattens, which is what a living eye does at 11 W/m² ≈ 10³ lx (a dull day,
+   not darkness). It also means the ratio between a distant planet's ground and non-star
+   sources (lamps, engine glow, emissives) shifts by that same factor. `share = 0` is the
+   raw photometer (Mars black again); `share = 1` is a fully adapted eye.
+
+   **Stars go out in an airless day.** `_StarVisibility` used to follow only the *sky*
+   luminance, which is exactly 0 in vacuum — so the full star field was drawn over a
+   sunlit Mars. Apollo could not see stars from the lunar surface. The field now also
+   fades with the sunlit *ground* level (`StarHideDayLevel = 1e-4` ≈ 10 lx): gone above
+   ~10 lx, full below ~0.3 lx. Night is untouched (the sun term is 0).
+
+   **Still open (2026-11-24):**
+
+   * HDRP's `Volume > Exposure` does not reach the image on this project's pipeline:
+     in Play, EV100 2.26 and −12.74 produced a pixel-identical frame (mean 25.43 both),
+     while `_ExposureTexture` did report the value, and `StarRenderer.ConfigureVolume`'s
+     `limitMin = −8` was found reverted to the asset's `−1` at runtime. That is why the
+     pupil drives the scene light instead of the camera exposure. Fix the chain before
+     moving the pupil into `Exposure.compensation`;
+   * the atmosphere/cloud scattering (`_AtmIntensity`) is still not star-scaled, so a
+     future atmospheric planet far from the star would have an over-bright sky relative
+     to its ground. Terra is the only atmospheric body today (1 E_sun), so nothing is
+     wrong on screen yet.
 8. **Glare is an atmospheric aureole**, so it is drawn without depth testing,
    uses `f_vis` to vanish behind a celestial occluder and fades out with the air
    column (`aureole`), leaving a sharp disc in vacuum. The corona also is not
@@ -240,10 +305,16 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
     the HDRP asset. The disc edge uses `fwidth`, so it stays one pixel wide.
 12. **Activity defaults to 1** (the task's artistic multiplier range). Spot
     coverage is `activity · fMax`, so activity 0 removes spots and faculae.
-13. **The scene deliberately uses a solar analogue.** `OutdoorsScene` is wired to
-    `StarPreset_Sol` (M = 1 M☉, R = 1 R☉, Teff = 5772 K), not to the 0.2 M☉
-    reference preset. Terra still orbits at 0.368 AU, where a solar star gives
-    ≈7.4 E_sun; HDRP auto exposure compensates. Orbits were not changed.
+13. **The scene uses a 0.369-scale solar analogue.** `OutdoorsScene` is wired to
+    `StarPreset_Sol` (M = 0.3688 M☉, R = 0.3689 R☉, Teff = 5772 K, L = 0.1361 L☉),
+    not to the 0.2 M☉ reference preset. Terra orbits at 0.3689 AU, so the star
+    delivers exactly **1 E_sun** (1361 W/m²) and a **0.533°** disc — the real Sun
+    seen from Earth. This is the same 0.369 scaling as the orbit (0.369 AU) and the
+    speed (29.78 km/s): the star is a scale-model Sun, not a main-sequence 0.3688 M☉
+    star (that would be L = 0.0232 L☉, Teff = 3529 K). The overrides are deliberate
+    and the preset logs the mass–luminosity warning. With the Moon at 73 400 km
+    (0.59–0.70°), the Moon is now larger than the 0.533° Sun, so eclipses become
+    total instead of partial.
 14. **The observer is a living eye by default.** `StarLensFlare.Mode =
     HumanEye`; `CameraLens` is for views through an instrument. The two modes are
     physically different systems and are not blended.

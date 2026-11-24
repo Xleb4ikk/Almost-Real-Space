@@ -61,7 +61,7 @@ namespace Galilego.Universe
         [Tooltip("Множитель видимости звёзд (k в exp(−L·k)): больше — звёзды прячутся раньше.")]
         public float StarVisibilityK = 6f;
 
-        [Tooltip("Сила солнечного члена террейна. Честный член (может превышать 1), пересвет разруливает тонмаппинг HDRP. Калибровать вместе с TerrainRadianceScale; старт 1.")]
+        [Tooltip("Сила солнечного члена террейна. Честный член (может превышать 1), пересвет разруливает тонмаппинг HDRP. Калибровать вместе с TerrainRadianceScale; старт 1. Итоговый _TerrainSun = это поле × StarRenderer.SceneLightScale, т.е. следует L/d² звезды.")]
         public float TerrainSunIntensity = 1f;
 
         [Tooltip("HDR-буст земли (аналог ATM_RADIANCE_SCALE неба = 5): прямой свет и ambient террейна/декора. 1 = как раньше; подбирать глазами (ориентир 2–4).")]
@@ -76,11 +76,31 @@ namespace Galilego.Universe
         [Tooltip("Сила тени HDRP 0..1: 1 — тень гасит прямой свет полностью (чёрно), 0 — тени нет.")]
         public float ShadowStrength = 0.85f;
 
-        [Tooltip("Volume с Exposure для компенсации глаза (Sky and Fog Volume). Пусто — без компенсации.")]
+        [Tooltip("Volume с Exposure. ВНИМАНИЕ: на этом пайплайне HDRP-экспозиция НЕ попадает в кадр " +
+                 "(EV100 2.26 и -12.74 дают пиксельно одинаковый кадр, замер 2026-11-24), поэтому зрачок " +
+                 "живёт в свете сцены (_TerrainSun / Directional Light), а не здесь. Поле оставлено для " +
+                 "сценарных и редакторских настроек.")]
         public UnityEngine.Rendering.Volume ExposureVolume;
 
-        [Tooltip("Макс. подъём экспозиции в сумерках (EV): глаз раскрывается при падении освещённости.")]
-        public float TwilightExposureMax = 2f;
+        [Header("Зрачок")]
+        [Tooltip("Доля физического дефицита света, которую компенсирует глаз (0 = чистый фотометр: " +
+                 "Марс снова чёрный; 1 = полностью адаптированный глаз: полдень Марса как полдень Терры). " +
+                 "0.66 — зрачок открылся на две трети: тусклый, но читаемый день.")]
+        [Range(0f, 1f)]
+        public float EyeAdaptationShare = 0.66f;
+
+        [Tooltip("Потолок раскрытия зрачка, EV (8 EV = в 256 раз). Дальше свет падает как 1/d².")]
+        public float EyeAdaptationMaxEv = 8f;
+
+        [Tooltip("Время привыкания к более яркому свету (зрачок сужается), с. Быстро: это рефлекс.")]
+        public float EyeAdaptBrightSeconds = 0.25f;
+
+        [Tooltip("Время привыкания к темноте (зрачок расширяется), с. Медленнее, чем сужение.")]
+        public float EyeAdaptDarkSeconds = 1.2f;
+
+        [Tooltip("Освещённость грунта (доля полудня Терры), при которой звёзды полностью гаснут. " +
+                 "1e-4 ≈ 10 лк: днём на безатмосферном теле звёзд не видно (Аполлон). 0 = не гасить.")]
+        public float StarHideDayLevel = 1e-4f;
 
         [Tooltip("Пол компенсации ночью (EV): ночь остаётся ночью, звёздный свет читается.")]
         public float NightExposure = 0.5f;
@@ -148,6 +168,22 @@ namespace Galilego.Universe
 
         /// <summary>Star visibility, 0..1.</summary>
         public float StarVisibility { get; private set; } = 1f;
+
+        /// <summary>
+        /// Current pupil opening in EV: 0 in full daylight (Terra's noon), positive when
+        /// the observer's light is below it. The scene's lit surfaces are scaled by
+        /// <see cref="EyeGain"/>, which is what a real eye does with its iris.
+        /// </summary>
+        public float EyeEv { get; private set; }
+
+        /// <summary>Linear scene-light multiplier of the current pupil opening.</summary>
+        public float EyeGain => (float)EyeAdaptation.Gain(EyeEv);
+
+        // False until the first frame the star is known: the pupil must SNAP there,
+        // not ramp, or a spawn in full sun flashes for a quarter of a second.
+        private bool eyeReady;
+
+        private static readonly int EyeGainId = Shader.PropertyToID("_EyeGain");
 
         // Cache of the reference sky luminance (day, sun at zenith, sea level)
         // for ambient normalization: _SkyAmbient keeps the meaning "how much
@@ -430,7 +466,25 @@ namespace Galilego.Universe
                 : SkyPhysics.SunOcclusion(sinEl, altitude, body.Radius);
             double day = SkyPhysics.DayFactor(sinEl) * eclipse;
             double skyLuminance = SkyPhysics.SkyLuminance(sinEl, density) * eclipse;
-            double starVisibility = SkyPhysics.StarVisibility(skyLuminance, StarVisibilityK);
+
+            // The star's actual irradiance at this body, not a fixed "solar" 1.0:
+            // StarRenderer.SceneLightScale = (E/E_ref)·(eta/eta_sun) and is 1 for the
+            // reference star at 1 AU. Everything below that needs "how much starlight is
+            // there" reads this one number.
+            double starLightScale = Star != null && Star.IsReady ? Star.SceneLightScale : 1d;
+
+            // Stars need a DARK-ADAPTED eye. The sky-luminance term above cannot see
+            // that in vacuum (it is exactly 0), so a sunlit airless surface would show
+            // the full star field at local noon - Apollo could not see stars from the
+            // lunar surface. The eye is adapted to the GROUND, so the field fades with
+            // the sunlit ground level (1 = Terra's noon): gone above ~10 lx, full below
+            // ~0.3 lx. The sun does it because the sun, not the sky, sets the pupil.
+            double dayGround = starLightScale * System.Math.Max(0d, sinEl) * eclipse;
+            double groundStarHide = StarHideDayLevel > 0f
+                ? SkyPhysics.Smoothstep(StarHideDayLevel * 0.03d, StarHideDayLevel, dayGround)
+                : 0d;
+            double starVisibility = SkyPhysics.StarVisibility(skyLuminance, StarVisibilityK)
+                * (1d - groundStarHide);
 
             Transmittance = new Vector3((float)transmittance.X, (float)transmittance.Y, (float)transmittance.Z);
             DayFactor = (float)day;
@@ -537,9 +591,75 @@ namespace Galilego.Universe
                 1f);
             Shader.SetGlobalColor("_SkyAmbientColor", ambientColor);
             Shader.SetGlobalFloat("_NightAmbient", NightAmbient);
-            Shader.SetGlobalFloat("_SkyAmbient", SkyAmbient);
-            Shader.SetGlobalFloat("_TerrainSun", TerrainSunIntensity);
+
+            // The terrain, decor, water and far disc all multiply their direct term by
+            // _TerrainSun, so feeding the scale here makes every planet follow L/d² — and
+            // makes the ground match the Directional Light (ApplyLight already scales by
+            // the same value). At the reference body this is exactly the old 1.0; at
+            // 4.1 AU the ground is ~128x darker. That physical number alone renders a
+            // sunlit distant planet as a black disc: 11 W/m2 is a dull day to a living
+            // eye, not darkness, but a fixed-exposure camera sees only 1/128 of the
+            // reference. The pupil (EyeAdaptation, below) pays back a share of that
+            // deficit; it is the ONLY non-physical factor between the star's flux and
+            // the scene's light, and the star's own disc/glare stay physical.
+            //
+            // ---- The pupil ---------------------------------------------------------
+            // Illuminance at the eye in reference units (1 = Terra's noon): the star's
+            // flux at this observer, times how far the sun is above the local horizon,
+            // plus the sky's diffuse share. It is PHYSICAL, independent of frame content:
+            // a histogram meter would be dragged around by the ground filling the view,
+            // and the whole point is that the eye's state must not depend on where the
+            // camera happens to point.
+            double dayIlluminance = dayGround + (ambientAmount * starLightScale);
+            double targetEv = EyeAdaptation.TargetEv(
+                dayIlluminance, EyeAdaptationShare, EyeAdaptationMaxEv);
+
+            // Night is not "a very dim landscape": the sun is gone and there is nothing
+            // to adapt to but starlight. Keep the authored night floor (plus the moon's
+            // own boost) instead of clamping the pupil fully open on a scene the moon
+            // already lights. Blended through civil twilight, where the sun still sets
+            // the level.
+            double night = 1d - SkyPhysics.Smoothstep(-0.18d, -0.02d, sinEl);
+            double nightEv = NightExposure;
+            if (MoonlightExposureBoost > 0f && MoonlightLevel > 0f)
+            {
+                // A full moon on the ground is ~0.1 of the scene's noon; without this the
+                // moonlit landscape would be rendered at a daylight exposure.
+                double moonAdapt = System.Math.Sqrt(
+                    SkyPhysics.Clamp(MoonlightLevel / 0.15f, 0d, 1d));
+                nightEv += MoonlightExposureBoost * moonAdapt;
+            }
+
+            targetEv = (targetEv * (1d - night)) + (nightEv * night);
+
+            // The eye is a PHYSICAL object at spawn: snapping to the target on the first
+            // frame the star is known is what stops the "spawn under the sun" flash. The
+            // first frames also carry the terrain build hitch, so ramping from a default
+            // would be a guaranteed flash on the brightest possible scene.
+            double step = System.Math.Min(Time.deltaTime, 0.1f);
+            if (!eyeReady)
+            {
+                EyeEv = (float)targetEv;
+                eyeReady = Star == null || Star.IsReady;
+            }
+            else
+            {
+                EyeEv = (float)EyeAdaptation.Approach(
+                    EyeEv, targetEv, step, EyeAdaptBrightSeconds, EyeAdaptDarkSeconds);
+            }
+
+            double eyeGain = EyeAdaptation.Gain(EyeEv);
+            ExposureCompensation = EyeEv;
+            Shader.SetGlobalFloat(EyeGainId, (float)eyeGain);
+
+            // Everything lit by the star: physical flux x the pupil. The star's own
+            // disc/glare/corona are NOT in this scale (their surface brightness is
+            // physical, only the observer's sensitivity changes).
+            double starLightingScale = starLightScale * eyeGain;
+            Shader.SetGlobalFloat("_SkyAmbient", SkyAmbient * (float)starLightingScale);
+            Shader.SetGlobalFloat("_TerrainSun", TerrainSunIntensity * (float)starLightingScale);
             Shader.SetGlobalFloat("_TerrainRadianceScale", TerrainRadianceScale);
+
             // Twilight opens up the shadows (backlight would otherwise be pure
             // black): full strength by day, one third below −5°.
             double shadowTwilight = 0.35d + (0.65d * SkyPhysics.Smoothstep(-0.08d, 0.12d, sinEl));
@@ -551,10 +671,10 @@ namespace Galilego.Universe
             if (applyToLight && SunLight != null)
             {
                 // The sun's angular diameter is the physical penumbra width of every
-                // HDRP directional PCSS shadow: Sol at 1 AU is 0.53°, the same star
-                // seen from 0.37 AU is 1.44°. A hand-tuned constant (the scene once
-                // carried 2.5°) blurs a 10 m object's shadow into an unreadable blob,
-                // so the value follows the actual distance. The cap only guards the
+                // HDRP directional PCSS shadow: the scene's 0.369-scale Sun is 0.53° at
+                // 0.369 AU — the real Sun seen from Earth. A hand-tuned constant (the
+                // scene once carried 2.5°) blurs a 10 m object's shadow into an
+                // unreadable blob, so the value follows the actual distance. The cap only guards the
                 // approach to the star, where the shadow would dissolve completely.
                 var hdLight = SunLight.GetComponent<UnityEngine.Rendering.HighDefinition.HDAdditionalLightData>();
                 if (hdLight != null)
@@ -587,7 +707,7 @@ namespace Galilego.Universe
                         SunLight,
                         Transmittance,
                         occlusion,
-                        TerrainRadianceScale * TerrainSunIntensity * MaterialLightScale);
+                        TerrainRadianceScale * TerrainSunIntensity * MaterialLightScale * eyeGain);
                 }
                 else
                 {
@@ -637,8 +757,9 @@ namespace Galilego.Universe
                     // fixed fill would then be a fraction of the OLD, unscaled sun:
                     // shadows go pitch black and dark materials (asphalt) read as a
                     // hole in the ground. Keep the fill at the same fraction of the
-                    // sun it had before the physical star.
-                    double starScale = Star != null && Star.IsReady ? Star.SceneLightScale : 1d;
+                    // sun it had before the physical star — same eye-adapted scale as
+                    // the terrain, or the fill would be 124x too weak at Mars.
+                    double starScale = starLightingScale;
                     SkyFillLight.color = new Color(
                         ambientColor.r / peak, ambientColor.g / peak, ambientColor.b / peak, 1f);
                     SkyFillLight.intensity =
@@ -660,61 +781,6 @@ namespace Galilego.Universe
                     AmbientAmount, DayFactor, SunOcclusion, EclipseVisibility, StarVisibility, ExposureCompensation));
             }
 
-            // Eye adaptation: exposure compensation from physical illumination.
-            // Deterministic (independent of frame contents): a histogram meter on
-            // a bright sky would crush the ground in backlight. 0 by day, up to
-            // TwilightExposureMax at twilight, floor NightExposure at night.
-            double directLum = Luminance(sunLight);
-            double lightLevel = SkyPhysics.Clamp((0.65d * directLum) + (0.35d * ambientAmount), 0d, 1d);
-            double exposureComp;
-            if (ambientAmount < 0.03d && directLum < 0.02d)
-            {
-                exposureComp = NightExposure;
-            }
-            else
-            {
-                exposureComp = TwilightExposureMax * (1d - SkyPhysics.Smoothstep(0.15d, 1d, lightLevel));
-            }
-
-            // Night adaptation to moonlight: a full moon on the ground is ~0.1 of the
-            // noon sun, which a day-calibrated exposure renders nearly black. The eye
-            // opens; so does the camera. Fades out before civil twilight, where the
-            // sky — not the moon — already sets the exposure. MoonlightLevel is set by
-            // MoonlightSystem (0 = no moon body in this scene).
-            if (MoonlightExposureBoost > 0f && MoonlightLevel > 0f)
-            {
-                double night = 1d - SkyPhysics.Smoothstep(-0.18d, -0.02d, sinEl);
-                double moonAdapt = System.Math.Sqrt(
-                    SkyPhysics.Clamp(MoonlightLevel / 0.15f, 0d, 1d));
-                exposureComp += MoonlightExposureBoost * night * moonAdapt;
-            }
-
-            ExposureCompensation = (float)exposureComp;
-
-            // The star's dedicated Volume (priority 100) owns Exposure when it is
-            // present; otherwise the scene's Sky and Fog Volume does. Writing the
-            // deterministic twilight/night compensation into the same instance keeps
-            // the two exposure models from fighting: HDRP supplies the automatic
-            // histogram/hysteresis, this term supplies the scene-level twilight
-            // adaptation, and the preset adds its artistic exposureBias.
-            UnityEngine.Rendering.Volume exposureTarget = ExposureVolume;
-            if (Star != null && Star.StarVolume != null)
-            {
-                exposureTarget = Star.StarVolume;
-            }
-
-            if (exposureTarget != null && exposureTarget.profile != null
-                && exposureTarget.profile.TryGet<UnityEngine.Rendering.HighDefinition.Exposure>(out var exposure))
-            {
-                double bias = Star != null && Star.Preset != null ? Star.Preset.ExposureBias : 0d;
-                if (Star != null)
-                {
-                    bias += Star.StartupExposureBiasEv;
-                }
-
-                exposure.compensation.Override((float)(exposureComp + bias));
-            }
-
             // True sky-hemisphere ambient for regular HDRP materials: a single
             // Directional Light lights only one side, so the colors are fed into
             // HDRP's Gradient Sky, which HDRP convolves into SH
@@ -734,8 +800,10 @@ namespace Galilego.Universe
                 Color sky = new Color(ambientColor.r * k, ambientColor.g * k, ambientColor.b * k, 1f);
 
                 // Ground-reflected light: depends on sun elevation, so it fades
-                // together with the direct light and does not shine at night.
-                float bounce = DayFactor * (float)directLum * TerrainRadianceScale * TerrainSunIntensity * 0.15f;
+                // together with the direct light and does not shine at night. The
+                // physical star flux and the pupil scale it exactly like the terrain.
+                float bounce = DayFactor * (float)(Luminance(sunLight) * starLightingScale)
+                    * TerrainRadianceScale * TerrainSunIntensity * 0.15f;
                 Color ground = new Color(0.20f * bounce, 0.30f * bounce, 0.12f * bounce, 1f);
 
                 grad.top.Override(sky);

@@ -157,6 +157,7 @@ namespace Galilego.Universe
         private bool albedoFailed;
         private Texture2D bakedAlbedo;
         private static readonly int TerrainRadianceScaleId = Shader.PropertyToID("_TerrainRadianceScale");
+        private static readonly int EyeGainId = Shader.PropertyToID("_EyeGain");
         private static readonly int SkySunDirId = Shader.PropertyToID("_SkySunDir");
         private static readonly int SkyUpId = Shader.PropertyToID("_SkyUp");
         private Vector3d LastBodyPosition;
@@ -340,7 +341,11 @@ namespace Galilego.Universe
             float fadeStartMeters = (float)(body.Radius * System.Math.Max(HandoverRadii, FadeStartRadii));
 
             float opacity;
-            if (nearSurface <= handoverMeters)
+            // Hide the disc only when the terrain is ACTUALLY drawing. Above the
+            // surface renderer's altitude limit (SurfaceVisible = false, e.g. a free
+            // camera at 1.5 R) the near branch used to hide the disc as well, leaving
+            // a hole: neither the chunks nor the billboard drew Mars.
+            if (nearSurface <= handoverMeters && meshDrawn)
             {
                 // The billboard's flat parallax is plainly wrong this close: the near
                 // terrain is what the player has to see. Never resurrect the disc here,
@@ -461,6 +466,19 @@ namespace Galilego.Universe
             material.SetVector("_BFD_ViewWS", ToVec(-simDirection));
             material.SetFloat("_BFD_IntensityScale", Brightness * NightGain() * energyScale);
 
+            // Limb darkening is a property of the FLAT disc only: the real chunks have no
+            // such term, so a disc that keeps 35 % darkening at its rim while it dissolves
+            // into the mesh draws a dark ring around the Moon during the hand-over. Fade it
+            // out on the same distance ramp that fades the disc itself. Only when a mesh
+            // will actually take the body over; a disc that stays the body's only
+            // representation (Terra seen from Artemis) keeps its full limb.
+            float limbScale = 1f;
+            if (meshDrawn)
+            {
+                limbScale = Mathf.SmoothStep(0f, 1f,
+                    Mathf.InverseLerp(handoverMeters, fadeStartMeters, (float)nearSurface));
+            }
+
             // The disc is lit by the STAR, not by the observer's sky: its sunlight
             // crossed no atmosphere the observer can see (the Moon is 83 000 km up),
             // and the ray from the observer to the disc carries the air separately in
@@ -468,12 +486,30 @@ namespace Galilego.Universe
             // factor, so the disc and the body's own relief share a scale.
             Vector3d starLinear = Star != null && Star.IsReady ? Star.LightColorLinear : new Vector3d(1d, 1d, 1d);
             float terrainScale = Shader.GetGlobalFloat(TerrainRadianceScaleId);
+
+            // The disc must use the star's flux at ITS OWN heliocentric distance, not the
+            // camera's local _TerrainSun: Terra seen from Mars is lit by 1 E_sun while the
+            // camera near Mars sees 0.0069 E_sun. Both the terrain and this disc carry the
+            // same _TerrainRadianceScale, so only the star factor differs. And both are
+            // seen through the SAME pupil (_EyeGain, written by SkyEnvironment): a disc
+            // left at the raw 1/128 of a distant star would go black while the ground
+            // under it stays readable, and the hand-over would flash.
+            double bodyStarDistanceKm = (starPos - bodyPos).Magnitude / 1000d;
+            double bodyStarScale = Star != null && Star.IsReady
+                ? Star.State.IrradianceWm2(bodyStarDistanceKm) / StarPhysics.Esun1Au
+                    * Star.State.VisibleEtaRatioToSun
+                : 1d;
+            // 0 = SkyEnvironment has not written the global yet (first frame): the disc
+            // must not go black for that frame, so fall back to a fully open pupil.
+            float eyeGain = Shader.GetGlobalFloat(EyeGainId);
+            double bodyLightScale = bodyStarScale * (eyeGain > 0f ? eyeGain : 1f);
             material.SetVector("_BFD_SunColor",
                 new Vector4((float)starLinear.X, (float)starLinear.Y, (float)starLinear.Z, 0f));
-            material.SetFloat("_BFD_SunScale", terrainScale > 0f ? terrainScale : 1f);
+            material.SetFloat("_BFD_SunScale",
+                (terrainScale > 0f ? terrainScale : 1f) * (float)bodyLightScale);
             material.SetFloat("_BFD_Haze", Mathf.Clamp01(HazeStrength));
             material.SetFloat("_BFD_DiscDistance", discDistance);
-            material.SetFloat("_BFD_LimbDarkening", LimbDarkening);
+            material.SetFloat("_BFD_LimbDarkening", LimbDarkening * limbScale);
             material.SetFloat("_BFD_Ambient", Ambient);
             material.SetFloat("_BFD_Eclipse", (float)eclipse);
             material.SetFloat("_BFD_EclipseRed", copperEclipse ? 1f : 0f);
@@ -613,8 +649,13 @@ namespace Galilego.Universe
                 return 1f;
             }
 
+            // Interpolate in EV (log space), not in linear gain. Lerp(1, 24, w) stays near
+            // 24x for most of the climb and then collapses in the last stretch: to the eye
+            // the Moon "holds, holds, then abruptly goes dark". Linear in EV is an even
+            // dimming per kilometre, so the hand-down from the night-adapted ground to
+            // the physical vacuum value is a slow fade nobody can pin to a moment.
             float weight = night * LandscapeFactor();
-            return Mathf.Lerp(1f, Mathf.Max(1f, NightBrightness), weight);
+            return Mathf.Pow(Mathf.Max(1f, NightBrightness), weight);
         }
 
         /// <summary>
@@ -647,7 +688,15 @@ namespace Galilego.Universe
                 return 1f;
             }
 
-            return t >= 1d ? 0f : 1f - (float)t;
+            if (t >= 1d)
+            {
+                return 0f;
+            }
+
+            // Smoothstep: zero slope at both ends, so there is no kink at 100 km (the
+            // moment the boost starts to fade) or at 2000 km (where it ends).
+            float u = (float)t;
+            return 1f - (u * u * (3f - (2f * u)));
         }
 
         /// <summary>Unit quad centred on the origin, UV 0..1 — the disc is cut in the shader.</summary>

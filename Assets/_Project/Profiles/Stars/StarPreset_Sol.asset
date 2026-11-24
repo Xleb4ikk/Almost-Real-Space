@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b565bb5395409d468024ef6ef5e0949, type: 3}
   m_Name: StarPreset_Sol
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.StarPreset
-  MassSolar: 1
-  RadiusSolarOverride: 0
-  LuminositySolarOverride: 0
-  EffectiveTemperatureKOverride: 0
+  MassSolar: 0.36879
+  RadiusSolarOverride: 0.3689063
+  LuminositySolarOverride: 0.1360919
+  EffectiveTemperatureKOverride: 5772
   Activity01: 1
   GranulationContrastMultiplier: 1
   BloomGain: 0.1

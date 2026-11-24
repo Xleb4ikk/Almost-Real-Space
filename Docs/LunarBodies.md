@@ -82,9 +82,9 @@ inside `0.95·far`, so the switch is invisible.
 
 At the camera's 83° vertical FOV, 0.566° is **5.6 px**: that is the size of the real Moon
 in our sky (0.52°), and it is small on purpose — the radius and the orbit are what they
-are. For comparison the star is 1.47° at 0.369 AU, 2.6× wider, which is why the moon reads
-as a dot next to a big sun. A larger disc means a smaller orbit (32 100 km would make it
-exactly the sun's size, still 0.106 R_H) or a bigger body.
+are. For comparison the star is 0.533° at 0.369 AU after the 0.369-scale luminosity
+change — about the Moon's size (0.59–0.70° at 73 400 km), so eclipses are total rather
+than a small moon crossing a big sun. A larger disc means a smaller orbit or a bigger body.
 
 ## Moonlight on Terra
 

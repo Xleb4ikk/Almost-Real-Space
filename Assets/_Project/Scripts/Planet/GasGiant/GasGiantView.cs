@@ -71,8 +71,11 @@ namespace Galilego.Universe
 
         public bool LogDiagnostics = true;
 
+        private static readonly int EyeGainId = Shader.PropertyToID("_EyeGain");
+
         private OrbitingBody body;
         private OrbitingBody star;
+        private StarRenderer starRenderer;
         private GasGiantProfile profile;
         private Material surfaceMaterial;
         private Material discMaterial;
@@ -124,6 +127,8 @@ namespace Galilego.Universe
                 enabled = false;
                 return;
             }
+
+            starRenderer = FindAnyObjectByType<StarRenderer>();
 
             BodyAuthoring authoring = GetComponent<BodyAuthoring>();
             GasGiantProfileAsset preset = Profile != null
@@ -464,6 +469,21 @@ namespace Galilego.Universe
                 ? Runner.SystemState.StarVisibilityForBody(body, Runner.TimeSeconds, out _)
                 : 1d;
 
+            // The giant's own brightness follows the star's L/d² at ITS position, not
+            // a fixed "solar" scale: at 1.64 AU with the 0.369-scale Sun it sees
+            // ~0.056 E_sun. SurfaceBrightness/FarDiscBrightness remain the artistic
+            // HDR boost; the star factor is physical. The pupil (_EyeGain, written by
+            // SkyEnvironment from the observer's own light) is the scene's one
+            // non-physical step — without it the giant is a black ball at 1.64 AU while
+            // Terra's ground is readable.
+            double bodyStarDistanceKm = (starPos - bodyPos).Magnitude / 1000d;
+            double bodyStarScale = starRenderer != null && starRenderer.IsReady
+                ? starRenderer.State.IrradianceWm2(bodyStarDistanceKm) / StarPhysics.Esun1Au
+                    * starRenderer.State.VisibleEtaRatioToSun
+                : 1d;
+            float eyeGain = Shader.GetGlobalFloat(EyeGainId);
+            float starLightScale = (float)bodyStarScale * (eyeGain > 0f ? eyeGain : 1f);
+
             float far = Mathf.Max(1f, camera.farClipPlane);
             // The switch is about the NEAR SURFACE, not the centre: at 1.1 R
             // the centre is 60 000 km away but the cloud tops are only 5 500 km
@@ -499,7 +519,7 @@ namespace Galilego.Universe
                     surfaceMaterial.SetVector("_GG_CameraPosWS", camera.transform.position);
                     surfaceMaterial.SetVector("_GG_BodyCenterWS", FloatingOrigin.ToRender(bodyPos));
                     surfaceMaterial.SetFloat("_GG_PlanetRadius", (float)body.Radius);
-                    surfaceMaterial.SetFloat("_GG_IntensityScale", SurfaceBrightness);
+                    surfaceMaterial.SetFloat("_GG_IntensityScale", SurfaceBrightness * starLightScale);
                 }
 
                 return;
@@ -544,7 +564,7 @@ namespace Galilego.Universe
             farDisc.localScale = new Vector3(size * pixelScale, size * pixelScale, 1f);
 
             float energyScale = Mathf.Max(MinEnergyScale, 1f / (pixelScale * pixelScale));
-            discMaterial.SetFloat("_GG_IntensityScale", energyScale * FarDiscBrightness);
+            discMaterial.SetFloat("_GG_IntensityScale", energyScale * FarDiscBrightness * starLightScale);
             discMaterial.SetFloat("_GG_DiscDistance", discDistance);
             discMaterial.SetVector("_GG_SunDirWS", ToVec(sunDirection));
             discMaterial.SetVector("_GG_SunColor", SunColor());
