@@ -116,4 +116,12 @@ hand-over seamless); by day the disc then goes through the same air the sky does
 the atmosphere — not the exposure — that decides how washed out it looks. See
 [MoonLook.md](MoonLook.md#the-daytime-moon-looked-like-a-moon-with-no-atmosphere).
 
-
+**The Moon itself keeps the floor, and that is deliberate.** `MinScreenRadiusPixels` is a
+per-component field and the two AUTHORED discs override the physical default:
+`Артемида` = **11 px**, `Terra` = **4 px**, both with `MinEnergyScale = 1`. Reason, measured
+from the pad: the Moon is 0.334° away — **6–7 px across at 1080p** — and at that size it is
+invisible in the daytime haze; it is the map's main landmark, not a background star. The
+physical rule still holds for every auto-added disc (`BodyView.EnsureFarProxy`, Mars) and
+for the gas giant, and `0` restores it for the Moon as well. The one body that is allowed
+to be 4× larger than physics is the one you navigate by — the exception is the price of a
+readable Moon, and it is written down here so nobody "fixes" it blind again.
