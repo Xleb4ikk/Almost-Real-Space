@@ -367,6 +367,29 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
 17. **`HumanEye` has no aperture ghosts and no sun star**, and that is a feature,
     not an omission — see “Observer glare”. The veil is smooth at every distance;
     nothing draws radial rays around the Sun.
+18. **The star's proxies are drawn above every body proxy** (`StarRenderer.StarProxyQueue`
+    = Transparent+10; the disc/glare/corona use +10/+11/+12). A far disc or a gas
+    giant is a camera-facing quad at the same ~0.25·far distance; while those markers
+    used to be inflated to a minimum screen radius (`MinScreenRadiusPixels` 11 px / 2 px
+    with the surface brightness kept), a body really *behind* the star — a superior
+    conjunction — painted its black night side over the solar disc. Measured on Mars
+    2026-11-25 (4.10 AU, sun 0.048°): Aeolus sat 0.6° from the Sun, its 0.25° marker
+    covered the 0.57-px disc, and the only visible remnant was the lens-flare veil at
+    **56/255** against ground at **103–111/255** — “the sun on Mars is dim”. The markers
+    are now physical (0.5-px floor, `MinEnergyScale = 0`), but the draw order stays the
+    guarantee. A real transit is already carried by `_EclipseVisibility`, and with
+    `Blend One One` a fully eclipsed disc writes zero and lets the planet's marker
+    show through. While `_EclipseVisibility < 1` (a body really covers the disc) the
+    proxies move back under the markers (queue 3002, `ApplyProxyQueues`), so a solar
+    eclipse still reads as a silhouette instead of a dimmed disc.
+19. **The disc's peak does not thin with distance.** `V′` is a *surface* brightness
+    (σT⁴/E_ref compressed): only the angular size falls as 1/d². The old sub-pixel
+    path multiplied V′ by (α/α_draw)² to keep the pixel's total flux, but the
+    tonemapper is not a flux integrator, so on a distant body the sun ended up below
+    the ground it lights — the same failure would repeat at any farther body. The
+    disc now keeps V′ at every distance and is drawn at a minimum of half a pixel;
+    the lens flare's point-source factor still thins its veil, so a very distant star
+    becomes a white point with a small halo rather than a grey blob.
 
 ## Tests
 

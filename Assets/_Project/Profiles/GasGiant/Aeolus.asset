@@ -391,7 +391,7 @@ MonoBehaviour:
     Contrast: 1.15
     PolarTint: 0
     DetailStrength: 0
-    MinScreenRadiusPixels: 2
+    MinScreenRadiusPixels: 0.5
     BandLutWidth: 2048
     WindLutWidth: 512
     MeshResolution: 128

@@ -202,7 +202,7 @@ namespace Galilego.Universe
 
         [Header("РљР°С‡РµСЃС‚РІРѕ Рё РјРµР»РєРёР№ РґРёСЃРє")]
         [Range(0f, 8f)]
-        public float MinScreenRadiusPixels = 2f;
+        public float MinScreenRadiusPixels = 0.5f;
 
         [Range(32, 8192)]
         public int BandLutWidth = 1024;
@@ -249,7 +249,7 @@ namespace Galilego.Universe
                 SurfaceMapStrength = 1f,
                 SurfaceMapLongitudeOffset = 0f,
                 SurfaceMapBump = 0f,
-                MinScreenRadiusPixels = 2f,
+                MinScreenRadiusPixels = 0.5f,
                 BandLutWidth = 2048,
                 WindLutWidth = 512,
                 MeshResolution = 128,

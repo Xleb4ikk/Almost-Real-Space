@@ -38,10 +38,10 @@ namespace Galilego.Universe
             "солнечным билбордом, 0.28 держит луну за ним (затмение рисует солнце сверху).")]
         public float FarFraction = 0.28f;
 
-        [Tooltip("Минимальный радиус диска на экране, px. Физика тут бессильна: 0.57° при FOV 83° " +
-            "и 720p — это 5 px, точка. Пол включается плавно по мере удаления и гаснет к моменту, " +
-            "когда подхватывают настоящие чанки. 0 = строго физический размер.")]
-        public float MinScreenRadiusPixels = 11f;
+        [Tooltip("Минимальный радиус диска на экране, px. 0.5 = один пиксель в диаметре: " +
+            "меньше экран не умеет, и субпиксельное тело становится точкой, а не маркером. " +
+            "0 = строго физический размер (квад может исчезнуть совсем).")]
+        public float MinScreenRadiusPixels = 0.5f;
 
         [Tooltip("Расстояние до ПОВЕРХНОСТИ (в радиусах тела), на котором диск полностью уступает " +
             "рельефу. Внутри этого радиуса плоский билборд уже физически неверен (параллакс), и его " +
@@ -61,9 +61,10 @@ namespace Galilego.Universe
         [Range(0.5f, 1f)]
         public float HandoverCoverage = 0.98f;
 
-        [Tooltip("Компенсация яркости при раздувании диска. 1 = поверхностная яркость сохраняется " +
-            "(луна просто крупнее), 0.08 = сохраняется полный поток (крупный диск тускнеет).")]
-        public float MinEnergyScale = 1f;
+        [Tooltip("Компенсация яркости при подъёме диска к полу в 1 px. 0 = сохраняется ПОЛНЫЙ ПОТОК: " +
+            "1-px точка тускнеет во столько раз, во сколько её площадь меньше настоящей — так и " +
+            "должно быть. 1 = поверхностная яркость (диск ярче физики).")]
+        public float MinEnergyScale = 0f;
 
         [Tooltip("Яркость диска в масштабе сцены (albedo·ndl·_TerrainRadianceScale) — том же, в " +
             "котором считает рельеф. 1 = диск так же ярок, как собственный рельеф тела под ним: " +
@@ -242,7 +243,7 @@ namespace Galilego.Universe
 
             MeshRenderer renderer = go.AddComponent<MeshRenderer>();
             material = new Material(shader) { name = name + "FarDisc (runtime)" };
-            material.SetColor("_BFD_Albedo", Albedo);
+            material.SetVector("_BFD_Albedo", LinearVector(Albedo));
             material.SetFloat("_BFD_LimbDarkening", LimbDarkening);
             material.SetFloat("_BFD_Ambient", Ambient);
             renderer.sharedMaterial = material;
@@ -458,7 +459,12 @@ namespace Galilego.Universe
             // A colour albedo map already carries the surface colour: the material albedo
             // is a fallback before the (lazy) map lands, so it must not tint the map.
             bool colorMap = SurfaceMap != null && SurfaceMapIsColor;
-            material.SetColor("_BFD_Albedo", colorMap ? Color.white : Albedo);
+            // SetVector, not SetColor: Albedo is ALREADY linear (Palette.SnowLinear), the
+            // same way the terrain receives its colours (SetGlobalVector). SetColor stores
+            // the value untouched today (no [Gamma]/[HDR] on the property — measured in
+            // 6000.6: 0.214 stays 0.214), but SetVector states the colour space in the
+            // call instead of relying on a ShaderLab attribute nobody will remember.
+            material.SetVector("_BFD_Albedo", LinearVector(colorMap ? Color.white : Albedo));
             material.SetFloat("_BFD_MapColor", colorMap ? 1f : 0f);
             material.SetVector("_BFD_SunDirWS", ToVec(sunDirection));
             material.SetVector("_BFD_RightWS", disc.right);
@@ -619,6 +625,17 @@ namespace Galilego.Universe
         private static Vector4 ToVec(Vector3 v)
         {
             return new Vector4(v.x, v.y, v.z, 0f);
+        }
+
+        /// <summary>
+        /// A colour that is ALREADY in linear space, as a shader vector. The disc's albedo
+        /// comes from the terrain palette (<see cref="TerrainPaletteData.SnowLinear"/>), so
+        /// it must reach the shader exactly as authored — no colour-space conversion on the
+        /// way (see the SetVector call in LateUpdate).
+        /// </summary>
+        private static Vector4 LinearVector(Color linear)
+        {
+            return new Vector4(linear.r, linear.g, linear.b, linear.a);
         }
 
         /// <summary>

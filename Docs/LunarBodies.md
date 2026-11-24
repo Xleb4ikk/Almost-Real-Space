@@ -98,13 +98,19 @@ has a radius of only ~9 km and the Moon's centre never reaches totality. See
 
 ### The size floor (`MinScreenRadiusPixels`)
 
-5.6 px reads as a star, so the far disc is drawn with a floor of **11 px radius** (22 px
-across, ≈2.5° at this FOV). That is a deliberate lie of 4× in size, and it is the only
-honest place for it: the *body* keeps its real radius and orbit, only the stand-in is
-scaled. The floor is blended by distance (`nearSurface / far`), so as the real chunks come
-within reach the disc shrinks back to its true angular size and the switch stays invisible.
-`MinEnergyScale = 1` keeps the surface brightness (the disc gets bigger, not dimmer);
-`MinScreenRadiusPixels = 0` restores the strictly physical size. `Brightness` is a
+**The disc is drawn at the body's true angular radius.** The only floor is the display's
+own limit — **0.5 px radius** (one pixel across): a smaller quad is not representable, so
+a sub-pixel body becomes a point. `MinEnergyScale = 0` keeps the *total flux*: when the
+disc is lifted to that one-pixel floor its surface brightness is multiplied by
+`(trueRadius / 0.5 px)²`, so a 5.6-px Moon is untouched, a 0.2-px one is a dim dot, and
+nothing is ever painted larger than it is.
+
+This replaced the old 11-px floor with `MinEnergyScale = 1` (surface brightness kept),
+which drew a 5.6-px Moon as 22 px — a 4× lie in size and a 16× error in flux. The
+physical size is what makes a body read as itself: at an 83° FOV the real Moon is 5–6 px,
+and on Mars the same rule leaves Aeolus (0.044 px true radius) as one dim pixel instead of
+a 0.25° black disc that covered the 0.048° Sun. `MinScreenRadiusPixels = 0` is also
+available (strictly physical: a sub-pixel quad may vanish). `Brightness` is a
 multiplier on the scene's sunlit-surface scale (1 = the Moon's own terrain, which makes the
 hand-over seamless); by day the disc then goes through the same air the sky does, so it is
 the atmosphere — not the exposure — that decides how washed out it looks. See

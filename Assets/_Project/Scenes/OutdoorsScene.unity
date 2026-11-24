@@ -3209,11 +3209,11 @@ MonoBehaviour:
   DiscMaterial: {fileID: 2100000, guid: 501a131a1637bda46affbde7776907c8, type: 2}
   RenderNearSphere: 1
   RenderFarDisc: 1
-  MinScreenRadiusPixels: 2
+  MinScreenRadiusPixels: 0.5
   MeshHandoverPixels: 8
   SurfaceBrightness: 3
   FarDiscBrightness: 3
-  MinEnergyScale: 0.3
+  MinEnergyScale: 0
   MeshResolution: 128
   LogDiagnostics: 1
 --- !u!114 &2135535066

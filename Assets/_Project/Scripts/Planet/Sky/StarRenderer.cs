@@ -236,6 +236,19 @@ namespace Galilego.Universe
         private const float MaxProxyFarFraction = 0.25f;
         private const double DegToRad = Math.PI / 180d;
 
+        /// <summary>
+        /// Render queue of the star's own proxies. They must come AFTER every body
+        /// proxy (the far discs and the gas giant use the default transparent queue
+        /// and their own offsets): those are camera-facing quads at the same
+        /// ~0.25·far distance with a minimum screen radius, so a body that is really
+        /// BEHIND the star (superior conjunction) would otherwise paint its
+        /// inflated night-side marker over the sun. A real occultation is handled
+        /// by <see cref="EclipseVisibility"/>, not by draw order: an additive disc at
+        /// f_vis = 0 writes no light, so the transiting body's marker still shows
+        /// through the (black) solar disc.
+        /// </summary>
+        private const int StarProxyQueue = (int)RenderQueue.Transparent + 10;
+
         // ------------------------------------------------------------------
         // Lifecycle
         // ------------------------------------------------------------------
@@ -366,11 +379,19 @@ namespace Galilego.Universe
                 pixelAngle = StarPhysics.PixelAngleRad(60d * DegToRad, 1080);
             }
 
-            StarPhysics.SubpixelDisc(alpha, pixelAngle, out double drawAlpha, out double energyScale);
+            StarPhysics.SubpixelDisc(alpha, pixelAngle, out double drawAlpha, out _);
             IsSubpixel = alpha < (0.5d * pixelAngle);
             ScreenDiscPixels = (int)Math.Round((2d * alpha) / pixelAngle);
 
-            double discBrightness = state.DiscBrightnessCompressed * energyScale;
+            // The disc's surface brightness does not fall with distance — only its
+            // angular size does. The sub-pixel area ratio (α/α_draw)² used to be
+            // multiplied into V' "to conserve the pixel's flux", but the tonemapper
+            // is not a flux integrator: at 4.1 AU that made the sun dimmer than the
+            // ground it lights (56/255 vs 103–111/255, measured 2026-11-25), and a
+            // body farther out would repeat it. A star is a point of light: keep the
+            // compressed photosphere bright at every distance and let the angular
+            // size (drawn at a minimum of half a pixel) carry the distance.
+            double discBrightness = state.DiscBrightnessCompressed;
 
             // Everything the star itself emits is seen THROUGH the observer's
             // atmosphere: the disc, chromosphere, glare and corona all lose the
@@ -406,6 +427,15 @@ namespace Galilego.Universe
                 * (0.3d + (0.7d * state.Activity01)) * coronaVisibility;
 
             SceneLightScale = fluxRatio * etaRatio;
+
+            // Draw order vs the body proxies. Normally the star is on top (see
+            // StarProxyQueue) so a distant body's inflated night-side marker can
+            // never swallow it. But while a body really covers the disc — a solar
+            // eclipse — its marker must win, or the eclipse would read as a dimmed
+            // sun instead of a black silhouette. During an occultation the star
+            // writes only f_vis·V′ (zero at totality), so it can sit under the
+            // markers without hiding anything.
+            ApplyProxyQueues(EclipseVisibility);
 
             double exposureExcess = fluxRatio * etaRatio;
             int startupFramesLeft = startupExposureArmed ? StartupExposureFrameCount : startupExposureFrames;
@@ -868,9 +898,44 @@ namespace Galilego.Universe
             glareMaterial = new Material(glareShader != null ? glareShader : fallback);
             coronaMaterial = new Material(coronaShader != null ? coronaShader : fallback);
 
+            // Above every body proxy — see StarProxyQueue. The shader's own Queue
+            // tag (Transparent+2) is not enough: the gas giant's disc sits at +3 and
+            // a far disc may use its own value.
+            discMaterial.renderQueue = StarProxyQueue;
+            glareMaterial.renderQueue = StarProxyQueue + 1;
+            coronaMaterial.renderQueue = StarProxyQueue + 2;
+
             discObject = CreateQuad("StarRenderer_Disc", discMaterial, out discRenderer);
             glareObject = CreateQuad("StarRenderer_Glare", glareMaterial, out glareRenderer);
             coronaObject = CreateQuad("StarRenderer_Corona", coronaMaterial, out coronaRenderer);
+        }
+
+        /// <summary>
+        /// Puts the star's proxies above every body proxy, except while a body
+        /// actually covers the disc (a solar eclipse): then they go under the
+        /// markers so the silhouette survives. See <see cref="StarProxyQueue"/>.
+        /// </summary>
+        private void ApplyProxyQueues(double eclipseVisibility)
+        {
+            bool occulted = eclipseVisibility < 0.999999d;
+            int disc = occulted ? StarProxyQueue - 8 : StarProxyQueue;
+            int glare = occulted ? disc : StarProxyQueue + 1;
+            int corona = occulted ? disc : StarProxyQueue + 2;
+
+            if (discMaterial != null)
+            {
+                discMaterial.renderQueue = disc;
+            }
+
+            if (glareMaterial != null)
+            {
+                glareMaterial.renderQueue = glare;
+            }
+
+            if (coronaMaterial != null)
+            {
+                coronaMaterial.renderQueue = corona;
+            }
         }
 
         private static Transform CreateQuad(string name, Material material, out Renderer renderer)

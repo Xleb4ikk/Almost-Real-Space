@@ -113,7 +113,7 @@ namespace Galilego.Universe
                 // (the gate in PlanetSurfaceRenderer decides that); the disc is the
                 // far-plane fallback, and holds during the async mesh hand-over.
                 disc.OnlyWhenMeshMissing = true;
-                disc.MinScreenRadiusPixels = 2f;
+                disc.MinScreenRadiusPixels = 0.5f;
                 disc.Brightness = 1f;
                 disc.NightBrightness = 24f;
                 disc.LimbDarkening = Body.Atmosphere != null ? 0.1f : 0.3f;

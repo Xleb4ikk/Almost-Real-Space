@@ -45,7 +45,7 @@ namespace Galilego.Universe
 
         [Tooltip("РњРёРЅРёРјР°Р»СЊРЅС‹Р№ СЌРєСЂР°РЅРЅС‹Р№ СЂР°РґРёСѓСЃ РґРёСЃРєР°, px. 0 = СЃС‚СЂРѕРіРѕ С„РёР·РёС‡РµСЃРєРёР№ СЂР°Р·РјРµСЂ (РЅР° 1080p Aeolus Р±СѓРґРµС‚ СЃСѓР±РїРёРєСЃРµР»СЊРЅС‹Рј).")]
         [Range(0f, 8f)]
-        public float MinScreenRadiusPixels = 2f;
+        public float MinScreenRadiusPixels = 0.5f;
 
         [Tooltip("Минимальный экранный радиус, px, при котором ещё рисуется НАСТОЯЩАЯ сфера. " +
             "Меньше — диск: меш на 0.3 px только мерцает, а диск держит честный угловой размер " +
@@ -64,7 +64,7 @@ namespace Galilego.Universe
 
         [Tooltip("РџРѕР» СЏСЂРєРѕСЃС‚Рё РїРѕСЃР»Рµ РєРѕРјРїРµРЅСЃР°С†РёРё РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ СЂР°РґРёСѓСЃР°. 0 = СЃС‚СЂРѕРіР°СЏ СЌРЅРµСЂРіРѕСЃР±РµСЂРµРіР°СЋС‰Р°СЏ РєРѕРјРїРµРЅСЃР°С†РёСЏ (РґРёСЃРє РїРѕС‡С‚Рё РіР°СЃРЅРµС‚).")]
         [Range(0f, 1f)]
-        public float MinEnergyScale = 0.3f;     // keeps the old distant look while the 8 px switch is brightness-matched.
+        public float MinEnergyScale = 0f;     // 0 = full-flux conservation: a clamped sub-pixel disc dims with its area.
 
         [Range(16, 192)]
         public int MeshResolution = 96;

@@ -143,10 +143,10 @@ namespace Galilego.Universe.EditorTools
             gasView.DiscMaterial = discMaterial;
             gasView.RenderNearSphere = true;
             gasView.RenderFarDisc = true;
-            gasView.MinScreenRadiusPixels = 2f;
+            gasView.MinScreenRadiusPixels = 0.5f;
             gasView.SurfaceBrightness = 3.0f;
             gasView.FarDiscBrightness = 12f;
-            gasView.MinEnergyScale = 0.08f;
+            gasView.MinEnergyScale = 0f;
             gasView.MeshResolution = 128;
             gasView.LogDiagnostics = true;
             gasView.PlayerCamera = Camera.main != null ? Camera.main : UnityEngine.Object.FindAnyObjectByType<Camera>();

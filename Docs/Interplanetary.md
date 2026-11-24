@@ -74,9 +74,10 @@ Measured at the Terra–Aeolus midpoint: distance 89.5 million km, **0.34 px**, 
 Fix: `nearVisible` also requires `pixelRadius ≥ MeshHandoverPixels` (8). Above it the mesh
 is the better picture; below it the disc is, at the true angular size with the floor.
 The disc is placed at `min(0.25·far, 0.55·nearSurface)` so it stays in front of the body.
-Brightness is matched at the hand-over: `FarDiscBrightness = 3` (= `SurfaceBrightness`)
-and `MinEnergyScale = 0.3` keeps the old distant look (0.9 vs 0.96) while the switch at
-8 px is 4× smaller than the old 12/3 mismatch.
+Brightness is matched at the hand-over: `FarDiscBrightness = 3` (= `SurfaceBrightness`).
+Below the floor the disc is flux-conserving (`MinEnergyScale = 0`): the one-pixel
+stand-in dims with the body's real area — the old `0.3` floor kept a 0.34-px Aeolus
+brighter than physics, which is what made distant bodies read as lamps.
 
 ## 5. The star was treated as ground
 
