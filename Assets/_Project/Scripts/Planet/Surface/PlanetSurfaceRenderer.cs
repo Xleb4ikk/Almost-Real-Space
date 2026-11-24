@@ -7938,6 +7938,19 @@ namespace Galilego.Universe
             return new Vector4(c.r, c.g, c.b, c.a);
         }
 
+        /// <summary>
+        /// Mean linear albedo of the CAMERA body's detail set — the airless regolith mode
+        /// of the terrain shader. Owned by SkyEnvironment, the same way the baked horizon
+        /// is: ApplyTerrainGlobals runs for every rasterisable body, so a per-renderer
+        /// write would let the LAST one win and the Moon's ground would flip from the
+        /// regolith modulation (mean 0.292) to the photo replacement (mean 0) the moment
+        /// Terra entered the frustum — a visible brightness step, not a texture load.
+        /// </summary>
+        public static void ApplyDetailAlbedoMean(float mean)
+        {
+            Shader.SetGlobalFloat("_TerrainDetailMean", Mathf.Max(0f, mean));
+        }
+
         private static long NodeId(int face, int depth, int ix, int iy)
         {
             return (long)face

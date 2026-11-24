@@ -64,7 +64,11 @@ float angular = max(fwidth(dir.x), fwidth(dir.y), fwidth(dir.z)); // pixel angle
 float macroW  = saturate(angular / _TerrainMacroTexelAngular);    // texel angle
 mask   = extra.z * (1 - macroW);   // the interpolated copy fades OUT, it is not multiplied in
 detail = extra.w * (1 - macroW);
-albedo *= lerp(1, tex2D(_TerrainMacroAlbedoMap, uv).r * 2, macroW);
+// The ALBEDO field is smooth and body-fixed: on an airless regolith body it is applied at
+// full strength at EVERY distance, otherwise the maria vanish underfoot and the weight
+// itself is a visible step while descending. Only the NORMAL needs the texel weight.
+float albedoW = _TerrainDetailMean > 0 ? _TerrainMacroAlbedoStrength : macroW;
+albedo *= lerp(1, tex2D(_TerrainMacroAlbedoMap, uv).r * 2, albedoW);
 normal  = lerp(normal, mapNormal, macroW * strength);
 ```
 
@@ -184,8 +188,146 @@ The night keeps the old, deliberately non-physical look through one explicit num
 `NightBrightness = 24`, faded in by the Sun's elevation (`_SkySunDir`·`_SkyUp`, full gain
 below −12°): `MoonlightSystem` lifts the moonlit ground by 14 EV, so a strictly physical
 disc would be the only object at its true brightness and would read as a dim coin. The
-signal is the Sun, not the sky's brightness — on an airless body, and in flight, the sky
-is black at noon too.
+signal is the Sun, not the sky's brightness — on an airless body the sky is black at noon
+too.
+
+### The Moon's ground was 4× darker than its own disc (the albedo path)
+
+> **Status 2026-11-24: this fix does not work.** The regolith set, the relative modulation
+> (`DetailAlbedoMean`), the full-strength macro albedo and the `LandscapeFactor` gate below
+> are all in the build, and the numbers here are what they actually compute per frame — but
+> the reported behaviour is unchanged: the Moon still reads wrong in flight, and it still
+> changes tone on approach. So the approach is **not** solved. Read these sections as "what
+> the shader does now", not as a closed symptom, and do not take the per-frame tables as the
+> observed result.
+
+Report: *"in space the Moon is some grey, very dark; when I arrive it is clearly
+brighter"*, then *"up close it is kind of grey — shouldn't it be bright?"*.
+
+Measured in Play at 910 km (the disc's opacity is 0.25 there, the terrain owns the rest):
+the billboard's luminance at the same screen point came out **2.5× below the terrain's** —
+the same body, the same sun, the same `albedo·ndl·_TerrainRadianceScale` in both shaders.
+That ratio is not a property of the body: it flips sign with the ground's albedo source.
+Once the Earth photo set was stamped into Artemis (below) the ground fell to **0.051**
+linear and a `Brightness = 1` disc was ~4× *above* it. The scene carried `2.5` to make the
+hand-over look right, which is a calibration of a symptom: two shaders taking their albedo
+from two different places.
+
+The two views did not take their albedo from the same place:
+
+* `PlanetSurface.shader` → `TerrainTextureAlbedo()`: the **Earth photo textures**
+  (`terrain_low/mid/high/steep_clean.jpg`, the same files Terra uses — `TerrainTextureSetup`
+  stamped them into *every* profile, Artemis included) × AO × biome tint. Mean linear
+  albedo of that set is 0.075–0.089, the grey palette tint then multiplied it by 0.60, so
+  the ground came out at **0.051** instead of the lunar highlands' ~0.2. That is 4× below
+  the palette the disc uses, and olive-brown because the photo is grass.
+* `BodyFarDisc.shader` → the **palette** colour (`Palette.SnowLinear` = 0.214, the linear
+  value of the authored 0.5 grey) × the baked macro albedo map (a multiplier around 1).
+
+The scene had compensated with **`Brightness = 2.5`** on the Artemis `BodyFarDiscView` — a
+calibration for the dark ground, not physics. A single multiplier cannot make two shaders
+agree while they take their albedo from two different places, so the Moon still changed
+tone as you approached and its colour was Terra's grass at a lunar exposure.
+
+**Fix: the ground uses the same albedo source as the disc.**
+
+* Artemis owns a tileable regolith set (`Tools/Textures/GenerateRegolithTextures.py`,
+  `Assets/_Project/Textures/Terrain/Lunar/`): neutral grey with the lunar red slope
+  (1 : 0.975 : 0.945), mean linear **0.292**, std/mean 0.14 (dust) / 0.20 (scree),
+  seamless (FFT noise + wrapped stamps). It carries dust, pebbles and small rocks only —
+  craters are geometry and the macro normal; baking craters here would repeat every 25 m.
+  Measured on the imported texture: the stored sRGB mean 0.575 decodes to 0.292 linear,
+  exactly the profile value the shader divides by.
+* `TerrainProfile.DetailAlbedoMean = 0.292` switches the shader to a **relative
+  modulation**: `albedo *= sample / mean`. The palette and the macro albedo keep the
+  absolute brightness (maria 0.07, highlands 0.21 linear), the map only adds sub-metre
+  grain. With mean 0 the photo set still *replaces* the colour — Terra is untouched.
+* The macro albedo now applies at full strength at **every** distance (`macroAlbedoW =
+  MacroAlbedoStrength` instead of `macroW`), so the maria/highlands survive on the ground.
+  The macro *normal* keeps the pixel-vs-texel weight: relief read from a kilometre-sized
+  texel is wrong underfoot, a smooth albedo field is not.
+* `Brightness` is back to **1**: both views are palette × macro map, so the hand-over
+  cross-fades equal surface brightness.
+* `TerrainTextureSetup` skips `Lunar.Enabled` profiles (its auto-run was what put Earth's
+  grass on the Moon), and `Assign lunar regolith textures` assigns the set with the mean
+  read from `regolith_mean.txt`.
+* `_TerrainDetailMean` is written by `SkyEnvironment` for the **camera body**, like the
+  baked horizon map: `ApplyTerrainGlobals` runs for every rasterisable body, so a
+  per-renderer write would let the last one win and flip the Moon's ground between the
+  modulation and the photo replacement as Terra entered the frustum.
+
+### Why nothing pops while approaching
+
+The Moon's hand-over is a cross-fade (opacity 1 → 0 between 4 R and 1.6 R), so a *step* in
+brightness was never going to be hidden by it — it has to be zero by construction:
+
+| source of a step | why it cannot appear |
+|---|---|
+| disc ↔ ground albedo | both are `SnowLinear` × the same macro map; `Brightness` 1 |
+| detail ↔ macro albedo weight | the regolith weight is constant at every distance — nothing to switch |
+| detail texture ← disk | 1024², mips on, **`streamingMipmaps: 0`** (no mip pop), BC7 |
+| texture set ← profile | assigned in `ApplyProfile` before the first chunk is drawn |
+| disc ← chunks | `ViewCoverage` hold + opacity fade (see above) |
+
+The visible result is that the Moon keeps its maria all the way down and the ground is
+neutral grey, not olive; its absolute level is the lunar albedo (maria 0.07, highlands
+0.21 linear — the real values), i.e. 1.9–3.5 stops below white paper under the same sun,
+like sunlit asphalt. Auto exposure still puts a ground-filled frame at mid-grey; that part
+is the camera, not the albedo.
+
+Verified in Play (`CheatMenu.FlyToBody` on Артемида and a noclip descent):
+
+| view | result |
+|---|---|
+| 494 km / 800 km (chunks) | light grey highlands + dark maria, correct phase |
+| 3.8 × 10⁶ m (far disc) | the same maria, no brown/olive cast |
+| 2 km / 150 m (ground) | light grey cratered regolith, black sky, no green |
+| A/B at 800 km (`BodyFarDiscView` on/off) | the frame does not change to the eye |
+
+The far disc is *darker* in an isolated frame (little more than the disc on black) than the
+ground seen from low orbit. The disc's own uniforms are the physical ones — albedo 0.21,
+`_BFD_SunScale` 2.5, `Brightness` 1, i.e. ~0.5 radiance at normal incidence — so the
+difference is exposure/tonemapping of a mostly-black frame, not the albedo. `Brightness` is
+not the place to compensate: raising it above 1 puts the disc above the terrain again and
+the 4 R → 1.6 R cross-fade becomes a step. If the Moon has to read brighter from Terra, the
+lever is an exposure bias in space, not the disc's albedo.
+
+Re-check on the ground: the mare/highland boundary must still be readable (the macro map is
+`2π·412 km / 2048 ≈ 1.3 km` per texel, so land on the boundary, not in the middle of a mare),
+and the colour must be neutral grey with a slight warm cast, with no green.
+
+
+
+
+### …but `_SkyUp` is the CAMERA BODY's up, so the Moon flashed on approach
+
+Report: *"the Moon changes colour very strangely and wrongly while flying to it — it
+changes them abruptly"*. Screenshots from one flight: a white lamp at 466 / 2 069 km, a
+grey crescent at 1 730 km, the real maria at 637 km.
+
+`_SkyUp` is set by `SkyEnvironment.ApplyGlobalsNow(Runner.CameraBody, …)`, and the camera
+body changes at an SOI boundary. For the Artemis approach the observer leaves **Terra's
+night side** but arrives on **Artemis' day side**, so the same physical point gives
+
+| camera body | `_SkySunDir·_SkyUp` | `NightGain` |
+|---|---|---|
+| Terra (farther than Artemis' SOI, 19 391 km) | −0.28 | **24×** (4.6 EV) |
+| Artemis (inside the SOI) | +0.25 | 1× |
+
+The disc is therefore a saturating white ball for the whole flight and snaps to its true
+grey in the last few thousand kilometres — and 24× is exactly the brightness the
+4 R → 1.6 R hand-over is *not* tuned for (the terrain it hands over to is physical, see
+`Brightness`).
+
+The gain compensates a **night-adapted landscape**, and there is no landscape in space.
+`BodyFarDiscView.LandscapeFactor()` now gates it by the observer's altitude over the
+current body: full below `NightBoostFullAltitudeMeters` (100 km, the top of an atmosphere),
+zero above `NightBoostFadeAltitudeMeters` (2 000 km). On the ground nothing changes; the
+altitude is large on both sides of the SOI boundary, so the value cannot jump there.
+Measured in Play on Terra's night side: 24× at 50 km, 19× at 500 km, 7× at 1 500 km, 1× at
+3 000 km — while the camera body was still Terra and `sinEl` was −1.0.
+
+### Measured: the daytime disc
 
 Measured on the pad at sun 43.9°, Moon at 29.3° / phase 73°, Game view sRGB:
 
@@ -257,6 +399,7 @@ gibbous; after, the whole disc lit.
 Both are cheap to re-check in the editor: at 3 000 km the disc alone must cover the body
 (hide the `PlanetChunk_*` renderers), and at 700 km `ndl` must be ~1 across the whole disc
 when the camera sits on the sub-solar radial.
+
 
 ## Known remaining artifact
 

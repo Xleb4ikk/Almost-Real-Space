@@ -1532,6 +1532,8 @@ MonoBehaviour:
   MinEnergyScale: 1
   Brightness: 1
   NightBrightness: 24
+  NightBoostFullAltitudeMeters: 100000
+  NightBoostFadeAltitudeMeters: 2000000
   HazeStrength: 1
   LimbDarkening: 0.15
   Albedo: {r: 0.05, g: 0.15, b: 0.32, a: 1}
@@ -1965,6 +1967,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bdd2987c8280fd54cb061cfa48e7d00e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Building.SpacecraftBuilder
+  FairingShellMaterial: {fileID: 0}
+  FairingPlateMaterial: {fileID: 0}
+  FairingTransparentGhost: 0
+  FairingSeparationSpeed: 3
+  FairingTumbleDegreesPerSecond: 25
   Runner: {fileID: 1332194275}
   ShipTransform: {fileID: 1644257543}
   Zone: {fileID: 1769369703}
@@ -2750,6 +2757,8 @@ MonoBehaviour:
   MinEnergyScale: 1
   Brightness: 1
   NightBrightness: 24
+  NightBoostFullAltitudeMeters: 100000
+  NightBoostFadeAltitudeMeters: 2000000
   HazeStrength: 1
   LimbDarkening: 0.25
   Albedo: {r: 0.5, g: 0.49, b: 0.47, a: 1}

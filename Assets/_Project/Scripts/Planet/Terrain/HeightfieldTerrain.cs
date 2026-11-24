@@ -359,6 +359,11 @@ namespace Galilego.Universe
         public Texture2D TextureOcclusion;
         public double TextureScale = 0.04d;
 
+        /// <summary>Mean linear albedo of the detail set. 0 = the photo textures replace
+        /// the palette (Terra); &gt;0 = they are a relative modulation of the palette +
+        /// macro albedo (airless regolith), so the absolute brightness is unchanged.</summary>
+        public float DetailAlbedoMean;
+
         /// <summary>Baked body-fixed macro albedo (R = albedo multiplier / 2), sampled by
         /// the terrain shader where a chunk quad is coarser than the map texel. Null = off.</summary>
         public Texture2D MacroAlbedo;
@@ -484,6 +489,7 @@ namespace Galilego.Universe
             TextureSteep = profile.TextureSteep;
             TextureOcclusion = profile.TextureOcclusion;
             TextureScale = profile.TextureScale;
+            DetailAlbedoMean = profile.DetailAlbedoMean;
             MacroAlbedo = profile.MacroAlbedo;
             MacroNormal = profile.MacroNormal;
             MacroAlbedoStrength = profile.MacroAlbedoStrength;

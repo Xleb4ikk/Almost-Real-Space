@@ -164,3 +164,10 @@ Tools/P1bTests/Study/integrators/results/regime_analysis.py
 # Пересоздаются за минуту, в репозитории не нужны.
 Assets/Temp/
 Assets/Temp.meta
+
+# Local debug renders / review pages used while tuning the Moon look.
+/.tmp-view/
+
+# Ad-hoc project archive, not source (a 28 MB zip of Assets/_Project).
+/Assets/_Project/_Project.zip
+/Assets/_Project/_Project.zip.meta

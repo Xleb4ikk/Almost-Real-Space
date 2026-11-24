@@ -67,6 +67,12 @@ MonoBehaviour:
     BeachShelfWidthNoiseFrequency: 150
     BeachShelfWidthNoiseOctaves: 4
     BeachShelfSeawardWidth: 0
+    PolarIceLatitudeDeg: 0
+    PolarIceFadeDeg: 1.2
+    PolarIceThicknessMeters: 0
+    PolarIceEdgeAmplitudeDeg: 0
+    PolarIceEdgeFrequency: 0
+    PolarIceEdgeOctaves: 2
     DetailMix: 0
     DetailFrequency: 0
     DetailOctaves: 5
@@ -104,6 +110,65 @@ MonoBehaviour:
     TextureSteep: {fileID: 2800000, guid: 1363d3212b9225a44b99ab3dcf9c0c4e, type: 3}
     TextureOcclusion: {fileID: 2800000, guid: 3537b2510ee6ead49aa7772a7db91838, type: 3}
     TextureScale: 0.04
+    MacroAlbedo: {fileID: 0}
+    MacroNormal: {fileID: 0}
+    MacroAlbedoStrength: 1
+    MacroNormalStrength: 1
+    MacroHorizonA: {fileID: 0}
+    MacroHorizonB: {fileID: 0}
+    MacroHorizonStrength: 1
+    MacroBakeHash: 0
+    Lunar:
+      Enabled: 0
+      RadiusMeters: 1737400
+      MeanOffsetMeters: 300
+      GlobalReliefMeters: 1800
+      GlobalFrequency: 1.4
+      NearFarOffsetMeters: 1000
+      NearX: 1
+      NearY: 0
+      NearZ: 0
+      RoughnessMeters: 700
+      RoughnessFrequency: 6
+      RoughnessOctaves: 8
+      RoughnessHurst: 0.8
+      CraterDensity: 0.3
+      ProductionSlope: 2.1
+      BasinDensityScale: 0.55
+      MaxCraterDiameterMeters: 1400000
+      MinCraterDiameterMeters: 24
+      ComplexTransitionMeters: 18000
+      FreshnessExponent: 2.5
+      MareAge: 0.6
+      RayDensity: 0.12
+      GiantBasinDiameterMeters: 2400000
+      GiantX: -0.8
+      GiantY: 0.25
+      GiantZ: -0.55
+      GiantDepthScale: 0.8
+      MareCoverage: 0.45
+      MareFrequency: 1.5
+      MareNearsideBias: 0.9
+      MareLevelMeters: -500
+      MareLevelVariationMeters: 450
+      MareUndulationMeters: 35
+      MareShoreSmoothMeters: 40
+      WrinkleRidgeMeters: 110
+      WrinkleRidgeFrequency: 26
+      RilleDepthMeters: 140
+      RilleFrequency: 70
+      RilleAmount: 0.25
+      DomeHeightMeters: 140
+      ScarpHeightMeters: 0
+      ScarpFrequency: 14
+      ScarpAmount: 0.25
+      RegolithMeters: 2.5
+      RegolithFrequency: 1700
+      RegolithOctaves: 5
+      MareDarkness: 0.85
+      HighlandVariation: 0.18
+      FreshEjectaBrightness: 1
+    NormalEpsilonMeters: 0
     LowMidBlendStart: 30
     LowMidBlendEnd: 60
     MidHighBlendStart: 4500

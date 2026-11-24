@@ -491,6 +491,10 @@ namespace Galilego.Universe
             HeightfieldTerrain horizonTerrain = body.Terrain as HeightfieldTerrain;
             bool useHorizon = horizonTerrain != null && horizonTerrain.MacroHorizonA != null
                 && horizonTerrain.MacroHorizonB != null && horizonTerrain.MacroHorizonStrength > 0f;
+            // Detail-albedo mode, same owner as the horizon: the CAMERA body's terrain.
+            // The per-body renderer loop would let the last rasterisable body win.
+            PlanetSurfaceRenderer.ApplyDetailAlbedoMean(
+                horizonTerrain != null ? horizonTerrain.DetailAlbedoMean : 0f);
             Shader.SetGlobalFloat("_TerrainHorizonOn",
                 useHorizon ? Mathf.Clamp01(horizonTerrain.MacroHorizonStrength) : 0f);
             Shader.SetGlobalTexture("_TerrainMacroHorizonMapA",

@@ -97,6 +97,10 @@ Shader "Galilego/PlanetSurface"
             sampler2D _TexOcclusion;
             float _TerrainTextureScale;
             float _TerrainUseTextures;
+            // Mean linear albedo of the detail set. >0 = airless regolith: the set is a
+            // relative modulation of the palette + macro albedo (see the albedo block).
+            // 0 = the photo set REPLACES the colour, the way Terra is authored.
+            float _TerrainDetailMean;
             float _LowMidBlendStart;
             float _LowMidBlendEnd;
             float _MidHighBlendStart;
@@ -428,19 +432,23 @@ Shader "Galilego/PlanetSurface"
                     + (tex2D(tex, uvZ).rgb * weights.z);
             }
 
-            // Terrain albedo from textures: low/mid/high by height above sea,
-            // rock by slope, soft AO from occlusion. The biome tint (procedural
-            // palette) keeps climate zones readable and must dominate the
-            // saturated green photo. Coordinates are camera deltas rotated into
-            // body-fixed axes: small numbers without ~6 cm quantisation.
-            float3 TerrainTextureAlbedo(float3 positionWS, float raw, float slopeTan, float3 normalObject, float3 biome)
+            // Triplanar detail albedo with the height/slope weights. NO colour rules:
+            // the Earth path (TerrainTextureAlbedo) adds AO, biome tint and sand on
+            // top of it, the airless path uses it as a RELATIVE modulation of the
+            // palette + macro albedo. The weights live here once: a duplicated set
+            // would drift and the low/mid/high blend would show a seam.
+            //
+            // Coordinates are camera deltas rotated into body-fixed axes: small
+            // numbers without ~6 cm quantisation.
+            float3 TerrainDetailSample(float3 positionWS, float raw, float slopeTan, float3 normalObject,
+                out float2 uvX, out float2 uvY, out float2 uvZ, out float3 tri)
             {
                 float3 relBody = mul((float3x3)_TerrainWorldToBody, positionWS - _PlanetCameraPos);
-                float2 uvX = (relBody.zy * _TerrainTextureScale) + _TerrainUVPhase0.xy;
-                float2 uvY = (relBody.xz * _TerrainTextureScale) + _TerrainUVPhase0.zw;
-                float2 uvZ = (relBody.xy * _TerrainTextureScale) + _TerrainUVPhase1.xy;
+                uvX = (relBody.zy * _TerrainTextureScale) + _TerrainUVPhase0.xy;
+                uvY = (relBody.xz * _TerrainTextureScale) + _TerrainUVPhase0.zw;
+                uvZ = (relBody.xy * _TerrainTextureScale) + _TerrainUVPhase1.xy;
 
-                float3 tri = abs(normalObject);
+                tri = abs(normalObject);
                 tri = tri * tri * tri * tri;
                 tri /= max(1e-5, tri.x + tri.y + tri.z);
 
@@ -474,6 +482,20 @@ Shader "Galilego/PlanetSurface"
                 {
                     c = lerp(c, Triplanar(_TexSteep, uvX, uvY, uvZ, tri), steepW);
                 }
+
+                return c;
+            }
+
+            // EARTH PATH: the photo textures replace the procedural colour, with a
+            // soft AO and a weak biome tint so the climate zones stay readable.
+            // Used only when _TerrainDetailMean == 0.
+            float3 TerrainTextureAlbedo(float3 positionWS, float raw, float slopeTan, float3 normalObject, float3 biome)
+            {
+                float2 uvX, uvY, uvZ;
+                float3 tri;
+                float3 c = TerrainDetailSample(positionWS, raw, slopeTan, normalObject, uvX, uvY, uvZ, tri);
+
+                float altitude = max(raw - _TerrainSeaLevel, 0.0);
 
                 // AO texture: full triplanar up close, a single projection
                 // farther away. At hundreds of metres the AO texel is much
@@ -719,21 +741,49 @@ Shader "Galilego/PlanetSurface"
 
                 float3 albedo = TerrainAlbedo(raw, mask, detail, slopeTan, lat01);
 
-                if (macroW > 0.0)
+                // Terrain textures instead of procedural albedo —
+                // land only: the sea stays procedural/water.
+                float isWater = raw <= _TerrainSeaLevel + SeaEpsilon(_TerrainAmplitude) ? 1.0 : 0.0;
+                bool detailOn = _TerrainUseTextures > 0.5 && isWater < 0.5;
+                float detailMean = _TerrainDetailMean;
+                if (detailMean > 0.0)
+                {
+                    // AIRLESS REGOLITH (mean > 0): the detail set is a RELATIVE
+                    // modulation — dividing by its own mean makes the average 1, so
+                    // the palette and the macro albedo keep the absolute brightness
+                    // (maria ~0.07, highlands ~0.21 linear). The ground then matches
+                    // the far disc, and the disc→mesh hand-over has no step. A photo
+                    // set here would REPLACE that field with Earth's grass and darken
+                    // the moon ~4x, which is exactly what the Moon used to do.
+                    if (detailOn)
+                    {
+                        float2 duvX, duvY, duvZ;
+                        float3 dtri;
+                        float3 detailSample = TerrainDetailSample(input.positionWS, raw, slopeTan,
+                            normalize(TransformWorldToObjectNormal(normal)), duvX, duvY, duvZ, dtri);
+                        albedo *= detailSample * (1.0 / max(detailMean, 0.02));
+                    }
+                }
+                else if (detailOn)
+                {
+                    float3 normalObject = normalize(TransformWorldToObjectNormal(normal));
+                    albedo = TerrainTextureAlbedo(input.positionWS, raw, slopeTan, normalObject, albedo);
+                }
+
+                // Macro albedo AFTER the textures: the body-fixed maria/highland field
+                // must survive on the ground, where the detail set is strongest. The
+                // legacy path keeps the pixel-vs-texel weight; the airless regolith
+                // applies the field at full strength at EVERY distance — a distance
+                // dependent weight would itself be a visible step while descending.
+                // The macro NORMAL above still follows macroW: relief read from a
+                // kilometre-sized texel is wrong underfoot, the smooth albedo field is not.
+                float macroAlbedoW = detailMean > 0.0 ? saturate(_TerrainMacroAlbedoStrength) : macroW;
+                if (macroAlbedoW > 0.0 && _TerrainMacroOn > 0.5)
                 {
                     // Stored as factor / 2 (0..1 in 8 bit), the same encoding the far
                     // disc map uses, so one bake feeds both views.
                     float macroAlbedo = tex2D(_TerrainMacroAlbedoMap, macroUv).r * 2.0;
-                    albedo *= lerp(1.0, macroAlbedo, macroW);
-                }
-
-                // Terrain textures instead of procedural albedo —
-                // land only: the sea stays procedural/water.
-                float isWater = raw <= _TerrainSeaLevel + SeaEpsilon(_TerrainAmplitude) ? 1.0 : 0.0;
-                if (_TerrainUseTextures > 0.5 && isWater < 0.5)
-                {
-                    float3 normalObject = normalize(TransformWorldToObjectNormal(normal));
-                    albedo = TerrainTextureAlbedo(input.positionWS, raw, slopeTan, normalObject, albedo);
+                    albedo *= lerp(1.0, macroAlbedo, macroAlbedoW);
                 }
 
                 // Polar ice: LAST, over textures, rock and mottling. The per-vertex

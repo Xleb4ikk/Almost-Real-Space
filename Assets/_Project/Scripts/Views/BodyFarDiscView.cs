@@ -77,6 +77,19 @@ namespace Galilego.Universe
             "1 = диск строго физически и днём, и ночью.")]
         public float NightBrightness = 24f;
 
+        [Tooltip("Высота наблюдателя над поверхностью текущего тела, ниже которой ночной подъём " +
+            "полный. Подъём компенсирует НОЧНУЮ АДАПТАЦИЮ СЦЕНЫ (MoonlightSystem поднимает лунный " +
+            "пейзаж на 14 EV), а адаптируется только пейзаж под наблюдателем: у неба над головой " +
+            "ночи нет. 100 км — верх атмосферы, ниже него земля и есть кадр.")]
+        public float NightBoostFullAltitudeMeters = 100000f;
+
+        [Tooltip("Высота над поверхностью текущего тела, на которой ночной подъём выключен " +
+            "полностью. Между ней и предыдущей — плавно. Нужна, потому что _SkySunDir·_SkyUp — это " +
+            "СОЛНЦЕ ОТНОСИТЕЛЬНО ТЕКУЩЕГО ТЕЛА, а тело меняется на границе SOI: с ночной стороны " +
+            "Terra на дневную сторону Артемиды sinEl перескакивает с −0.28 на +0.25, и диск " +
+            "прыгал на NightBrightness (24×, 4.6 EV) посреди полёта.")]
+        public float NightBoostFadeAltitudeMeters = 2000000f;
+
         [Range(0f, 1f)]
         [Tooltip("Доля атмосферы МЕЖДУ глазом и диском: 1 = ровно тот воздух, которым " +
             "нарисовано небо (физика), 0 = вакуум. Держать 1: дымка перед Луной — это и есть " +
@@ -469,6 +482,7 @@ namespace Galilego.Universe
             material.SetTexture("_BFD_NormalMap", NormalMap);
             material.SetFloat("_BFD_NormalStrength", NormalMap != null ? NormalStrength : 0f);
             material.SetFloat("_BFD_Opacity", opacity);
+            material.SetFloat("_BFD_AngularRadius", angularRadius);
             // The body->world rotation as its three columns: a Matrix property cannot be
             // declared in ShaderLab, so SetMatrix on an undeclared uniform was dropped
             // ("Material ... doesn't have a matrix property") and the disc's body-fixed
@@ -580,6 +594,13 @@ namespace Galilego.Universe
         /// body (or in flight) the sky is black at noon too, and _StarVisibility there
         /// says "vacuum", not "night". The ramp sits below civil twilight, where the
         /// sky still lights the ground and the disc is a real silhouette in it.
+        ///
+        /// It is also gated by the observer's ALTITUDE over the current body (see
+        /// LandscapeFactor): the gain compensates a night-adapted LANDSCAPE, and space
+        /// has none. Without that gate the gain follows the camera body, which changes
+        /// at an SOI boundary — flying from Terra's night side to Artemis' day side
+        /// flipped sinEl from −0.28 to +0.25 and the disc jumped 24× (4.6 EV) halfway
+        /// to the Moon: "the Moon changes colour abruptly on approach".
         /// </summary>
         private float NightGain()
         {
@@ -587,7 +608,46 @@ namespace Galilego.Universe
             Vector3 up = Shader.GetGlobalVector(SkyUpId);
             float sinElevation = Vector3.Dot(sunDir, up);
             float night = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(-0.10f, -0.21f, sinElevation));
-            return Mathf.Lerp(1f, Mathf.Max(1f, NightBrightness), night);
+            if (night <= 0f)
+            {
+                return 1f;
+            }
+
+            float weight = night * LandscapeFactor();
+            return Mathf.Lerp(1f, Mathf.Max(1f, NightBrightness), weight);
+        }
+
+        /// <summary>
+        /// 1 on the ground, 0 in space. The night boost exists because the scene's
+        /// exposure is adapted to a moonlit landscape; there is no landscape in space,
+        /// so a sunlit body there is exactly as bright as it physically is. This also
+        /// makes the boost independent of which body owns the camera: the altitude is
+        /// large on both sides of an SOI boundary, so the value cannot jump there.
+        /// </summary>
+        private float LandscapeFactor()
+        {
+            float full = NightBoostFullAltitudeMeters;
+            float none = NightBoostFadeAltitudeMeters;
+            if (none <= full || Runner == null || Runner.SystemState == null)
+            {
+                return 1f;
+            }
+
+            OrbitingBody cameraBody = Runner.CameraBody;
+            if (cameraBody == null)
+            {
+                return 1f;
+            }
+
+            cameraBody.EvaluateWorldState(Runner.TimeSeconds, out Vector3d center, out _);
+            double altitude = (Runner.PlayerPosition - center).Magnitude - cameraBody.Radius;
+            double t = (altitude - full) / (none - full);
+            if (t <= 0d)
+            {
+                return 1f;
+            }
+
+            return t >= 1d ? 0f : 1f - (float)t;
         }
 
         /// <summary>Unit quad centred on the origin, UV 0..1 — the disc is cut in the shader.</summary>

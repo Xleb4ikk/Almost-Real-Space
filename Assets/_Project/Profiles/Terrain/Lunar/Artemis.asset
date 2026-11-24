@@ -80,7 +80,7 @@ MonoBehaviour:
     WarpFrequency: 1
     WarpOctaves: 2
     WarpSeedOffset: 0
-    ColorRockSlopeTan: 0.8
+    ColorRockSlopeTan: 0
     ColorRockSlopeWidth: 0.3
     ColorRockHeightMin: 0
     ColorSnowSlopeTan: 0
@@ -90,7 +90,7 @@ MonoBehaviour:
     ColorNoiseSeedOffset: 0
     ColorDetailFrequency: 600
     ColorDetailOctaves: 3
-    ColorDetailStrength: 1
+    ColorDetailStrength: 0
     ColorDetailSeedOffset: 0
     Palette:
       Sand: {r: 0.5, g: 0.49, b: 0.47, a: 1}
@@ -104,12 +104,13 @@ MonoBehaviour:
       Sea: {r: 0.17, g: 0.17, b: 0.18, a: 1}
       Soil: {r: 0.17, g: 0.17, b: 0.18, a: 1}
       Lush: {r: 0.88, g: 0.87, b: 0.84, a: 1}
-    TextureLow: {fileID: 0}
-    TextureMid: {fileID: 0}
-    TextureHigh: {fileID: 0}
-    TextureSteep: {fileID: 0}
+    TextureLow: {fileID: 2800000, guid: cfeb3ffdbbe344daa518c3dbdf47cda6, type: 3}
+    TextureMid: {fileID: 2800000, guid: cfeb3ffdbbe344daa518c3dbdf47cda6, type: 3}
+    TextureHigh: {fileID: 2800000, guid: cfeb3ffdbbe344daa518c3dbdf47cda6, type: 3}
+    TextureSteep: {fileID: 2800000, guid: 521bb9d5f9824149a7ea280d7a2d1dbc, type: 3}
     TextureOcclusion: {fileID: 0}
     TextureScale: 0.04
+    DetailAlbedoMean: 0.292
     MacroAlbedo: {fileID: 2800000, guid: 65451f9aeac2c6b4c8bc9ae733fd530a, type: 3}
     MacroNormal: {fileID: 2800000, guid: 224cc261d1047914f85db561e83d8e51, type: 3}
     MacroAlbedoStrength: 1
@@ -171,7 +172,7 @@ MonoBehaviour:
     NormalEpsilonMeters: 2
     LowMidBlendStart: 30
     LowMidBlendEnd: 60
-    MidHighBlendStart: 2500
-    MidHighBlendEnd: 3500
+    MidHighBlendStart: 4500
+    MidHighBlendEnd: 5500
     SteepBlendStart: 0.7
     SteepBlendEnd: 1.4
