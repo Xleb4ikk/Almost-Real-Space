@@ -739,17 +739,35 @@ namespace Galilego.Universe
             exposure.fixedExposure.Override(StartupFixedExposureEv);
             exposure.meteringMode.Override(MeteringMode.CenterWeighted);
             exposure.compensation.Override((float)Preset.ExposureBias);
-            exposure.limitMin.Override(-8f);
+            // -1 EV100, NOT the -8 an earlier pass wrote here. -8 was chosen so Mars
+            // (4.1 AU, ~7 EV below Terra's daylight) would read, but HDRP's automatic
+            // exposure acts on its own materials only: the pre-exposure multiplies
+            // every HDRP/Lit surface and the uber-post does NOT cancel it for the
+            // Automatic mode. The custom Galilego shaders (terrain, sky, ship, disc)
+            // ignore the exposure entirely, so at night the two halves of the frame
+            // drift apart by the whole opening range.
+            //
+            // Measured 2026-11-24 in Play at lunar night (Artemis 69 deg up, phase 67,
+            // 0.10 lx), sRGB of the launch pad, same frozen frame:
+            //   limitMin -8 -> 118/255 (asphalt reads like an overcast day)
+            //   limitMin -1 -> ~10/255 (a moonlit road; ~= the terrain's own level)
+            //   limitMin +3 -> 0/255   (the pad disappears)
+            // The asphalt went from "day" to "night" with this one number — that is
+            // the whole "the pupil made the ground insanely bright" report.
+            //
+            // The rule: this camera is a FIXED-EXPOSURE daylight camera. The pupil
+            // (SkyEnvironment: _TerrainSun / _EyeGain / the Directional Light) owns all
+            // adaptation, for the custom shaders AND the HDRP/Lit props (MoonlightSystem
+            // multiplies the moon light by Sky.EyeGain for the same reason). Raising the
+            // floor above 0 throws the night away; lowering it below -1 lets the camera
+            // invent a night of its own that the terrain will never match.
+            exposure.limitMin.Override(-1f);
             exposure.limitMax.Override(14f);
-            // -8 EV100, not the old -1: a 0.369-scale Sun at 4.1 AU is ~7 EV below
-            // Terra's daylight. NOTE (2026-11-24): widening this floor did NOT make
-            // Mars readable - measured in Play, EV100 2.26 and -12.74 produce a
-            // pixel-identical frame while _ExposureTexture reports the value, so this
-            // Volume's Exposure never reaches the image on the project's pipeline.
-            // The distance adaptation is done by the pupil instead (EyeAdaptation /
-            // SkyEnvironment), on the scene's light. Keep these limits sane for the
-            // scene view and for the day the chain is fixed; do not expect them to
-            // change the game view.
+            // Fixed EV100 2.26 and -12.74 gave a pixel-identical frame when every
+            // visible surface was a custom shader (2026-11-24, mean 3.63 vs 3.45) —
+            // that measurement is about the custom frame, not about HDRP/Lit props.
+            // The moment the pad and the roads (HDRP/Lit) are on screen the exposure is
+            // the difference between 118 and 10 out of 255. Do not "simplify" it away.
             // AdaptationMode.Fixed means "the exposure changes instantly": it is
             // what makes the hand-over invisible. Afterwards the artistic speeds
             // apply: 3 (darken quickly) and 0.7 (brighten slowly).

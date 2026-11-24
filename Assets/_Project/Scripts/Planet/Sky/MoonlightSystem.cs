@@ -560,6 +560,7 @@ namespace Galilego.Universe
             {
                 float calibration = Sky != null
                     ? Sky.TerrainRadianceScale * Sky.TerrainSunIntensity * Sky.MaterialLightScale
+                        * Sky.EyeGain
                     : 1f;
 
                 // The custom ground shaders live in the normalised "sun = 1" scale;
@@ -567,6 +568,11 @@ namespace Galilego.Universe
                 // white ground under the moon would disagree. (The sun's HDRP light
                 // additionally carries SceneLightScale; that is the sun's calibration,
                 // not the moon's.)
+                //
+                // EyeGain is what the ground's moon term already gets through
+                // _TerrainSun (= star scale x pupil): leaving it out made the HDRP/Lit
+                // props (launch pad, roads, VAB) 1.55x darker than the custom terrain
+                // at night and 256x darker at Mars. One pupil per frame, both scales.
                 MoonLight.color = new Color(normalised.x, normalised.y, normalised.z, 1f);
                 MoonLight.intensity = (float)(Math.PI * colorScale * calibration);
 

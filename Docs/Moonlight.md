@@ -81,6 +81,19 @@ The custom shaders add the same Lambert term as the sun:
 + (_MoonLightColor * (sun * moonNdl * shadow * cloudShadow) * _TerrainRadianceScale)
 ```
 
+`sun` is `_TerrainSun`, which carries `EyeGain` (the pupil). The HDRP/Lit props
+(launch pad, roads, VAB, ship) get the same pupil through `MoonLight.intensity`:
+`MoonlightSystem` multiplies its calibration by `Sky.EyeGain`, exactly as
+`SkyEnvironment` multiplies the sun's `ApplyLight`. Without that term the pad and the
+ground were 1.55x apart at night (and 256x at Mars).
+
+**The camera exposure must not chase the night.** `SkyEnvironment.ExposureVolume` is
+a *fixed-exposure daylight camera* (`StarRenderer` keeps `Exposure.limitMin = −1`).
+HDRP/Lit props are pre-exposed and the uber-post does not cancel it in Automatic
+mode, so with `limitMin = −8` the auto exposure lifted the moonlit asphalt to
+**118/255** on the same frame where `−1` gives **10/255** — the "the pupil made the
+ground insanely bright" report. The night belongs to the pupil, never to the camera.
+
 `GalilegoCloudField.SampleCloudShadowDirection(pos, dir)` samples clouds along the
 **moon's** direction at night, otherwise a moonlit ground would lose its cloud
 shadows. Water adds a moon diffuse term, a specular glitter path and a Fresnel mirror

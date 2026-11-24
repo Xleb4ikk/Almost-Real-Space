@@ -206,7 +206,8 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
 ## Assumptions
 
 1. **HDRP 17.6 / Unity 6000.6.** The custom shaders are HDRP `ForwardOnly`
-   transparent passes; the volume uses HDRP `Bloom`, `Tonemapping`, `Exposure`.
+   transparent passes; the volume uses HDRP `Bloom`, `Tonemapping`, `Exposure`
+   (the exposure moves HDRP/Lit props only — see item 7).
 2. **Scale is 1 unit = 1 m.** All physics is double in km/au; only the proxy
    position and quad scale are float.
 3. **One star per system**, at `StarSystem.Root`. Multiple stars would need one
@@ -228,9 +229,25 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
    unchanged while a body at 4.1 AU is ~124× darker, and the ground matches the
    Directional Light (which already carried the same scale). The gas giant multiplies
    its `SurfaceBrightness`/`FarDiscBrightness` by the star's flux at the body, and the
-   far disc uses the flux at the body rather than at the camera. The atmosphere/cloud
-   scattering (`_AtmIntensity` from the profile) still uses its own artistic scale and
-   is not yet star-scaled; that is a separate change.
+   far disc uses the flux at the body rather than at the camera.
+
+   **Atmosphere and clouds follow the same rule (2026-11-24).** `_AtmIntensity` and
+   `_CldIntensity` are now `profile.Intensity × StarRenderer.StarLightAt(body) × _EyeGain`:
+   the artistic HDR boost, the physical flux at the body, and the observer's pupil. The
+   body owns the flux (a foreign planet's sky is lit where that planet is), the eye owns
+   the adaptation (Terra's sky seen from Artemis uses the lunar pupil). Only the scattered
+   radiance is scaled — not the optical depth or the transmittance — so the air does not
+   become "thicker" with distance. `StarLightAt` is the single copy of the flux
+   expression (far disc, gas giant, atmosphere, clouds); before it, a body with air far
+   from the star drew a Terra-bright sky over a Mars-bright ground. Measured at the
+   Mars-like 4.1 AU view: `SceneLightScale = 0.008087`, `EyeGain = 25.84`, so the
+   corrected sky scale is `1.0 × 0.0081 × 25.84 × 5 ≈ 1.04` instead of
+   `1.035 × 5 ≈ 5.17` — the ~5× the plan predicted. On Terra, measured in Play at
+   `t = 19 s`, sun 43.9°: `SceneLightScale = 1.034918`, `EyeGain = 1.0` (the sky
+   ambient already keeps the eye closed), so `_AtmIntensity` goes 1.0 → 1.0349
+   (+3.5 %); the pupil term only appears near sunset, when the eye opens. A 54° sun
+   with a hypothetical 1.12 pupil would have been +16 %, but this scene's ambient
+   drives the pupil to its 0 EV floor well before that.
 
    **The pupil (`EyeAdaptation`).** The physical scale alone renders a sunlit distant
    planet as a black disc — Mars at 4.1 AU receives 11 W/m², a dull but perfectly
@@ -277,16 +294,31 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
 
    **Still open (2026-11-24):**
 
-   * HDRP's `Volume > Exposure` does not reach the image on this project's pipeline:
-     in Play, EV100 2.26 and −12.74 produced a pixel-identical frame (mean 25.43 both),
-     while `_ExposureTexture` did report the value, and `StarRenderer.ConfigureVolume`'s
-     `limitMin = −8` was found reverted to the asset's `−1` at runtime. That is why the
-     pupil drives the scene light instead of the camera exposure. Fix the chain before
-     moving the pupil into `Exposure.compensation`;
-   * the atmosphere/cloud scattering (`_AtmIntensity`) is still not star-scaled, so a
-     future atmospheric planet far from the star would have an over-bright sky relative
-     to its ground. Terra is the only atmospheric body today (1 E_sun), so nothing is
-     wrong on screen yet.
+   * **HDRP `Volume > Exposure` moves the HDRP/Lit props, and only them.**
+     Fixed EV100 2.26 and −12.74 gave a pixel-identical frame (mean 3.63 vs 3.45)
+     because every surface in view then was a custom Galilego shader, and none of
+     them applies HDRP pre-exposure. The exposure is real for HDRP/Lit props
+     (launch pad, roads, VAB, ship): in Automatic mode their material multiplies
+     the pre-exposure and the uber-post does not cancel it, so the exposure's
+     *floor* sets how bright the asphalt is. Measured on the launch pad at lunar
+     night (Artemis 69°, phase 67°, 0.10 lx), same frozen frame:
+
+     | `Exposure.limitMin` | pad, sRGB |
+     |---|---|
+     | −8 | **118** (reads like an overcast day) |
+     | −1 | **10** (a moonlit road) |
+     | +3 | 0 (the pad disappears) |
+
+     So the camera is a **fixed-exposure daylight camera**: `limitMin = −1` in
+     `StarRenderer.ConfigureVolume`. Do not widen it "for Mars" — the pupil
+     already scales the sun's and the moon's Directional Light by `EyeGain`, so the
+     props stay readable at 4.1 AU without the exposure inventing a night the
+     terrain can never match. And the pupil stays in the scene light
+     (`SkyEnvironment`), never in `Exposure.compensation`, until every custom
+     shader pre-exposes;
+   * the atmosphere/cloud scattering is now star- and pupil-scaled (item 7 above);
+     the only atmosphere in play is Terra's, so the 4.1 AU case is verified by numbers,
+     not by an on-screen planet yet.
 8. **Glare is an atmospheric aureole**, so it is drawn without depth testing,
    uses `f_vis` to vanish behind a celestial occluder and fades out with the air
    column (`aureole`), leaving a sharp disc in vacuum. The corona also is not
@@ -295,12 +327,14 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
 9. **HDRP clamps `Bloom.intensity` to 1.0.** `bloomGain > 1` is reported and
    clamped; the sun's disc stays sharp in vacuum (Sol preset gain 0.1) because
    the halo is the atmosphere's job, not bloom's.
-10. **Auto exposure is HDRP's histogram/automatic mode**, configured with
-    `adaptationSpeedLightToDark = 3`, `adaptationSpeedDarkToLight = 0.7` and
-    `exposureBias`. On the first 30 visible frames the renderer adds a temporary
-    `−log2((E/E_ref)(η/η_sun))` EV bias and runs both adaptation speeds at 50,
-    so a solar star at the scene's close orbit does not flash the first frames;
-    afterwards the artistic asymmetric speeds are restored.
+10. **Auto exposure is HDRP's automatic mode** (`meteringMode = CenterWeighted`),
+    configured with `adaptationSpeedLightToDark = 3`, `adaptationSpeedDarkToLight = 0.7`
+    and `exposureBias`. It moves HDRP/Lit props only (see the bullet in item 7), never
+    the custom frame, and its floor is `limitMin = −1`: the camera must not try to
+    photograph the night. The startup anti-flash bias (`−log2((E/E_ref)(η/η_sun))`, 90
+    frames, applied to `Exposure.compensation`) shares that limit; the frame's own
+    first-frames flash is handled by the pupil snapping to its target in
+    `SkyEnvironment`, not by the camera exposure.
 11. **TAA** is the camera's existing AA (`antialiasing = TAA`); MSAA is off in
     the HDRP asset. The disc edge uses `fwidth`, so it stays one pixel wide.
 12. **Activity defaults to 1** (the task's artistic multiplier range). Spot

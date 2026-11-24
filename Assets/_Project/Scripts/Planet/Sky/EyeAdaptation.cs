@@ -13,12 +13,19 @@ namespace Galilego.Universe
     /// fixed-exposure camera shows the raw number, which is why Mars was a hole in the
     /// star field.
     ///
-    /// HDRP's own `Volume > Exposure` cannot carry this on the project's pipeline: in
-    /// Play, EV100 2.26 and -12.74 produced a pixel-identical frame (measured 2026-11-24),
-    /// while `_ExposureTexture` did report the value - the exposure is not composed into
-    /// the image. So the pupil is applied to the SCENE LIGHT instead: every lit surface
-    /// is multiplied by <see cref="Gain"/>. The sun's own disc, glare and corona are not,
-    /// their surface brightness stays physical.
+    /// HDRP's own `Volume > Exposure` cannot carry this on the project's pipeline: the
+    /// frame is drawn by custom shaders that never apply HDRP's pre-exposure, so the
+    /// exposure moves only the HDRP/Lit props (launch pad, roads, VAB, ship). And that
+    /// move is not a small correction: in Automatic mode the uber-post does not cancel
+    /// the pre-exposure of the props, so the auto exposure's floor is the difference
+    /// between a moonlit and a daylit asphalt — measured 2026-11-24, the pad read
+    /// 118/255 at `limitMin = -8` and 10/255 at -1 on the same frozen frame. The camera
+    /// is therefore a fixed-exposure daylight camera (`limitMin = -1` in
+    /// `StarRenderer.ConfigureVolume`), and the pupil is applied to the SCENE LIGHT:
+    /// every lit surface is multiplied by <see cref="Gain"/> — the custom shaders through
+    /// `_TerrainSun`, the HDRP/Lit props through the sun's and the moon's Directional
+    /// Light. The star's own disc, glare and corona are not, their surface brightness
+    /// stays physical.
     ///
     /// The one non-physical step is the share: the eye pays back
     /// <c>share</c> of the deficit below 1 E_sun, capped at <c>maxEv</c>. A share of 1

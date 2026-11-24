@@ -76,10 +76,14 @@ namespace Galilego.Universe
         [Tooltip("Сила тени HDRP 0..1: 1 — тень гасит прямой свет полностью (чёрно), 0 — тени нет.")]
         public float ShadowStrength = 0.85f;
 
-        [Tooltip("Volume с Exposure. ВНИМАНИЕ: на этом пайплайне HDRP-экспозиция НЕ попадает в кадр " +
-                 "(EV100 2.26 и -12.74 дают пиксельно одинаковый кадр, замер 2026-11-24), поэтому зрачок " +
-                 "живёт в свете сцены (_TerrainSun / Directional Light), а не здесь. Поле оставлено для " +
-                 "сценарных и редакторских настроек.")]
+        [Tooltip("Volume с HDRP-настройками неба: отсюда SkyEnvironment берёт GradientSky " +
+                 "(ambient/отражения), и в нём же лежит Exposure. ВНИМАНИЕ: Exposure двигает " +
+                 "ТОЛЬКО HDRP/Lit-объекты (пандус/дороги/VAB/корабль): их материал умножает " +
+                 "pre-exposure, который uber-post в режиме Automatic не отменяет. Кастомные " +
+                 "шейдеры (рельеф, небо, звезда) экспозицию не читают вовсе. Поэтому зрачок " +
+                 "живёт в свете сцены (_TerrainSun / Directional Light / _EyeGain), а " +
+                 "Exposure.limitMin в StarRenderer держится на -1 EV: с -8 автоэкспозиция " +
+                 "ночью поднимала асфальт до 118/255 (замер 2026-11-24).")]
         public UnityEngine.Rendering.Volume ExposureVolume;
 
         [Header("Зрачок")]
