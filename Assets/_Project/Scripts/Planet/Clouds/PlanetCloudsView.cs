@@ -58,6 +58,9 @@ namespace Galilego.Universe
         private Transform shell;
         private Material materialCache;
         private SkyEnvironment skyEnvironment;
+        private StarRenderer starRenderer;
+
+        private static readonly int EyeGainId = Shader.PropertyToID("_EyeGain");
 
         /// <summary>The camera the picture is drawn with (falls back to Camera.main).</summary>
         private Camera ViewCamera => PlayerCamera != null ? PlayerCamera : Camera.main;
@@ -103,6 +106,7 @@ namespace Galilego.Universe
             }
 
             skyEnvironment = FindAnyObjectByType<SkyEnvironment>();
+            starRenderer = FindAnyObjectByType<StarRenderer>();
 
             Shader shader = Shader.Find("Galilego/PlanetClouds");
             if (shader == null)
@@ -330,6 +334,25 @@ namespace Galilego.Universe
                 : Shader.GetGlobalVector("_SkyAmbientColor");
             Vector3 cloudSkyAmbient = new Vector3(skyAmbientVector.x, skyAmbientVector.y, skyAmbientVector.z);
 
+            // The deck is lit by the STAR at THIS body, seen through the OBSERVER's
+            // pupil: the same two factors the atmosphere and the ground use. _CldSunColor
+            // above carries the photosphere colour and the air's transmittance, but no
+            // flux — so a distant planet's clouds kept Terra's brightness while its
+            // ground followed L/d^2 (~5x too bright at 4.1 AU). The body owns the flux,
+            // the eye owns the adaptation. Only the emitted radiance is scaled: the
+            // shader multiplies _CldIntensity into the lit term, never into extinction.
+            double bodyStarLight = starRenderer != null
+                ? starRenderer.StarLightAt(body, Runner.TimeSeconds)
+                : 1d;
+            float eyeGain = Shader.GetGlobalFloat(EyeGainId);
+            if (!(eyeGain > 0f))
+            {
+                // SkyEnvironment has not written the global yet (first frame).
+                eyeGain = 1f;
+            }
+
+            float cloudIntensity = (float)(profile.Intensity * bodyStarLight * eyeGain);
+
             float shapeFreq = 1f / Mathf.Max(1f, profile.ShapeCellMeters);
             float smallFreq = 1f / Mathf.Max(1f, profile.SmallCloudCellMeters);
             float mediumFreq = 1f / Mathf.Max(1f, profile.MediumCloudCellMeters);
@@ -379,7 +402,7 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat("_CldPhaseG", Mathf.Clamp(profile.PhaseAnisotropy, 0f, 0.95f));
              Shader.SetGlobalFloat("_CldPowderStrength", Mathf.Max(0f, profile.PowderStrength));
              Shader.SetGlobalFloat("_CldMultipleScattering", Mathf.Clamp01(profile.MultipleScattering));
-             Shader.SetGlobalFloat("_CldIntensity", Mathf.Max(0f, profile.Intensity));
+             Shader.SetGlobalFloat("_CldIntensity", Mathf.Max(0f, cloudIntensity));
             Shader.SetGlobalColor("_CldAmbientTint", profile.AmbientTint);
 
             Shader.SetGlobalFloat("_CldStepCount", Mathf.Clamp(profile.StepCount, 8, 128));
@@ -401,8 +424,10 @@ namespace Galilego.Universe
             {
                 loggedOnce = true;
                 Debug.Log(string.Format(
-                    "[PlanetClouds] active=True, domeR={0:E2}, planetR={1}, bottomR={2}, topR={3}, shapeCell={4}m, dominant={5}",
+                    "[PlanetClouds] active=True, domeR={0:E2}, planetR={1}, bottomR={2}, topR={3}, " +
+                    "shapeCell={4}m, Intensity={5} (star={6:F4}, pupil={7:F2}, eff={8:F3}), dominant={9}",
                     domeRadius, planetRadius, bottomRadius, topRadius, profile.ShapeCellMeters,
+                    profile.Intensity, bodyStarLight, eyeGain, cloudIntensity,
                     Runner.DominantBody != null ? Runner.DominantBody.Name : "null"));
             }
         }

@@ -472,14 +472,13 @@ namespace Galilego.Universe
             // The giant's own brightness follows the star's L/d² at ITS position, not
             // a fixed "solar" scale: at 1.64 AU with the 0.369-scale Sun it sees
             // ~0.056 E_sun. SurfaceBrightness/FarDiscBrightness remain the artistic
-            // HDR boost; the star factor is physical. The pupil (_EyeGain, written by
-            // SkyEnvironment from the observer's own light) is the scene's one
-            // non-physical step — without it the giant is a black ball at 1.64 AU while
-            // Terra's ground is readable.
-            double bodyStarDistanceKm = (starPos - bodyPos).Magnitude / 1000d;
-            double bodyStarScale = starRenderer != null && starRenderer.IsReady
-                ? starRenderer.State.IrradianceWm2(bodyStarDistanceKm) / StarPhysics.Esun1Au
-                    * starRenderer.State.VisibleEtaRatioToSun
+            // HDR boost; the star factor is physical and comes from the one shared
+            // StarRenderer.StarLightAt (also used by the far disc, atmosphere, clouds).
+            // The pupil (_EyeGain, written by SkyEnvironment from the observer's own
+            // light) is the scene's one non-physical step — without it the giant is a
+            // black ball at 1.64 AU while Terra's ground is readable.
+            double bodyStarScale = starRenderer != null
+                ? starRenderer.StarLightAt(body, Runner.TimeSeconds)
                 : 1d;
             float eyeGain = Shader.GetGlobalFloat(EyeGainId);
             float starLightScale = (float)bodyStarScale * (eyeGain > 0f ? eyeGain : 1f);

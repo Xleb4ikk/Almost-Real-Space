@@ -494,10 +494,10 @@ namespace Galilego.Universe
             // seen through the SAME pupil (_EyeGain, written by SkyEnvironment): a disc
             // left at the raw 1/128 of a distant star would go black while the ground
             // under it stays readable, and the hand-over would flash.
-            double bodyStarDistanceKm = (starPos - bodyPos).Magnitude / 1000d;
-            double bodyStarScale = Star != null && Star.IsReady
-                ? Star.State.IrradianceWm2(bodyStarDistanceKm) / StarPhysics.Esun1Au
-                    * Star.State.VisibleEtaRatioToSun
+            // The flux itself comes from StarRenderer.StarLightAt — one definition shared
+            // with the gas giant, the atmosphere and the clouds.
+            double bodyStarScale = Star != null
+                ? Star.StarLightAt(body, Runner.TimeSeconds)
                 : 1d;
             // 0 = SkyEnvironment has not written the global yet (first frame): the disc
             // must not go black for that frame, so fall back to a fully open pupil.

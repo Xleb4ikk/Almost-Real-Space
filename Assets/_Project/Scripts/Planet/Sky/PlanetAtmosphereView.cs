@@ -69,11 +69,14 @@ namespace Galilego.Universe
 
         private OrbitingBody body;
         private AtmosphereProfile profile;
+        private StarRenderer starRenderer;
         private Transform shell;
         private Material materialCache;
         private Texture2D transmittanceLut;
         private Texture2D multiScatterLut;
         private bool loggedOnce;
+
+        private static readonly int EyeGainId = Shader.PropertyToID("_EyeGain");
 
         /// <summary>The camera the picture is drawn with (falls back to Camera.main).</summary>
         private Camera ViewCamera => PlayerCamera != null ? PlayerCamera : Camera.main;
@@ -112,6 +115,11 @@ namespace Galilego.Universe
                 enabled = false;
                 return;
             }
+
+            // The star's flux at THIS body (not at the camera): the sky of a foreign
+            // planet is lit by the star where that planet is. One definition shared
+            // with the far disc and the gas giant.
+            starRenderer = FindAnyObjectByType<StarRenderer>();
 
             Shader shader = Shader.Find("Galilego/PlanetAtmosphere");
             materialCache = new Material(shader);
@@ -413,7 +421,35 @@ namespace Galilego.Universe
             Shader.SetGlobalFloat("_AtmOzoneCenter", (float)coeff.OzoneCenterAltitude);
             Shader.SetGlobalFloat("_AtmOzoneWidth", (float)coeff.OzoneHalfWidth);
             Shader.SetGlobalFloat("_AtmMieG", (float)coeff.MieAnisotropy);
-            Shader.SetGlobalFloat("_AtmIntensity", profile.Intensity);
+            // The dome is lit by the STAR, not by the artist's number alone:
+            //   profile.Intensity — the artistic HDR boost (1 in EarthAtmosphere);
+            //   bodyStarLight     — the physical flux at THIS body. A distant planet's
+            //                       sky must be as dim relative to its ground as its
+            //                       ground is to Terra's; before this the sky kept
+            //                       Terra's brightness at any distance (~5x too bright
+            //                       at 4.1 AU) while the ground already followed L/d^2;
+            //   eyeGain           — the OBSERVER's pupil, the same _EyeGain that scales
+            //                       the terrain and the far discs. The body owns the
+            //                       flux, the eye owns the adaptation: a foreign body's
+            //                       sky seen from the Moon is lit by that body's sun but
+            //                       shown through the lunar pupil.
+            // Only the RADIANCE is scaled (GalilegoAtmosphereAir.hlsl:237 and
+            // PlanetAtmosphere.shader:194); optical depth and transmittance stay
+            // untouched, so the air does not become "thicker" with distance.
+            double bodyStarLight = starRenderer != null
+                ? starRenderer.StarLightAt(body, Runner.TimeSeconds)
+                : 1d;
+            float eyeGain = Shader.GetGlobalFloat(EyeGainId);
+            if (!(eyeGain > 0f))
+            {
+                // SkyEnvironment has not written the global yet (first frame): a black
+                // sky for one frame is worse than a fully open pupil.
+                eyeGain = 1f;
+            }
+
+            float atmosphereIntensity = (float)(profile.Intensity * bodyStarLight * eyeGain);
+            Shader.SetGlobalFloat("_AtmIntensity", atmosphereIntensity);
+
             Shader.SetGlobalFloat("_AtmStepCount", Mathf.Clamp(profile.StepCount, 2, 96));
             Shader.SetGlobalFloat("_AtmPlanetOcclusion", profile.PlanetOcclusion ? 1f : 0f);
             Shader.SetGlobalColor("_AtmGroundColor", profile.GroundColor);
@@ -441,9 +477,11 @@ namespace Galilego.Universe
             {
                 loggedOnce = true;
                 Debug.Log(string.Format(
-                    "[PlanetAtmosphere] active=True, domeR={0:E2}, R={1}, R_atm={2}, Hr={3}, Hm={4}, Intensity={5}, dominant={6}",
+                    "[PlanetAtmosphere] active=True, domeR={0:E2}, R={1}, R_atm={2}, Hr={3}, Hm={4}, " +
+                    "Intensity={5} (star={6:F4}, pupil={7:F2}, eff={8:F3}), dominant={9}",
                     domeRadius, body.Radius, atmosphereRadius,
                     coeff.RayleighScaleHeight, coeff.MieScaleHeight, profile.Intensity,
+                    bodyStarLight, eyeGain, atmosphereIntensity,
                     Runner.DominantBody != null ? Runner.DominantBody.Name : "null"));
             }
         }

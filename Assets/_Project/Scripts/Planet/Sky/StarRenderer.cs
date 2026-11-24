@@ -49,10 +49,9 @@ namespace Galilego.Universe
         [Header("Экспозиция на старте")]
         [Tooltip("EV100 самого первого отрисованного кадра. HDRP в режиме Automatic берёт яркость из " +
                  "предыдущего кадра: на первом кадре буфер пуст, метрика упирается в limitMin (−1 EV), " +
-                 "и мир показывается в 4…100 раз ярче нормы — ровно этот кадр игрок и видит при запуске " +
-                 "(а в этой сцене после него бывают секунды хич-фризов: LUT атмосферы, шум облаков, " +
-                 "чанки поверхности). Задайте примерно EV дневной сцены. Значение важно только для " +
-                 "одного кадра: со второго автоэкспозиция даёт точное значение.")]
+                 "и HDRP/Lit-объекты показываются в 4…100 раз ярче нормы. Значение важно только для " +
+                 "одного кадра; на кастомные шейдеры (рельеф, небо, корабль) оно не влияет — они не " +
+                 "читают HDRP-экспозицию (см. ConfigureVolume).")]
         public float StartupFixedExposureEv = 3f;
 
         [Tooltip("Сколько первых отрисованных кадров держать StartupFixedExposureEv. " +
@@ -121,11 +120,44 @@ namespace Galilego.Universe
         /// scene level. Prevents the first visible frames from flashing when the
         /// star is much brighter than the E_ref baseline (e.g. a 1 L☉ star at
         /// 0.368 AU is +2.9 EV; the scene's 0.369-scale Sun is 1.0 by design).
+        /// It reaches `Exposure.compensation`, so it moves HDRP/Lit props only —
+        /// the custom terrain/sky/ship do not read HDRP exposure (see
+        /// <see cref="ConfigureVolume"/>). The world's own anti-flash is the pupil
+        /// snapping to its target in SkyEnvironment.
         /// </summary>
         public double StartupExposureBiasEv { get; private set; }
 
         public int ScreenDiscPixels { get; private set; }
         public bool IsSubpixel { get; private set; }
+
+        /// <summary>
+        /// (E/E_ref)·(η/η_sun) at <paramref name="body"/>: how much starlight a surface
+        /// there receives. No observer pupil and no eclipse — the caller owns both.
+        ///
+        /// This is the ONE definition of "how bright is the star at that planet".
+        /// <see cref="BodyFarDiscView"/>, <see cref="GasGiantView"/>, the atmosphere and
+        /// the clouds all read it, so a body's disc, its clouds and its sky can never
+        /// disagree about the star. Before this method existed the expression was copied
+        /// into each view, and the atmosphere/clouds simply did not have it: they drew a
+        /// Terra-bright sky over a Mars-bright ground (~5× too bright at 4.1 AU).
+        /// </summary>
+        public double StarLightAt(OrbitingBody body, double timeSeconds)
+        {
+            if (!IsReady || body == null)
+            {
+                return 1d;
+            }
+
+            star.EvaluateWorldState(timeSeconds, out Vector3d starPosition, out _);
+            body.EvaluateWorldState(timeSeconds, out Vector3d bodyPosition, out _);
+            double distanceKm = (bodyPosition - starPosition).Magnitude / 1000d;
+            if (!(distanceKm > 0d))
+            {
+                return 1d;
+            }
+
+            return state.IrradianceWm2(distanceKm) / StarPhysics.Esun1Au * state.VisibleEtaRatioToSun;
+        }
 
         // ------------------------------------------------------------------
         // Internals
