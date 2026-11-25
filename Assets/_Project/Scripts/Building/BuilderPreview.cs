@@ -75,6 +75,7 @@ namespace Galilego.Building
         private float radius = -1f;
         private float topRadius = -1f;
         private float height = -1f;
+        private bool hullRingSealed;
         private float spin;
         private float nextRender;
         private Light keyLight;
@@ -88,7 +89,7 @@ namespace Galilego.Building
         /// part/size changes, spin it and (at most 30 Hz) render a frame.
         /// </summary>
         public void Ensure(PartKind nextKind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
-            Material tankSide, Material tankCap, Material separator)
+            Material tankSide, Material tankCap, Material separator, bool hullRingSealed = false)
         {
             EnsureRig();
             if (rig == null)
@@ -107,11 +108,12 @@ namespace Galilego.Building
             string nextEngineId = engine != null && engine.Spec != null ? engine.Spec.Id : null;
             if (nextKind != kind
                 || nextEngineId != engineId
+                || hullRingSealed != this.hullRingSealed
                 || !Mathf.Approximately(radius, metrics.Radius)
                 || !Mathf.Approximately(topRadius, metrics.TopRadius)
                 || !Mathf.Approximately(height, metrics.Height))
             {
-                Rebuild(nextKind, metrics, engine, tankSide, tankCap, separator);
+                Rebuild(nextKind, metrics, engine, tankSide, tankCap, separator, hullRingSealed);
             }
 
             spin += Time.unscaledDeltaTime * SpinDegreesPerSecond;
@@ -192,6 +194,12 @@ namespace Galilego.Building
             StoreIcon(PartKind.Fairing, null,
                 PartCatalog.Measure(PartKind.Fairing, PartCatalog.SeparatorDefaultRadius, 0f, firstEngine),
                 null, tankSide, tankCap, separator);
+
+            // Hull ring: the M-05 double-wall segment, open cavity.
+            StoreIcon(PartKind.HullRing, null,
+                PartCatalog.MeasureHullRing(
+                    PartCatalog.HullRingDefaultRadius, PartCatalog.HullRingDefaultHeight, false),
+                null, tankSide, tankCap, separator);
         }
 
         /// <summary>
@@ -235,7 +243,7 @@ namespace Galilego.Building
         /// is unavailable.
         /// </summary>
         public Texture2D CaptureIcon(PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
-            Material tankSide, Material tankCap, Material separator)
+            Material tankSide, Material tankCap, Material separator, bool hullRingSealed = false)
         {
             EnsureRig();
             if (rig == null || metrics.Radius <= 0f)
@@ -287,7 +295,7 @@ namespace Galilego.Building
                 SetExposureDebugMode(ExposureDebugMode.None);
             }
 
-            Texture2D texture = CaptureIconPixels(kind, metrics, engine, tankSide, tankCap, separator);
+            Texture2D texture = CaptureIconPixels(kind, metrics, engine, tankSide, tankCap, separator, hullRingSealed);
 
             if (hadExposureDebug && previousExposureDebug != ExposureDebugMode.None)
             {
@@ -318,7 +326,7 @@ namespace Galilego.Building
         }
 
         private Texture2D CaptureIconPixels(PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
-            Material tankSide, Material tankCap, Material separator)
+            Material tankSide, Material tankCap, Material separator, bool hullRingSealed = false)
         {
             if (kind == PartKind.Fairing)
             {
@@ -326,7 +334,8 @@ namespace Galilego.Building
             }
 
             PartCatalog.PartVisual visual = PartCatalog.CreateVisual(
-                kind, metrics, engine, tankSide, tankCap, separator, spinner, withCollider: false);
+                kind, metrics, engine, tankSide, tankCap, separator, spinner,
+                withCollider: false, hullRingSealed: hullRingSealed);
             if (visual == null || visual.Root == null)
             {
                 return null;
@@ -334,12 +343,16 @@ namespace Galilego.Building
 
             SetLayerRecursive(visual.Root, IconLayer);
 
-            // The separator ring is flat: raise the camera slightly, otherwise
-            // the frame shows a thin stripe instead of a ring (light stays sun-based).
+            // The separator and the hull ring are flat: raise the camera slightly,
+            // otherwise the frame shows a thin stripe instead of a ring.
             Vector3 direction = ViewDirection();
             if (kind == PartKind.Separator)
             {
                 direction = (direction + (Vector3.up * 0.60f)).normalized;
+            }
+            else if (kind == PartKind.HullRing)
+            {
+                direction = (direction + (Vector3.up * 0.45f)).normalized;
             }
 
             Frame(metrics, direction, IconMargin);
@@ -879,7 +892,7 @@ namespace Galilego.Building
         }
 
         private void Rebuild(PartKind nextKind, PartMetrics metrics, PartCatalog.EngineTemplate engine,
-            Material tankSide, Material tankCap, Material separator)
+            Material tankSide, Material tankCap, Material separator, bool hullRingSealed = false)
         {
             if (nextKind == PartKind.Fairing)
             {
@@ -891,6 +904,7 @@ namespace Galilego.Building
             radius = metrics.Radius;
             topRadius = metrics.TopRadius;
             height = metrics.Height;
+            this.hullRingSealed = hullRingSealed;
 
             if (visual != null && visual.Root != null)
             {
@@ -898,7 +912,8 @@ namespace Galilego.Building
                 Object.Destroy(visual.Root);
             }
 
-            visual = PartCatalog.CreateVisual(kind, metrics, engine, tankSide, tankCap, separator, spinner, withCollider: false);
+            visual = PartCatalog.CreateVisual(kind, metrics, engine, tankSide, tankCap, separator, spinner,
+                withCollider: false, hullRingSealed: hullRingSealed);
             if (visual == null || visual.Root == null)
             {
                 return;

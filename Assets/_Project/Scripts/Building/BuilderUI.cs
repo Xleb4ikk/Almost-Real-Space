@@ -67,6 +67,7 @@ namespace Galilego.Building
             entries.Add(new CatalogEntry(PartKind.FuelTank, null));
             entries.Add(new CatalogEntry(PartKind.Separator, null));
             entries.Add(new CatalogEntry(PartKind.Fairing, null));
+            entries.Add(new CatalogEntry(PartKind.HullRing, null));
             entries.Add(new CatalogEntry(PartKind.Capsule, null));
             entries.Add(new CatalogEntry(PartKind.RcsBlock, null));
             return entries.ToArray();
@@ -245,6 +246,7 @@ namespace Galilego.Building
                 AssignPreset(3, Builder.DefaultPreset(PartKind.Capsule));
                 AssignPreset(4, Builder.DefaultPreset(PartKind.RcsBlock));
                 AssignPreset(5, Builder.DefaultPreset(PartKind.Fairing));
+                AssignPreset(6, Builder.DefaultPreset(PartKind.HullRing));
             }
 
             hotbarIndex = 0;
@@ -514,14 +516,16 @@ namespace Galilego.Building
 
             PartPreset preset = StatsPreset();
             preview.Ensure(preset.Kind, Builder.MetricsFor(preset), Builder.EngineFor(preset),
-                Builder.TankSideMaterial, Builder.TankCapMaterial, Builder.SeparatorMaterial);
+                Builder.TankSideMaterial, Builder.TankCapMaterial, Builder.SeparatorMaterial,
+                false);
         }
 
         /// <summary>Re-render the slot icon for its current sizes.</summary>
         private bool CaptureSlotIcon(HotSlot slot)
         {
             Texture2D texture = preview.CaptureIcon(slot.Preset.Kind, Builder.MetricsFor(slot.Preset),
-                Builder.EngineFor(slot.Preset), Builder.TankSideMaterial, Builder.TankCapMaterial, Builder.SeparatorMaterial);
+                Builder.EngineFor(slot.Preset), Builder.TankSideMaterial, Builder.TankCapMaterial,
+                Builder.SeparatorMaterial, false);
             if (texture != null)
             {
                 SetIcon(slot, texture, owned: true);
@@ -757,10 +761,12 @@ namespace Galilego.Building
             PartKind kind = slot.Preset.Kind;
             bool tank = kind == PartKind.FuelTank;
             bool rcs = kind == PartKind.RcsBlock || kind == PartKind.Fairing;
-            bool hasSize = kind != PartKind.Engine && !rcs;
+            bool hullRing = kind == PartKind.HullRing;
+            bool hasSize = kind != PartKind.Engine && !rcs && !hullRing;
             int editors = tank ? (slot.Preset.Form == TankForm.Cone ? 3 : 2) : 1;
-            float bodyH = hasSize || rcs
-                ? (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f) + (editors * EditorHeight)
+            float bodyH = hasSize || rcs || hullRing
+                ? (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f)
+                    + (editors * EditorHeight)
                 : 3f * 26f;
             float menuH = 46f + bodyH + 16f;
 
@@ -823,6 +829,15 @@ namespace Galilego.Building
                 int count = petals ? FairingShell.ClampPetals(preset.Count) : RcsBlockPlacement.ClampCount(preset.Count);
                 DrawCountEditor(px, ref py, pw, petals ? "Долек обтекателя" : "Блоков по кольцу", ref count, SlotMenuIdBase + 40, petals);
                 preset.Count = count;
+            }
+            else if (hullRing)
+            {
+                // Diameter is not a preset value: the ring takes the host node's
+                // radius. Height is the default for a plain click; the aim drag
+                // overrides it at placement. Empty-hand RMB on the placed ring
+                // seals/unseals its liner.
+                DrawEditor(px, ref py, pw, "Высота кольца", ref preset.Height,
+                    PartCatalog.HullRingMinHeight, PartCatalog.HullRingMaxHeight, SlotMenuIdBase + 10, "F2");
             }
             else if (hasSize)
             {
@@ -1060,6 +1075,11 @@ namespace Galilego.Building
             {
                 dims = "   <color=#9AA0A8>" + FairingShell.PetalsLabel(FairingShell.ClampPetals(preset.Count)) + "</color>";
             }
+            else if (preset.Kind == PartKind.HullRing)
+            {
+                dims = "   <color=#9AA0A8>Ø по узлу  ·  H " + m.Height.ToString("F2")
+                    + " м  ·  ПКМ (пусто) — запаять/распаять</color>";
+            }
             else if (preset.Kind == PartKind.Capsule)
             {
                 dims = "   <color=#9AA0A8>Ø " + (m.Radius * 2f).ToString("F1") + " м  ·  H "
@@ -1109,6 +1129,7 @@ namespace Galilego.Building
                 new[] { "R" },
                 new[] { "Ctrl" },
                 new[] { "X", "Z" },
+                new[] { "ПКМ" },
                 new[] { "H" }
             };
             string[] labels =
@@ -1122,6 +1143,7 @@ namespace Galilego.Building
                 "Физика (удерж. 1 с)",
                 "Курсор (удерж.)",
                 "РСУ: блоков в кольце",
+                "Пустой рукой: лайнер",
                 "Скрыть подсказки"
             };
 
@@ -1341,7 +1363,8 @@ namespace Galilego.Building
             {
                 case 1: return kind == PartKind.Engine || kind == PartKind.RcsBlock;
                 case 2: return kind == PartKind.FuelTank;
-                case 3: return kind == PartKind.Separator || kind == PartKind.Capsule || kind == PartKind.Fairing;
+                case 3: return kind == PartKind.Separator || kind == PartKind.Capsule
+                    || kind == PartKind.Fairing || kind == PartKind.HullRing;
                 default: return true;
             }
         }
@@ -1516,18 +1539,22 @@ namespace Galilego.Building
             bool engine = kind == PartKind.Engine;
             bool capsule = kind == PartKind.Capsule;
             bool rcs = kind == PartKind.RcsBlock || kind == PartKind.Fairing;
+            bool hullRing = kind == PartKind.HullRing;
 
             // Stats rows: an engine has mass, propellant, thrust, Isp, flow,
             // expansion ratio, joint strength. A capsule has mass, diameter,
             // height and joint strength; it has no sizes.
-            int rows = engine ? 7 : (kind == PartKind.FuelTank ? 7 : (capsule ? 4 : (rcs ? 4 : 3)));
+            int rows = engine ? 7
+                : (kind == PartKind.FuelTank ? 7
+                    : (capsule ? 4 : (rcs ? 4 : (hullRing ? 6 : 3))));
             int editors = engine || capsule ? 0 : (tank ? (IsCone(m) ? 3 : 2) : 1);
 
             // Editors (shape, load, sizes): heading + label/button rows. A size
             // editor takes a label + a button row (EditorHeight). A tank adds
             // two rows: tank shape and load.
             float extras = editors > 0
-                ? 26f + (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f) + (editors * EditorHeight)
+                ? 26f + (tank ? ShapeRowHeight + LoadRowHeight(PropellantLoads.All.Count) : 0f)
+                    + (editors * EditorHeight)
                 : 0f;
 
             // The column is a stack of rounded blocks: preview (with the name
@@ -1625,6 +1652,12 @@ namespace Galilego.Building
                     AddStat(x, ref y, w, "Долек", FairingShell.ClampPetals(layout.Preset.Count) + " шт.");
                     AddStat(x, ref y, w, "Масса оболочки", "≈ " + FairingShell.ArealDensityKgPerM2.ToString("0") + " кг/м²");
                     break;
+                case PartKind.HullRing:
+                    AddStat(x, ref y, w, "Диаметр", "по узлу хоста");
+                    AddStat(x, ref y, w, "Высота", m.Height.ToString("F2") + " м");
+                    AddStat(x, ref y, w, "Стена", "128 мм = 16 / 96 / 16");
+                    AddStat(x, ref y, w, "Лайнер", "ПКМ пустой рукой — запаять/распаять");
+                    break;
                 case PartKind.RcsBlock:
                 {
                     int ring = RcsBlockPlacement.ClampCount(layout.Preset.Count);
@@ -1691,6 +1724,16 @@ namespace Galilego.Building
                 int count = petals ? FairingShell.ClampPetals(preset.Count) : RcsBlockPlacement.ClampCount(preset.Count);
                 DrawCountEditor(x, ref y, w, petals ? "Долек обтекателя" : "Блоков по кольцу", ref count, 40, petals);
                 preset.Count = count;
+                if (!SamePreset(before, preset))
+                {
+                    ApplyPresetEdit(layout.Owner, layout.Card, preset);
+                }
+            }
+            else if (kind == PartKind.HullRing)
+            {
+                PartPreset before = preset;
+                DrawEditor(x, ref y, w, "Высота кольца", ref preset.Height,
+                    PartCatalog.HullRingMinHeight, PartCatalog.HullRingMaxHeight, 40, "F2");
                 if (!SamePreset(before, preset))
                 {
                     ApplyPresetEdit(layout.Owner, layout.Card, preset);
@@ -1994,6 +2037,11 @@ namespace Galilego.Building
                     return "Плита-основание процедурного обтекателя. После установки ПКМ строит оболочку сегментами: высота и радиус — по прицелу. Замыкается на нижнем крае детали выше или носовым конусом."
                         + "\n<b>Долек: X / Z. Завершить: F. Alt+ПКМ — убрать секцию. Сбросить в полёте: B.</b>"
                         + "\nГотовый обтекатель снова редактируется: прицельтесь в него и нажмите ПКМ (деталь в руке не нужна).";
+                case PartKind.HullRing:
+                    return "Кольцо корпуса M-05: двойная стенка 128 мм — 16 мм обшивка, 96 мм пустая полость под трубы и провода, 16 мм лайнер. Диаметр берётся у узла хоста."
+                        + "\n<b>ПКМ с зажатием: ведите прицел вверх-вниз — высота; отпустите — поставить.</b> Кольцо ставится открытым."
+                        + "\n<b>Запаять/распаять: пустая рука (слот 8/9), прицельтесь в кольцо и нажмите ПКМ.</b>"
+                        + "\n<b>Снаружи: зелёная полоса — полость открыта, янтарная — запаяно.</b>";
                 case PartKind.Capsule:
                     return "Экипажный модуль Orion. Габариты и масса определяются моделью."
                         + "\n<b>Размеры фиксированные.</b>";
@@ -2549,6 +2597,7 @@ namespace Galilego.Building
                 case PartKind.Capsule: return "Модуль экипажа · фиксированный";
                 case PartKind.RcsBlock: return "Блок РСУ · радиальный";
                 case PartKind.Fairing: return "Обтекатель · процедурный";
+                case PartKind.HullRing: return "Кольцо корпуса M-05 · двойная стенка";
                 default: return "Разделение ступеней";
             }
         }

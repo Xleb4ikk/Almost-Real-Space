@@ -31,6 +31,15 @@ namespace Galilego.Building
         public const float SeparatorMinRadius = 0.3f;
         public const float SeparatorMaxRadius = 5f;
 
+        // Hull ring (M-05): diameter comes from the host node, the player picks
+        // the height with the aim. Wall 128 mm = 16 outer + 96 cavity + 16 liner.
+        public const float HullRingDefaultRadius = 1.5f;
+        public const float HullRingDefaultHeight = 1f;
+        public const float HullRingMinRadius = 0.3f;
+        public const float HullRingMaxRadius = 5f;
+        public const float HullRingMinHeight = 0.2f;
+        public const float HullRingMaxHeight = 6f;
+
         // Physics placeholders
         private const double SeparatorSteelDensity = 7850d;
 
@@ -63,6 +72,7 @@ namespace Galilego.Building
                 case PartKind.Capsule: return "Капсула Orion";
                 case PartKind.RcsBlock: return "Блок РСУ";
                 case PartKind.Fairing: return "Обтекатель";
+                case PartKind.HullRing: return "Кольцо корпуса M-05";
                 default: return "Отделитель";
             }
         }
@@ -97,6 +107,10 @@ namespace Galilego.Building
                 case PartKind.Fairing:
                     radius = Mathf.Clamp(radius, SeparatorMinRadius, TankMaxRadius);
                     height = ProceduralSeparator.Thickness;
+                    break;
+                case PartKind.HullRing:
+                    radius = Mathf.Clamp(radius, HullRingMinRadius, HullRingMaxRadius);
+                    height = Mathf.Clamp(height, HullRingMinHeight, HullRingMaxHeight);
                     break;
                 case PartKind.Capsule:
                     // Capsule sizes are fixed by the model — leave them alone.
@@ -171,6 +185,9 @@ namespace Galilego.Building
                     // Base plate only; the shell mass is added by MeasureFairing as sections are built.
                     return MeasureFairing(bottomRadius, 0d);
 
+                case PartKind.HullRing:
+                    return MeasureHullRing(bottomRadius, height, false);
+
                 case PartKind.Capsule:
                     // Dimensions come from the model (CapsuleTemplate); input numbers are irrelevant.
                     return Capsule != null ? Capsule.Metrics : default;
@@ -186,6 +203,127 @@ namespace Galilego.Building
                 default:
                     return engine != null ? engine.Metrics : default;
             }
+        }
+
+        // ─── Hull ring (M-05) ────────────────────────────────────────────────
+
+        /// <summary>
+        /// Hull ring metrics: the radius comes from the host node (the outer skin
+        /// is flush with it), the height from the aim. The mass follows the state:
+        /// an open ring has no liner panels.
+        /// </summary>
+        public static PartMetrics MeasureHullRing(float radius, float height, bool sealedRing)
+        {
+            radius = Mathf.Clamp(radius, HullRingMinRadius, HullRingMaxRadius);
+            height = Mathf.Clamp(height, HullRingMinHeight, HullRingMaxHeight);
+            double mass = ProceduralHullRing.EstimateMassKg(radius, height, sealedRing);
+            return new PartMetrics(radius, radius, height, height * 0.5f, 0f, height,
+                mass, TankJointNewtons, 1e12d);
+        }
+
+        /// <summary>Hull-ring materials (registered by the builder).</summary>
+        public static Material HullRingHullMaterial { get; private set; }
+
+        public static Material HullRingPrimerMaterial { get; private set; }
+
+        public static Material HullRingLinerMaterial { get; private set; }
+
+        public static Material HullRingSolderMaterial { get; private set; }
+
+        public static Material HullRingSteelMaterial { get; private set; }
+
+        /// <summary>External status band: green — cavity open, amber — liner sealed.</summary>
+        public static Material HullRingIndicatorOpenMaterial { get; private set; }
+
+        public static Material HullRingIndicatorSealedMaterial { get; private set; }
+
+        public static void RegisterHullRingMaterials(
+            Material hull, Material primer, Material liner, Material solder, Material steel,
+            Material indicatorOpen, Material indicatorSealed)
+        {
+            HullRingHullMaterial = hull;
+            HullRingPrimerMaterial = primer;
+            HullRingLinerMaterial = liner;
+            HullRingSolderMaterial = solder;
+            HullRingSteelMaterial = steel;
+            HullRingIndicatorOpenMaterial = indicatorOpen;
+            HullRingIndicatorSealedMaterial = indicatorSealed;
+        }
+
+        /// <summary>
+        /// Create the five M-05 materials on demand (builder, icon renderer, edit-mode
+        /// tests). Without this, a visual built before the builder's Awake gets null
+        /// materials and renders pink.
+        /// </summary>
+        public static void EnsureHullRingMaterials()
+        {
+            if (HullRingHullMaterial != null)
+            {
+                return;
+            }
+
+            Material hull = CreateHullRingMaterial(
+                "HullRingHull", new Color(0.63f, 0.645f, 0.655f), 1f, 0.50f);
+            Material primer = CreateHullRingMaterial(
+                "HullRingPrimer", new Color(0.10f, 0.28f, 0.12f), 0f, 0.22f);
+            // The cavity is deep and shadowed: a faint green self-lit term keeps
+            // the 96 mm recess readable instead of a black hole.
+            primer.SetColor("_EmissiveColor", new Color(0.010f, 0.030f, 0.012f));
+            primer.SetFloat("_EmissiveColorMode", 1f);
+            primer.SetFloat("_EmissiveIntensity", 1f);
+            Material liner = CreateHullRingMaterial(
+                "HullRingLiner", new Color(0.50f, 0.48f, 0.42f), 0f, 0.25f, true);
+            // The liner sits inside a closed cavity and gets almost no direct
+            // light; a faint warm self-lit term keeps it readable as a sealed wall.
+            liner.SetColor("_EmissiveColor", new Color(0.025f, 0.023f, 0.018f));
+            liner.SetColor("_EmissiveColorLDR", new Color(0.025f, 0.023f, 0.018f));
+            liner.SetFloat("_EmissiveColorMode", 1f);
+            liner.SetFloat("_EmissiveIntensity", 1f);
+            Material solder = CreateHullRingMaterial(
+                "HullRingSolder", new Color(0.16f, 0.13f, 0.11f), 1f, 0.45f, true);
+            Material steel = CreateHullRingMaterial(
+                "HullRingSteel", new Color(0.20f, 0.21f, 0.22f), 1f, 0.48f);
+            Material indicatorOpen = CreateHullRingMaterial(
+                "HullRingIndicatorOpen", new Color(0.055f, 0.42f, 0.10f), 0f, 0.30f);
+            indicatorOpen.SetColor("_EmissiveColor", new Color(0.020f, 0.110f, 0.030f));
+            indicatorOpen.SetFloat("_EmissiveColorMode", 1f);
+            indicatorOpen.SetFloat("_EmissiveIntensity", 1f);
+            Material indicatorSealed = CreateHullRingMaterial(
+                "HullRingIndicatorSealed", new Color(0.72f, 0.36f, 0.055f), 0f, 0.30f);
+            indicatorSealed.SetColor("_EmissiveColor", new Color(0.130f, 0.050f, 0.005f));
+            indicatorSealed.SetFloat("_EmissiveColorMode", 1f);
+            indicatorSealed.SetFloat("_EmissiveIntensity", 1f);
+            RegisterHullRingMaterials(hull, primer, liner, solder, steel, indicatorOpen, indicatorSealed);
+        }
+
+        private static Material CreateHullRingMaterial(
+            string name, Color color, float metallic, float smoothness, bool doubleSided = false)
+        {
+            Shader shader = Shader.Find("HDRP/Lit");
+            if (shader == null)
+            {
+                Debug.LogError("[HullRing] шейдер HDRP/Lit не найден.");
+                return null;
+            }
+
+            var material = new Material(shader) { name = name, hideFlags = HideFlags.DontSave };
+            material.SetColor("_BaseColor", color);
+            material.SetFloat("_Metallic", metallic);
+            material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat("_SmoothnessTextureChannel", 0f);
+            if (doubleSided)
+            {
+                // The liner is a concave surface seen from inside the ring: a
+                // single-sided HDRP material culls it and the cavity shows through.
+                material.SetFloat("_DoubleSidedEnable", 1f);
+                material.SetFloat("_CullMode", 0f);
+                material.SetFloat("_CullModeForward", 0f);
+                material.SetFloat("_DoubleSidedNormalMode", 0f);
+                material.EnableKeyword("_DOUBLESIDED_ON");
+            }
+
+            material.enableInstancing = true;
+            return material;
         }
 
         // ─── Fairing ─────────────────────────────────────────────────────────
@@ -356,6 +494,34 @@ namespace Galilego.Building
         }
 
         /// <summary>
+        /// Player collision of a hull ring: a ring of convex boxes through the
+        /// wall (24 sectors). The centre stays open, so the crew can walk inside;
+        /// the box tops form the flange floor. A convex MeshCollider of the whole
+        /// ring would fill the passage with a solid disc.
+        /// </summary>
+        private static void BuildHullRingWallColliders(Transform root, float radius, float height)
+        {
+            const int sectors = 24;
+            const float wall = 0.128f;
+            float chord = 2f * radius * Mathf.Tan(Mathf.PI / sectors);
+            float centerRadius = Mathf.Max(0.05f, radius - (wall * 0.5f));
+
+            for (int i = 0; i < sectors; i++)
+            {
+                float angle = (Mathf.PI * 2f * i) / sectors;
+                float ca = Mathf.Cos(angle);
+                float sa = Mathf.Sin(angle);
+                var go = new GameObject("HullRingWall " + (i + 1));
+                go.transform.SetParent(root, false);
+                go.transform.localPosition = new Vector3(ca * centerRadius, height * 0.5f, sa * centerRadius);
+                go.transform.localRotation = Quaternion.LookRotation(new Vector3(ca, 0f, sa), Vector3.up);
+
+                var box = go.AddComponent<BoxCollider>();
+                box.size = new Vector3(chord, height, wall);
+            }
+        }
+
+        /// <summary>
         /// Build the part visual for ready metrics. Original materials are
         /// captured; the ghost overlay is painted separately (SetMaterial).
         /// withCollider: placed parts get a collider marked with VesselPartCollider
@@ -366,7 +532,7 @@ namespace Galilego.Building
         public static PartVisual CreateVisual(
             PartKind kind, PartMetrics metrics, EngineTemplate engine,
             Material tankSide, Material tankCap, Material separatorMaterial, Transform parent,
-            bool withCollider = true)
+            bool withCollider = true, bool hullRingSealed = false)
         {
             var root = new GameObject(DisplayName(kind, engine != null ? engine.Spec : null));
             root.transform.SetParent(parent, false);
@@ -405,6 +571,25 @@ namespace Galilego.Building
                         ? FairingShell.CreateDemo(metrics.Radius, metrics.Height)
                         : new FairingShell();
                     fairing.Rebuild();
+                    break;
+                }
+
+                case PartKind.HullRing:
+                {
+                    EnsureHullRingMaterials();
+                    var ring = root.AddComponent<ProceduralHullRing>();
+                    ring.Radius = metrics.Radius;
+                    ring.Height = metrics.Height;
+                    ring.Sealed = hullRingSealed;
+                    ring.HullMaterial = HullRingHullMaterial != null ? HullRingHullMaterial : tankSide;
+                    ring.PrimerMaterial = HullRingPrimerMaterial != null ? HullRingPrimerMaterial : tankCap;
+                    ring.LinerMaterial = HullRingLinerMaterial != null ? HullRingLinerMaterial : tankCap;
+                    ring.SolderMaterial = HullRingSolderMaterial != null ? HullRingSolderMaterial : tankSide;
+                    ring.SteelMaterial = HullRingSteelMaterial != null ? HullRingSteelMaterial : tankSide;
+                    ring.IndicatorMaterial = hullRingSealed
+                        ? (HullRingIndicatorSealedMaterial != null ? HullRingIndicatorSealedMaterial : tankSide)
+                        : (HullRingIndicatorOpenMaterial != null ? HullRingIndicatorOpenMaterial : tankSide);
+                    ring.Rebuild();
                     break;
                 }
 
@@ -517,7 +702,14 @@ namespace Galilego.Building
                 else
                 {
                     MeshFilter filter = root.GetComponent<MeshFilter>();
-                    if ((kind == PartKind.FuelTank || kind == PartKind.Separator || kind == PartKind.Fairing)
+                    if (kind == PartKind.HullRing)
+                    {
+                        // The ring is a hollow tube: a convex hull would seal the
+                        // passage. Convex wall sectors keep the hole walkable and
+                        // give the top flange a floor for the player.
+                        BuildHullRingWallColliders(root.transform, metrics.Radius, metrics.Height);
+                    }
+                    else if ((kind == PartKind.FuelTank || kind == PartKind.Separator || kind == PartKind.Fairing)
                         && filter != null && filter.sharedMesh != null)
                     {
                         // Tank/separator: the procedural mesh is already the exact body

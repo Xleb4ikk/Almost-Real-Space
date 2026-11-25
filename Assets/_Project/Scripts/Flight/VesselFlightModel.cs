@@ -97,6 +97,7 @@ namespace Galilego.Flight
                     BreakTorqueNm = d.BreakTorqueNm, Offset = d.Offset, Shape = d.Shape, Dimensions = d.Dimensions,
                     Orientation = d.Orientation, ParentIndex = d.ParentIndex, JointAnchor = d.JointAnchor,
                     EngineOffset = d.EngineOffset, PlayerPassthrough = d.PlayerPassthrough,
+                    IsCrewCapsule = d.IsCrewCapsule,
                 });
             }
 

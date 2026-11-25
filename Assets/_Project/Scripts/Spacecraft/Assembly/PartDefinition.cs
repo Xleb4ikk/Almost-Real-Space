@@ -54,5 +54,11 @@ namespace Galilego.Spacecraft
         /// them out of the volume.
         /// </summary>
         public bool PlayerPassthrough;
+
+        /// <summary>
+        /// True for the crew capsule. PlayerPassthrough is also set on other hollow
+        /// parts (the hull ring), so the capsule cannot be found by that flag alone.
+        /// </summary>
+        public bool IsCrewCapsule;
     }
 }

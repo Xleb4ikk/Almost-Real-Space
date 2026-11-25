@@ -17,6 +17,7 @@ namespace Galilego.Building
         private static Texture2D engine;
         private static Texture2D tank;
         private static Texture2D separator;
+        private static Texture2D hullRing;
 
         private static readonly System.Collections.Generic.Dictionary<string, Texture2D> overrides =
             new System.Collections.Generic.Dictionary<string, Texture2D>();
@@ -57,6 +58,13 @@ namespace Galilego.Building
                     }
 
                     return separator;
+                case PartKind.HullRing:
+                    if (hullRing == null)
+                    {
+                        hullRing = DrawHullRing();
+                    }
+
+                    return hullRing;
                 default:
                     if (tank == null)
                     {
@@ -111,6 +119,62 @@ namespace Galilego.Building
             DrawEllipse(pixels, centerX, top - 1, halfWidth * 0.82f, 3.4f, new Color(0.50f, 0.56f, 0.63f));
             DrawEllipse(pixels, centerX, bottom, halfWidth, 5f, new Color(0.22f, 0.26f, 0.31f));
             Outline(pixels, left, top, right, bottom, new Color(0.14f, 0.17f, 0.21f));
+            return Finish(pixels);
+        }
+
+        // ─── Hull ring: short double-wall segment, three-quarter view ─────────
+
+        private static Texture2D DrawHullRing()
+        {
+            var pixels = NewCanvas(new Color(0f, 0f, 0f, 0f));
+            int cx = Size / 2;
+            int topY = 34;
+            int bottomY = 64;
+            const float rx = 36f;
+            const float ry = 11f;
+
+            // Metal body: elliptical cross-sections blended into a cylinder.
+            for (int y = topY; y <= bottomY; y++)
+            {
+                float t = (y - ((topY + bottomY) * 0.5f)) / ((bottomY - topY) * 0.5f);
+                float half = rx * Mathf.Sqrt(Mathf.Max(0f, 1f - (t * t * 0.35f)));
+                for (int x = cx - Mathf.RoundToInt(half); x <= cx + Mathf.RoundToInt(half); x++)
+                {
+                    float shade = 0.62f + (0.38f * Mathf.Cos(((x - cx) / half) * Mathf.PI * 0.5f));
+                    Set(pixels, x, y, new Color(0.52f * shade, 0.55f * shade, 0.58f * shade));
+                }
+            }
+
+            // Flanges: near and far rims of the top/bottom ellipses.
+            DrawEllipse(pixels, cx, topY, rx, ry, new Color(0.70f, 0.72f, 0.75f));
+            DrawEllipse(pixels, cx, topY, rx * 0.80f, ry * 0.62f, new Color(0.16f, 0.13f, 0.12f));
+            DrawEllipse(pixels, cx, topY, rx * 0.72f, ry * 0.52f, new Color(0.27f, 0.30f, 0.25f));
+            DrawEllipse(pixels, cx, bottomY, rx, ry, new Color(0.58f, 0.60f, 0.63f));
+            DrawEllipse(pixels, cx, bottomY, rx * 0.72f, ry * 0.52f, new Color(0.15f, 0.16f, 0.18f));
+
+            // Cavity back wall seen through the opening: open primer green.
+            for (int y = topY - 2; y <= topY + 7; y++)
+            {
+                int half = Mathf.RoundToInt((rx * 0.72f) * Mathf.Sqrt(Mathf.Max(0f,
+                    1f - Mathf.Pow((y - topY) / (ry * 0.52f), 2f))));
+                for (int x = cx - half; x <= cx + half; x++)
+                {
+                    Set(pixels, x, y, new Color(0.19f, 0.23f, 0.18f));
+                }
+            }
+
+            // Bolt heads on the near rim of the top flange.
+            for (int i = 0; i < 9; i++)
+            {
+                float a = Mathf.PI * (0.08f + (0.84f * i / 8f));
+                int bx = cx + Mathf.RoundToInt(Mathf.Cos(a) * rx * 0.88f);
+                int by = topY + Mathf.RoundToInt(Mathf.Sin(a) * ry * 0.88f);
+                Set(pixels, bx, by, new Color(0.82f, 0.84f, 0.87f));
+                Set(pixels, bx + 1, by, new Color(0.66f, 0.68f, 0.71f));
+                Set(pixels, bx, by + 1, new Color(0.52f, 0.54f, 0.57f));
+            }
+
+            Outline(pixels, cx - 36, topY - 11, cx + 36, bottomY + 11, new Color(0.13f, 0.15f, 0.17f));
             return Finish(pixels);
         }
 

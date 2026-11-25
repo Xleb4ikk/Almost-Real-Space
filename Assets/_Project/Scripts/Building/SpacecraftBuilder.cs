@@ -137,6 +137,7 @@ namespace Galilego.Building
         private float ghostRadius;
         private float ghostTopRadius;
         private float ghostHeight;
+        private bool ghostHullRingSealed;
         private string ghostEngineId;
         private int deleteTarget = -1;
         private PartCatalog.PartVisual deleteHighlighted;
@@ -283,6 +284,7 @@ namespace Galilego.Building
 
             SyncCatalog();
             RegisterFairingMaterials();
+            RegisterHullRingMaterials();
 
             ghostMaterial = CreateOverlayMaterial(new Color(0.25f, 0.55f, 1f, 0.38f), "GhostBlue");
             invalidMaterial = CreateOverlayMaterial(new Color(1f, 0.25f, 0.2f, 0.38f), "GhostRed");
@@ -386,12 +388,19 @@ namespace Galilego.Building
             }
 
             UpdateRHold();
+            hullRingSealTarget = -1;
 
             if (PhysicsOn)
             {
+                CancelHullRingAim();
                 UpdateStaging();
                 UpdateFairingJettison();
                 return;
+            }
+
+            if (UiOpen)
+            {
+                CancelHullRingAim();
             }
 
             // Alt: delete mode — the aim target turns red, RMB deletes it.
@@ -401,6 +410,7 @@ namespace Galilego.Building
             // is being built, Alt+RMB drops the last section instead of the whole part.
             if (!UiOpen && PlayerInput.Held(GameAction.BuildDelete))
             {
+                CancelHullRingAim();
                 if (fairingBuild != null)
                 {
                     // Editing a shell: Alt is "remove the last section", the red part
@@ -418,12 +428,32 @@ namespace Galilego.Building
             {
                 ClearDeleteHighlight();
 
+                // Empty hand + RMB on an installed ring: seal it (or unseal it
+                // again on the next click). The target also drives the prompt.
+                if (!UiOpen && !HasSelection
+                    && fairingBuild == null && hullRingAim == null)
+                {
+                    hullRingSealTarget = FindAimedHullRingIndex();
+                }
+
                 // The ghost only makes sense near the build site: snapping and
                 // placement are pad-limited. Far away (noclip above the planet) the
                 // air fallback would park a multi-metre part ghost 6 m from the eye,
                 // where it covers the whole view as a dark polygon and hides the sky,
-                // the stars and the atmosphere behind it.
-                if (IsNearBuildSite(MaxGhostPadDistanceMeters))
+                // the stars and the atmosphere behind it. The ring height aim is a
+                // drag in progress: it keeps following the aim even if the player
+                // drifts away from the pad.
+                if (hullRingSealTarget >= 0)
+                {
+                    // Empty hand and a ring under the aim: the same RMB handler
+                    // that continues fairings toggles the liner (seal/unseal).
+                    UpdateEmptyHand();
+                }
+                else if (hullRingAim != null)
+                {
+                    UpdateHullRingAim();
+                }
+                else if (IsNearBuildSite(MaxGhostPadDistanceMeters))
                 {
                     if (fairingBuild != null)
                     {
@@ -1470,6 +1500,17 @@ namespace Galilego.Building
                 case PartKind.RcsBlock:
                     // Fixed model; the ring size is the only preset choice.
                     return new PartPreset { Kind = kind, Count = RcsBlockPlacement.DefaultCount };
+                case PartKind.HullRing:
+                    // Radius is a fallback (a ring on a node takes the node radius).
+                    // Always placed open; an empty-hand RMB on the installed ring
+                    // seals it, the next one unseals it again.
+                    return new PartPreset
+                    {
+                        Kind = kind,
+                        Radius = PartCatalog.HullRingDefaultRadius,
+                        Height = PartCatalog.HullRingDefaultHeight,
+                        Count = 0,
+                    };
                 default:
                     PartCatalog.EngineTemplate engine = DefaultEngine;
                     return new PartPreset
@@ -1497,6 +1538,13 @@ namespace Galilego.Building
                 return PartCatalog.Measure(preset.Kind, 0f, 0f, EngineFor(preset));
             }
 
+            if (preset.Kind == PartKind.HullRing)
+            {
+                // Diameter is replaced by the host node at placement; the height
+                // is the preset's. The liner state depends on Ctrl at placement.
+                return PartCatalog.MeasureHullRing(preset.Radius, preset.Height, false);
+            }
+
             return PartCatalog.Measure(preset.Kind, preset.Radius, 0f, DefaultEngine);
         }
 
@@ -1515,7 +1563,8 @@ namespace Galilego.Building
         public PlacedPart AddPart(
             PartKind kind, PartMetrics metrics, Vector3 pivot, int parentIndex, bool parentOnTop,
             PartCatalog.EngineTemplate engineTemplate = null,
-            Quaternion rotation = default, bool radial = false, int group = 0)
+            Quaternion rotation = default, bool radial = false, int group = 0,
+            bool hullRingSealed = false)
         {
             PartCatalog.EngineTemplate visualEngine = kind == PartKind.Engine
                 ? (engineTemplate != null ? engineTemplate : DefaultEngine)
@@ -1544,11 +1593,12 @@ namespace Galilego.Building
                     ? new Vector3(0f, 0f, RcsBlockPlacement.BodyCenterOutward)
                     : Vector3.zero,
                 EngineSpec = visualEngine != null ? visualEngine.Spec : null,
+                Sealed = kind == PartKind.HullRing && hullRingSealed,
             };
 
             part.Visual = PartCatalog.CreateVisual(
                 kind, metrics, visualEngine, TankSideMaterial, TankCapMaterial, SeparatorMaterial,
-                ShipTransform);
+                ShipTransform, hullRingSealed: part.Sealed);
 
             parts.Add(part);
 
@@ -1581,6 +1631,13 @@ namespace Galilego.Building
         /// <summary>Remove the last placed part (Ctrl+Z); an RCS ring goes as a whole.</summary>
         public void RemoveLast()
         {
+            if (hullRingAim != null)
+            {
+                // Ctrl+Z during the ring height drag cancels the drag, not the ring.
+                CancelHullRingAim();
+                return;
+            }
+
             if (parts.Count == 0)
             {
                 return;
@@ -1620,6 +1677,11 @@ namespace Galilego.Building
             }
 
             PlacedPart part = parts[index];
+            if (hullRingAim != null && hullRingAim.HostIndex == index)
+            {
+                CancelHullRingAim();
+            }
+
             for (int i = 0; i < parts.Count; i++)
             {
                 if (i == index || parts[i].ParentIndex != index)
@@ -1691,6 +1753,7 @@ namespace Galilego.Building
             parts.Clear();
             fairingBuild = null;
             HideFairingSectionGhost();
+            CancelHullRingAim();
         }
 
         /// <summary>
@@ -1736,11 +1799,15 @@ namespace Galilego.Building
                     colliders[c].excludeLayers = enabled ? 0 : ~0;
                 }
 
-                // Inside the zone a proxy body represents every part except the capsule.
+                // Inside the zone a proxy body represents every stack part except the
+                // capsule and the hull ring: their hollow interiors keep the exact
+                // visual colliders (PlayerPassthrough in BuildMath).
                 VesselPartCollider marker = part.Visual.Root.GetComponentInParent<VesselPartCollider>();
                 if (marker != null)
                 {
-                    marker.VisualCovered = !enabled && part.Kind != PartKind.Capsule;
+                    marker.VisualCovered = !enabled
+                        && part.Kind != PartKind.Capsule
+                        && part.Kind != PartKind.HullRing;
                 }
 
                 // Fairing petals: no colliders in build mode (the player walks through), solid in physics.
@@ -1808,7 +1875,7 @@ namespace Galilego.Building
             if (!HasSelection)
             {
                 // Empty hand: RMB on a fairing still continues it.
-                UpdateEmptyHandFairing();
+                UpdateEmptyHand();
                 return;
             }
 
@@ -1821,6 +1888,12 @@ namespace Galilego.Building
             if (SelectedPreset.Kind == PartKind.Fairing)
             {
                 UpdateFairingPlacement();
+                return;
+            }
+
+            if (SelectedPreset.Kind == PartKind.HullRing)
+            {
+                UpdateHullRingPlacement();
                 return;
             }
 
@@ -2256,6 +2329,12 @@ namespace Galilego.Building
                 return;
             }
 
+            if (SelectedPreset.Kind == PartKind.HullRing)
+            {
+                BeginHullRingAim();
+                return;
+            }
+
             PartCatalog.EngineTemplate selectedEngine = SelectedPreset.Kind == PartKind.Engine
                 ? EngineFor(SelectedPreset)
                 : null;
@@ -2273,7 +2352,8 @@ namespace Galilego.Building
         }
 
         private void EnsureGhost(
-            PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engineTemplate)
+            PartKind kind, PartMetrics metrics, PartCatalog.EngineTemplate engineTemplate,
+            bool hullRingSealed = false)
         {
             string engineId = engineTemplate != null && engineTemplate.Spec != null
                 ? engineTemplate.Spec.Id
@@ -2281,6 +2361,7 @@ namespace Galilego.Building
             bool same = ghost != null
                 && ghostKind == kind
                 && ghostEngineId == engineId
+                && ghostHullRingSealed == hullRingSealed
                 && Mathf.Abs(ghostRadius - metrics.Radius) < 1e-4f
                 && Mathf.Abs(ghostTopRadius - metrics.TopRadius) < 1e-4f
                 && Mathf.Abs(ghostHeight - metrics.Height) < 1e-4f;
@@ -2297,9 +2378,10 @@ namespace Galilego.Building
             ghost = PartCatalog.CreateVisual(
                 kind, metrics, engineTemplate,
                 TankSideMaterial, TankCapMaterial, SeparatorMaterial, Zone.transform,
-                withCollider: false);
+                withCollider: false, hullRingSealed: hullRingSealed);
             ghostKind = kind;
             ghostEngineId = engineId;
+            ghostHullRingSealed = hullRingSealed;
             ghostRadius = metrics.Radius;
             ghostTopRadius = metrics.TopRadius;
             ghostHeight = metrics.Height;

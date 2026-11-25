@@ -820,7 +820,7 @@ namespace Galilego.Tablet
             return false;
         }
 
-        /// <summary>Index of the crew capsule (the PlayerPassthrough part), −1 if none.</summary>
+        /// <summary>Index of the crew capsule (IsCrewCapsule), −1 if none.</summary>
         private int FindCapsulePart(out PartDefinition def)
         {
             PartDefinition[] defs = Runner != null && Runner.Flight != null
@@ -830,7 +830,7 @@ namespace Galilego.Tablet
             {
                 for (int i = 0; i < defs.Length; i++)
                 {
-                    if (defs[i] != null && defs[i].PlayerPassthrough)
+                    if (defs[i] != null && defs[i].IsCrewCapsule)
                     {
                         def = defs[i];
                         return i;

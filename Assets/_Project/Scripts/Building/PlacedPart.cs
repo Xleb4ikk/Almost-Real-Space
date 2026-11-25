@@ -13,7 +13,10 @@ namespace Galilego.Building
         RcsBlock = 4,
 
         /// <summary>Fairing base plate; the shell (PlacedPart.Fairing) is built on top of it.</summary>
-        Fairing = 5
+        Fairing = 5,
+
+        /// <summary>M-05 double-wall hull ring: a stack segment, diameter follows the host.</summary>
+        HullRing = 6
     }
 
     /// <summary>
@@ -196,6 +199,12 @@ namespace Galilego.Building
 
         /// <summary>Fairing shell (PartKind.Fairing only; null for other parts).</summary>
         public FairingShell Fairing;
+
+        /// <summary>
+        /// Hull ring (PartKind.HullRing only): true — the inner liner panels are
+        /// installed (cavity closed); false — the cavity is open.
+        /// </summary>
+        public bool Sealed;
 
         /// <summary>Something already sits on the top node.</summary>
         public bool TopOccupied;

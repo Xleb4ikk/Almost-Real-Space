@@ -607,10 +607,11 @@ namespace Galilego.Building
 
         /// <summary>
         /// Empty hand: aiming at a fairing and pressing RMB continues building it — no fairing
-        /// item has to be selected in the hotbar. Only the start is handled here; the section
-        /// ghost then follows the aim through UpdateFairingSection.
+        /// item has to be selected in the hotbar. An installed hull ring under the
+        /// same click is sealed/unsealed instead. Only the fairing start is handled
+        /// here; the section ghost then follows the aim through UpdateFairingSection.
         /// </summary>
-        private void UpdateEmptyHandFairing()
+        private void UpdateEmptyHand()
         {
             HideGhost();
             if (fairingBuild != null || PhysicsOn || !PlayerInput.Down(GameAction.BuildPlace))
@@ -621,6 +622,14 @@ namespace Galilego.Building
             Camera camera = Camera.main;
             if (camera == null)
             {
+                return;
+            }
+
+            // Hull ring: empty-hand RMB toggles the liner (seal / unseal).
+            int ring = hullRingSealTarget >= 0 ? hullRingSealTarget : FindAimedHullRingIndex();
+            if (ring >= 0)
+            {
+                ToggleHullRingSeal(ring);
                 return;
             }
 
@@ -1036,12 +1045,19 @@ namespace Galilego.Building
 
         private void OnGUI()
         {
-            if (fairingBuild == null || PhysicsOn || UiOpen || string.IsNullOrEmpty(fairingHudTitle))
+            if (PhysicsOn || UiOpen || Event.current.type != EventType.Repaint)
             {
                 return;
             }
 
-            if (Event.current.type != EventType.Repaint)
+            DrawFairingHud();
+            DrawHullRingHud();
+            DrawHullRingSealPrompt();
+        }
+
+        private void DrawFairingHud()
+        {
+            if (fairingBuild == null || string.IsNullOrEmpty(fairingHudTitle))
             {
                 return;
             }
