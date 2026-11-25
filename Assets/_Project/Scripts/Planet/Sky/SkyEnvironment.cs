@@ -102,10 +102,6 @@ namespace Galilego.Universe
         [Tooltip("Время привыкания к темноте (зрачок расширяется), с. Медленнее, чем сужение.")]
         public float EyeAdaptDarkSeconds = 1.2f;
 
-        [Tooltip("Освещённость грунта (доля полудня Терры), при которой звёзды полностью гаснут. " +
-                 "1e-4 ≈ 10 лк: днём на безатмосферном теле звёзд не видно (Аполлон). 0 = не гасить.")]
-        public float StarHideDayLevel = 1e-4f;
-
         [Tooltip("Потолок ночного раскрытия зрачка, EV. Ночь физическая (луна — 2.9e-6 полудня), " +
                  "поэтому глаз раскрывается целиком (share = 1) и упирается в этот потолок: " +
                  "14 EV = 0.036 полудня ≈ 2.4 лк — самый тёмный уровень, который ещё читается " +
@@ -493,30 +489,24 @@ namespace Galilego.Universe
             // there" reads this one number.
             double starLightScale = Star != null && Star.IsReady ? Star.SceneLightScale : 1d;
 
-            // Stars need a DARK-ADAPTED eye. The sky-luminance term above cannot see
-            // that in vacuum (it is exactly 0), so a sunlit airless surface would show
-            // the full star field at local noon - Apollo could not see stars from the
-            // lunar surface. The eye is adapted to the GROUND, so the field fades with
-            // the sunlit ground level (1 = Terra's noon): gone above ~10 lx, full below
-            // ~0.3 lx. The sun does it because the sun, not the sky, sets the pupil.
+            // Stars are hidden by a BRIGHT SKY, not by a lit ground. `skyLuminance`
+            // above is exactly that: the optical depth of the air between the eye and
+            // space times the day factor. On Terra at noon density ~= 1 and the field
+            // is gone; in vacuum the sky term is exactly 0 and the full field is drawn
+            // all the way down to the surface - an airless world has a black sky even
+            // at noon, so the stars are there.
             //
-            // ...but ONLY while the eye is still adapted to the ground. Above 100 km
-            // the view is space: the ground is a landscape in the lower half, the sky is
-            // black, and every real photograph from orbit shows stars. Without this gate
-            // the field was hidden at 300-1 000 km over Terra, Artemis, Metus and Aeolus
-            // on their day side - the player's "there are no stars near a surface"
-            // report, and the reason the far disc seemed to change size when the stars
-            // appeared (both flipped with the observer's day/night: the star gate here
-            // and nothing on the disc - the disc's floor depends on ALTITUDE only). The
-            // Apollo rule stays where it belongs: on the ground, below ~10 km.
-            double groundAdaptation = 1d - SkyPhysics.Smoothstep(10000d, 100000d, altitude);
+            // There used to be a second, "Apollo" term that faded the field with the
+            // SUNLIT GROUND level; it made a black, starless sky at 0-3 km over Metus
+            // and Artemis (the owner's "Mars is vacuum, where are the stars" report).
+            // A ground that is bright in the lower half of the frame is not the same
+            // thing as a bright sky, and in this project the sky is what the eye adapts
+            // to - the same `_StarVisibility` also feeds the discs and the night view.
+            double starVisibility = SkyPhysics.StarVisibility(skyLuminance, StarVisibilityK);
+
+            // Direct sun on the ground, used below by the pupil (not by the stars):
+            // 1 = Terra's noon, 0 at night or under an eclipse.
             double dayGround = starLightScale * System.Math.Max(0d, sinEl) * eclipse;
-            double groundStarHide = StarHideDayLevel > 0f
-                ? SkyPhysics.Smoothstep(StarHideDayLevel * 0.03d, StarHideDayLevel, dayGround)
-                    * groundAdaptation
-                : 0d;
-            double starVisibility = SkyPhysics.StarVisibility(skyLuminance, StarVisibilityK)
-                * (1d - groundStarHide);
 
             Transmittance = new Vector3((float)transmittance.X, (float)transmittance.Y, (float)transmittance.Z);
             DayFactor = (float)day;

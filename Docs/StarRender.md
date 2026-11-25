@@ -288,11 +288,15 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
    sources (lamps, engine glow, emissives) shifts by that same factor. `share = 0` is the
    raw photometer (Mars black again); `share = 1` is a fully adapted eye.
 
-   **Stars go out in an airless day.** `_StarVisibility` used to follow only the *sky*
-   luminance, which is exactly 0 in vacuum — so the full star field was drawn over a
-   sunlit Mars. Apollo could not see stars from the lunar surface. The field now also
-   fades with the sunlit *ground* level (`StarHideDayLevel = 1e-4` ≈ 10 lx): gone above
-   ~10 lx, full below ~0.3 lx. Night is untouched (the sun term is 0).
+   **Stars follow the SKY, not the ground.** `_StarVisibility = exp(−L_sky·k)`, where
+   `L_sky` is the day factor times the optical depth of the air above the eye. On Terra
+   at noon the density is ≈ 1 and the field is gone; the same term fades it through
+   twilight. In vacuum `L_sky` is exactly 0, so the full field is drawn down to the
+   surface of an airless body (Metus, Artemis) even at noon — its sky really is black.
+   An earlier "Apollo" rule also faded the field with the sunlit *ground* level
+   (`StarHideDayLevel`); it made a black, starless sky at 0–3 km over Metus ("Mars is
+   vacuum, where are the stars") and was removed: a bright ground in the lower half of
+   the frame is not a bright sky.
 
    **Still open (2026-11-24):**
 
