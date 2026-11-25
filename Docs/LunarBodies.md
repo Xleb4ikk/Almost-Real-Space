@@ -31,15 +31,15 @@ The window creates the profile asset and the scene body (`BodyAuthoring` + `Body
 | Surface gravity | **1.6249 m/s²** — the real Moon's |
 | μ / mass | 2.75817e11 m³/s² / **4.1325e21 kg** |
 | Density | **14 107 kg/m³** (falls out of R and g; no rock is this dense) |
-| Orbit | a = **90 000 km**, e = 0.0824 → 82 584 … 97 416 km |
+| Orbit | a = **73 400 km**, e = 0.0824 → 67 351 … 79 449 km |
 | Inclination | 5.14° (the real Moon's, so eclipses are not monthly) |
-| Spin | tidal lock: 17.171 d = the orbital period |
-| Apparent size from Terra | **0.525°** — the real Moon seen from Earth |
+| Spin | tidal lock: 12.647 d = the orbital period |
+| Apparent size from Terra | **0.643°** mean, 0.594–0.701° over the orbit (**0.6725°** at 70 200 km). The real Moon is 0.518°, so Artemis is 24 % wider in diameter (54 % in area) — the price of a = 73 400 km at R = 412 km |
 
-The originally requested 170 452–201 067 km is **0.62 of Terra's Hill radius**, and
-`StarSystem.ValidateHillStability` throws above 0.30 (R_H(Terra) = 302 208 km →
-a ≤ 90 662 km). Such a moon is not instantly unstable but chaotic on a ~year
-timescale, which makes the baked ephemeris meaningless. 90 000 km is 0.298 R_H.
+The originally requested 170 452–201 067 km is **0.69–0.82 of Terra's Hill radius**, and
+`StarSystem.ValidateHillStability` throws above 0.30 (R_H(Terra) = 246 449 km →
+a ≤ 73 935 km). Such a moon is not instantly unstable but chaotic on a ~year
+timescale, which makes the baked ephemeris meaningless. 73 400 km is 0.298 R_H.
 
 ## Authoring rules that are easy to get wrong
 
@@ -69,7 +69,7 @@ timescale, which makes the baked ephemeris meaningless. 90 000 km is 0.298 R_H.
 
 `FirstPersonCamera.UpdateClipPlanes` sets `far` from the physical horizon, not from the
 content: standing on Terra that is **319 km**, and at 200 km altitude it is still under
-1 000 km. Artemis orbits at 82 000 km — **262× beyond the far plane** — so the cube-sphere
+1 000 km. Artemis orbits at 73 400 km — **230× beyond the far plane** — so the cube-sphere
 chunks are clipped away and the body is not in the frame at all. Raising `far` is not an
 option (`near/far` would hit 10^8; see [SkyDomes.md](SkyDomes.md)).
 
@@ -80,11 +80,12 @@ to the body's **exact angular radius**, shaded with a Lambert phase from the rea
 direction plus limb darkening. The real chunks take over as soon as the surface fits
 inside `0.95·far`, so the switch is invisible.
 
-At the camera's 83° vertical FOV, 0.566° is **5.6 px**: that is the size of the real Moon
-in our sky (0.52°), and it is small on purpose — the radius and the orbit are what they
-are. For comparison the star is 0.533° at 0.369 AU after the 0.369-scale luminosity
-change — about the Moon's size (0.59–0.70° at 73 400 km), so eclipses are total rather
-than a small moon crossing a big sun. A larger disc means a smaller orbit or a bigger body.
+At the camera's 83° vertical FOV, Artemis is **0.643°** in the mean (0.594–0.701° over the
+orbit): **6.2 px** in a 983-px-tall view, 6.5 px at 70 200 km. The real Moon is 0.518°
+(5.0 px), and the disc is small on purpose — the radius and the orbit are what they are.
+For comparison the star is 0.533° at 0.369 AU after the 0.369-scale luminosity change —
+smaller than the Moon (0.59–0.70° at 73 400 km), so eclipses are total rather than a
+small moon crossing a big sun. A larger disc means a smaller orbit or a bigger body.
 
 ## Moonlight on Terra
 
