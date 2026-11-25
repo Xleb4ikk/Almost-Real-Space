@@ -21,13 +21,25 @@ namespace Galilego.Universe.EditorTools
             {
                 string terrainFile = Path.GetFileNameWithoutExtension(assetPath).ToLowerInvariant();
                 bool occlusion = terrainFile.Contains("occlusion");
+                // Detail normal maps are LINEAR data, not colour: sRGB decoding bends
+                // every component and the surface lights as if the normals were rotated.
+                bool terrainNormal = terrainFile.Contains("normal");
+                bool lunar = assetPath.IndexOf("/Lunar/", StringComparison.OrdinalIgnoreCase) >= 0;
                 TextureImporter terrainImporter = (TextureImporter)assetImporter;
                 terrainImporter.textureType = TextureImporterType.Default;
-                terrainImporter.sRGBTexture = !occlusion;
+                terrainImporter.sRGBTexture = !occlusion && !terrainNormal;
                 terrainImporter.alphaIsTransparency = false;
                 terrainImporter.mipmapEnabled = true;
                 terrainImporter.wrapMode = TextureWrapMode.Repeat;
                 terrainImporter.maxTextureSize = 2048;
+                if (lunar)
+                {
+                    // BC7 for the albedo alpha (cavity) and the normals. The default
+                    // compressor (BC1) drops alpha and smears the normals.
+                    terrainImporter.textureCompression = TextureImporterCompression.CompressedHQ;
+                    terrainImporter.filterMode = FilterMode.Trilinear;
+                    terrainImporter.anisoLevel = 4;
+                }
                 return;
             }
 

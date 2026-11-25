@@ -237,6 +237,15 @@ Shader "Galilego/BodyFarDisc"
                     float3(1.0, 1.0, 1.0),
                     eclipse);
 
+                // Lunar opposition surge: the regolith hides its own shadows when
+                // the phase angle approaches 0, so a full Moon is 1.45x its own
+                // Lambert brightness. The scalar lunar map (_BFD_MapColor = 0) is
+                // the airless regolith path; an atmospheric body keeps Lambert.
+                float phaseCos = clamp(dot(_BFD_SunDirWS.xyz, _BFD_ViewWS.xyz), -1.0, 1.0);
+                float phase = acos(phaseCos);
+                float opposition = 1.0 + (0.45 * (1.0 - saturate(_BFD_MapColor))
+                    * exp(-phase / 0.13));
+
                 // Surface radiance in SCENE units: the same "sunlit albedo·ndl"
                 // scale the terrain and the decor use, so the disc has the same
                 // brightness as the body's own relief under it at the hand-over.
@@ -245,7 +254,7 @@ Shader "Galilego/BodyFarDisc"
                 // observer's sky.
                 float3 sunlit = _BFD_SunColor.rgb * _BFD_SunScale;
                 float3 radiance = albedo * eclipseTint * (ndl + _BFD_Ambient)
-                    * limb * sunlit * _BFD_IntensityScale * eclipseGain;
+                    * limb * sunlit * _BFD_IntensityScale * eclipseGain * opposition;
 
                 // Aerial perspective. The moon is behind the observer's whole air
                 // column: T dims and warms it, `air` is the daylight scattered in

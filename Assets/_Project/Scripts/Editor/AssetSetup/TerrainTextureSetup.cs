@@ -84,6 +84,10 @@ namespace Galilego.Universe.EditorTools
                 LunarFolder + "/regolith_flat_clean.png");
             Texture2D rock = AssetDatabase.LoadAssetAtPath<Texture2D>(
                 LunarFolder + "/regolith_rock_clean.png");
+            Texture2D flatNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                LunarFolder + "/regolith_flat_normal.png");
+            Texture2D rockNormal = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                LunarFolder + "/regolith_rock_normal.png");
             if (flat == null || rock == null)
             {
                 Debug.LogWarning("[TerrainTextureSetup] нет набора реголита в " + LunarFolder +
@@ -125,6 +129,11 @@ namespace Galilego.Universe.EditorTools
                 asset.Profile.TextureHigh = flat;
                 asset.Profile.TextureSteep = rock;
                 asset.Profile.TextureOcclusion = null;
+                // Micro-relief: the normal maps are what make a 1 cm regolith grain
+                // read at all. Without them the ground is painted cloth under a low sun.
+                asset.Profile.TextureDetailNormal = flatNormal;
+                asset.Profile.TextureDetailNormalSteep = rockNormal;
+                asset.Profile.DetailNormalStrength = 0.75f;
                 asset.Profile.TextureScale = 0.04d;
                 asset.Profile.DetailAlbedoMean = mean;
                 asset.Profile.LowMidBlendStart = 30d;
@@ -133,10 +142,11 @@ namespace Galilego.Universe.EditorTools
                 asset.Profile.MidHighBlendEnd = 5500d;
                 asset.Profile.SteepBlendStart = 0.7d;
                 asset.Profile.SteepBlendEnd = 1.4d;
-                // Soil/Lush mottling is Earth vegetation; on the Moon it is dark and
-                // bright blobs. Slope must not change the albedo either: mare/highland
-                // contrast comes from the macro map, not from the slope.
-                asset.Profile.ColorDetailStrength = 0d;
+                // The lunar albedo (maria dark, fresh ejecta bright) rides in the
+                // per-vertex detail channel. The shader no longer fades it by pixel
+                // footprint on airless bodies (the macro map is the LOD authority),
+                // so it is visible underfoot — 0 made the ground one flat grey.
+                asset.Profile.ColorDetailStrength = 0.85d;
                 asset.Profile.ColorRockSlopeTan = 0d;
                 EditorUtility.SetDirty(asset);
                 count++;

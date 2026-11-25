@@ -57,6 +57,16 @@ float3 GalilegoSkyAmbient(float3 normalWS)
     return _SkyAmbientColor * (_SkyAmbient * (0.35 + 0.65 * hemi));
 }
 
+// Lunar regolith colour against solar elevation: high Sun -> warmer/browner,
+// low Sun -> neutral grey. This is a multiplier around 1 applied to the ALBEDO,
+// so the ground and every rock on it shift together; it is the measured phase
+// colour trend, not an artistic grade. Keep it subtle: >10 % reads as a filter.
+float3 GalilegoRegolithTint(float sunElevation)
+{
+    float w = smoothstep(0.08, 0.65, saturate(sunElevation));
+    return lerp(float3(0.975, 0.985, 1.0), float3(1.07, 1.0, 0.925), w);
+}
+
 // Unit direction to the moon; the fallback keeps normalize(0) from producing NaN
 // when MoonlightSystem is absent (other slices) or the moon is below the horizon.
 float3 GalilegoMoonDir(float3 fallbackDir)

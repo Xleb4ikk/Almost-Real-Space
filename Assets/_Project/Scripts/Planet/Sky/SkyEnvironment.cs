@@ -571,6 +571,30 @@ namespace Galilego.Universe
             // The per-body renderer loop would let the last rasterisable body win.
             PlanetSurfaceRenderer.ApplyDetailAlbedoMean(
                 horizonTerrain != null ? horizonTerrain.DetailAlbedoMean : 0f);
+            // Regolith micro-relief normal maps: same camera-body owner as the
+            // detail mean above. A per-renderer write would let the last body in the
+            // frustum flip the Moon's ground to Terra's Earth textures.
+            bool airlessDetail = horizonTerrain != null && horizonTerrain.DetailAlbedoMean > 0f;
+            Texture detailNormal = airlessDetail ? horizonTerrain.TextureDetailNormal : null;
+            Texture detailNormalSteep = airlessDetail ? horizonTerrain.TextureDetailNormalSteep : null;
+            if (detailNormalSteep == null)
+            {
+                detailNormalSteep = detailNormal;
+            }
+
+            Shader.SetGlobalFloat("_TerrainDetailNormalStrength",
+                detailNormal != null ? Mathf.Clamp01(horizonTerrain.DetailNormalStrength) : 0f);
+            Shader.SetGlobalTexture("_TexDetailNormal0",
+                detailNormal != null ? detailNormal : Texture2D.normalTexture);
+            Shader.SetGlobalTexture("_TexDetailNormal1",
+                detailNormalSteep != null ? detailNormalSteep : Texture2D.normalTexture);
+
+            // Permanent regolith tracks exist only on an airless body. Created lazily
+            // here (the camera body owns the globals, the same as the detail mean).
+            if (airlessDetail && Application.isPlaying)
+            {
+                RegolithTracks.Ensure().Tick();
+            }
             Shader.SetGlobalFloat("_TerrainHorizonOn",
                 useHorizon ? Mathf.Clamp01(horizonTerrain.MacroHorizonStrength) : 0f);
             Shader.SetGlobalTexture("_TerrainMacroHorizonMapA",

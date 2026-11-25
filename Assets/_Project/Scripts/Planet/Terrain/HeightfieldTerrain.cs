@@ -360,6 +360,11 @@ namespace Galilego.Universe
         public Texture2D TextureHigh;
         public Texture2D TextureSteep;
         public Texture2D TextureOcclusion;
+        /// <summary>Airless regolith micro-relief: tangent-space normal of the dust set
+        /// and of the scree set, plus its strength. Null = micro-relief off.</summary>
+        public Texture2D TextureDetailNormal;
+        public Texture2D TextureDetailNormalSteep;
+        public float DetailNormalStrength = 0.75f;
         public double TextureScale = 0.04d;
 
         /// <summary>Mean linear albedo of the detail set. 0 = the photo textures replace
@@ -492,6 +497,9 @@ namespace Galilego.Universe
             TextureHigh = profile.TextureHigh;
             TextureSteep = profile.TextureSteep;
             TextureOcclusion = profile.TextureOcclusion;
+            TextureDetailNormal = profile.TextureDetailNormal;
+            TextureDetailNormalSteep = profile.TextureDetailNormalSteep;
+            DetailNormalStrength = profile.DetailNormalStrength;
             TextureScale = profile.TextureScale;
             DetailAlbedoMean = profile.DetailAlbedoMean;
             MacroAlbedo = profile.MacroAlbedo;

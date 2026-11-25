@@ -95,7 +95,49 @@ Shader "Galilego/PlanetSurface"
             sampler2D _TexHigh;
             sampler2D _TexSteep;
             sampler2D _TexOcclusion;
+            // Airless regolith micro-relief (see GenerateRegolithTextures.py).
+            // 0 = flat dust set (low/mid/high), 1 = scree/rock set (steep).
+            sampler2D _TexDetailNormal0;
+            sampler2D _TexDetailNormal1;
+            float _TerrainDetailNormalStrength;
             float _TerrainTextureScale;
+
+            // Permanent regolith deformation (RegolithTracks.cs): R = depression
+            // depth, G = compaction. Sampled in the body tangent patch only; the
+            // height gradient is turned into a surface normal so a 1.4 cm print
+            // still has a crisp, sunlit edge under a 1° sun.
+            sampler2D _RegolithTrackMap;
+            float4 _RegolithTrackOrigin; // xyz render-space centre, w = patch size (m)
+            float4 _RegolithTrackRight;
+            float4 _RegolithTrackForward;
+            float _RegolithTrackOn;
+            float _RegolithTrackDepth;
+            float _RegolithTrackTexel;
+            float _RegolithTrackTexelMeters;
+            float _RegolithLandingRadius;
+
+            // --- Lunar photometry ------------------------------------------------
+            // Regolith is NOT a Lambertian surface. Lommel-Seeliger (flat disk,
+            // no limb darkening) plus the Hapke opposition surge is what makes a
+            // full Moon read as a bright flat disc instead of a shaded ball, and
+            // what makes the ground around the observer's own shadow flare up.
+            // The constants are the physical shape, not art: 0.62 is a blend
+            // between Lambert and pure L-S; the surge is ~1.55x inside 7.5 deg.
+            #define REGOLITH_LOMMEL 0.50
+            #define REGOLITH_OPPOSITION 0.45
+            #define REGOLITH_OPPOSITION_WIDTH 0.13
+            // High sun -> warmer/browner, low sun -> neutral grey (the brief's
+            // measured lunar phase colour trend). Multiplier around 1, applied
+            // to the albedo; the disc uses the same physics through the palette.
+            #define REGOLITH_TINT_STRENGTH 0.8
+            // Parent-planet light in the shadow (earthshine): 2 % of the sunlit
+            // level, cool. Not atmosphere — there is none.
+            #define REGOLITH_SHADOW_FILL 0.02
+            // Cavity/AO from the albedo alpha (see the texture generator).
+            #define REGOLITH_AO_STRENGTH 1.0
+            #define REGOLITH_NORMAL_FADE_START 35.0
+            #define REGOLITH_NORMAL_FADE_END 220.0
+
             float _TerrainUseTextures;
             // Mean linear albedo of the detail set. >0 = airless regolith: the set is a
             // relative modulation of the palette + macro albedo (see the albedo block).
@@ -425,33 +467,55 @@ Shader "Galilego/PlanetSurface"
                 return c;
             }
 
-            float3 Triplanar(sampler2D tex, float2 uvX, float2 uvY, float2 uvZ, float3 weights)
+            float4 Triplanar(sampler2D tex, float2 uvX, float2 uvY, float2 uvZ, float3 weights)
             {
-                return (tex2D(tex, uvX).rgb * weights.x)
-                    + (tex2D(tex, uvY).rgb * weights.y)
-                    + (tex2D(tex, uvZ).rgb * weights.z);
+                return (tex2D(tex, uvX) * weights.x)
+                    + (tex2D(tex, uvY) * weights.y)
+                    + (tex2D(tex, uvZ) * weights.z);
             }
 
-            // Triplanar detail albedo with the height/slope weights. NO colour rules:
-            // the Earth path (TerrainTextureAlbedo) adds AO, biome tint and sand on
-            // top of it, the airless path uses it as a RELATIVE modulation of the
-            // palette + macro albedo. The weights live here once: a duplicated set
-            // would drift and the low/mid/high blend would show a seam.
-            //
-            // Coordinates are camera deltas rotated into body-fixed axes: small
-            // numbers without ~6 cm quantisation.
-            float3 TerrainDetailSample(float3 positionWS, float raw, float slopeTan, float3 normalObject,
-                out float2 uvX, out float2 uvY, out float2 uvZ, out float3 tri)
+            // Tangent-space triplanar normal. Each projection's (x, y, z) is
+            // (u, v, outward), so it must be swizzled into OBJECT axes before the
+            // three projections are blended; sampling all three and averaging them
+            // as-is turns every slope's normal 90 degrees away from the light.
+            float3 TriplanarNormal(sampler2D tex, float2 uvX, float2 uvY, float2 uvZ, float3 weights)
+            {
+                float3 nX = (tex2D(tex, uvX).xyz * 2.0) - 1.0;
+                float3 nY = (tex2D(tex, uvY).xyz * 2.0) - 1.0;
+                float3 nZ = (tex2D(tex, uvZ).xyz * 2.0) - 1.0;
+                float3 pX = float3(nX.z, nX.y, nX.x); // u=z, v=y, out=x
+                float3 pY = float3(nY.x, nY.z, nY.y); // u=x, v=z, out=y
+                float3 pZ = float3(nZ.x, nZ.y, nZ.z); // u=x, v=y, out=z
+                float3 n = (pX * weights.x) + (pY * weights.y) + (pZ * weights.z);
+                return normalize(n);
+            }
+
+            float3 TriplanarWeights(float3 normalObject)
+            {
+                float3 tri = abs(normalObject);
+                tri = tri * tri * tri * tri;
+                return tri / max(1e-5, tri.x + tri.y + tri.z);
+            }
+
+            // Triplanar UVs are camera-relative: world-position deltas from the
+            // camera are small and precise (floating origin), rotated into
+            // body-fixed axes by _TerrainWorldToBody.
+            void TerrainDetailUVs(float3 positionWS, out float2 uvX, out float2 uvY, out float2 uvZ)
             {
                 float3 relBody = mul((float3x3)_TerrainWorldToBody, positionWS - _PlanetCameraPos);
                 uvX = (relBody.zy * _TerrainTextureScale) + _TerrainUVPhase0.xy;
                 uvY = (relBody.xz * _TerrainTextureScale) + _TerrainUVPhase0.zw;
                 uvZ = (relBody.xy * _TerrainTextureScale) + _TerrainUVPhase1.xy;
+            }
 
-                tri = abs(normalObject);
-                tri = tri * tri * tri * tri;
-                tri /= max(1e-5, tri.x + tri.y + tri.z);
-
+            // Triplanar detail albedo + cavity (A) with the height/slope weights.
+            // NO colour rules: the Earth path (TerrainTextureAlbedo) adds AO, biome
+            // tint and sand on top of it, the airless path uses it as a RELATIVE
+            // modulation of the palette + macro albedo. The weights live here once:
+            // a duplicated set would drift and the low/mid/high blend would show a seam.
+            float4 TerrainDetailSample(float raw, float slopeTan, float3 tri,
+                float2 uvX, float2 uvY, float2 uvZ)
+            {
                 float altitude = max(raw - _TerrainSeaLevel, 0.0);
                 float lowW = 1.0 - smoothstep(_LowMidBlendStart, _LowMidBlendEnd, altitude);
                 float highW = smoothstep(_MidHighBlendStart, _MidHighBlendEnd, altitude);
@@ -465,7 +529,7 @@ Shader "Galilego/PlanetSurface"
                 // by zero. Branches are coherent (height and slope vary slowly
                 // per 8x8 quad), so there is no divergence. A typical plain uses
                 // 6 samples instead of 15.
-                float3 c = float3(0.0, 0.0, 0.0);
+                float4 c = float4(0.0, 0.0, 0.0, 0.0);
                 if (lowW > 0.002)
                 {
                     c += Triplanar(_TexLow, uvX, uvY, uvZ, tri) * lowW;
@@ -492,8 +556,9 @@ Shader "Galilego/PlanetSurface"
             float3 TerrainTextureAlbedo(float3 positionWS, float raw, float slopeTan, float3 normalObject, float3 biome)
             {
                 float2 uvX, uvY, uvZ;
-                float3 tri;
-                float3 c = TerrainDetailSample(positionWS, raw, slopeTan, normalObject, uvX, uvY, uvZ, tri);
+                TerrainDetailUVs(positionWS, uvX, uvY, uvZ);
+                float3 tri = TriplanarWeights(normalObject);
+                float3 c = TerrainDetailSample(raw, slopeTan, tri, uvX, uvY, uvZ).rgb;
 
                 float altitude = max(raw - _TerrainSeaLevel, 0.0);
 
@@ -502,8 +567,8 @@ Shader "Galilego/PlanetSurface"
                 // smaller than a pixel, so all three projections hit the same
                 // distant mip and give almost identical values.
                 float occl = distance(positionWS, GetCameraPositionWS()) < 220.0
-                    ? dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, tri), float3(0.3333, 0.3333, 0.3333))
-                    : dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, float3(0.0, 0.0, 1.0)), float3(0.0, 0.0, 1.0));
+                    ? dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, tri).rgb, float3(0.3333, 0.3333, 0.3333))
+                    : dot(Triplanar(_TexOcclusion, uvX, uvY, uvZ, float3(0.0, 0.0, 1.0)).rgb, float3(0.0, 0.0, 1.0));
                 c *= lerp(1.0, saturate(occl * 1.3), 0.65);
 
                 c *= lerp(float3(1.0, 1.0, 1.0), saturate(biome * 1.9), 0.65);
@@ -555,6 +620,69 @@ Shader "Galilego/PlanetSurface"
                 float slopeCos = clamp(input.extra.y, -1.0, 1.0);
                 float slopeTan = SlopeTanFromCos(slopeCos);
                 float lat01 = saturate(abs(asin(clamp(dir.z, -1.0, 1.0))) / 1.5707963267948966);
+
+                // Local up and solar elevation are needed by BOTH the micro-normal
+                // and the photometry. At a grazing sun a 1 cm facet can flip from
+                // lit to black, and a normal map that is correct at noon turns the
+                // whole plain into black-and-white static near the terminator. The
+                // real regolith self-shadows at grazing incidence; fade the MICRO
+                // normal there (the coherent macro/mesh normals stay).
+                float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
+                float sunElevation = dot(radialUp, sunDir);
+                float microSunFade = smoothstep(0.12, 0.70, saturate(sunElevation));
+
+                // ---- Airless regolith micro-relief ---------------------------------
+                // Airless bodies carry a detail set as a RELATIVE albedo modulation
+                // (_TerrainDetailMean > 0). The same triplanar UVs carry its
+                // tangent-space normal: 1.2 cm grain is what gives a footprint a
+                // crisp edge, a wheel rut a sharp wall, and a low sun a rough,
+                // sparkling surface instead of painted cloth. The set is sampled
+                // once here and reused by the albedo block below.
+                bool regolith = _TerrainDetailMean > 0.0;
+                float2 duvX = float2(0.0, 0.0);
+                float2 duvY = float2(0.0, 0.0);
+                float2 duvZ = float2(0.0, 0.0);
+                float3 dTri = float3(0.0, 0.0, 0.0);
+                float4 detailSample = float4(1.0, 1.0, 1.0, 1.0);
+                bool regolithDetail = regolith && _TerrainUseTextures > 0.5;
+                if (regolithDetail)
+                {
+                    float3 normalObject = TransformWorldToObjectNormal(normal);
+                    float nObjLen2 = dot(normalObject, normalObject);
+                    normalObject = nObjLen2 > 1e-12
+                        ? normalObject * rsqrt(nObjLen2)
+                        : float3(0.0, 1.0, 0.0);
+
+                    dTri = TriplanarWeights(normalObject);
+                    TerrainDetailUVs(input.positionWS, duvX, duvY, duvZ);
+                    detailSample = TerrainDetailSample(raw, slopeTan, dTri, duvX, duvY, duvZ);
+
+                    if (_TerrainDetailNormalStrength > 0.0)
+                    {
+                        // Fade the micro-normal out where a pixel is much wider than
+                        // a texel; otherwise it aliases into fizz at range. The
+                        // albedo/AO stay (they carry the macro map at full strength).
+                        float detailDist = distance(input.positionWS, GetCameraPositionWS());
+                        float detailW = saturate(1.0 - ((detailDist - REGOLITH_NORMAL_FADE_START)
+                            / max(REGOLITH_NORMAL_FADE_END - REGOLITH_NORMAL_FADE_START, 1.0)));
+
+                        // The dust set covers low/mid/high; the scree normal is on
+                        // the same steep blend the albedo uses, so they cannot drift.
+                        // Branch: a flat plain must not pay three extra samples for a
+                        // set that is multiplied by zero.
+                        float steepW = smoothstep(_SteepBlendStart, _SteepBlendEnd, slopeTan);
+                        float3 nDust = TriplanarNormal(_TexDetailNormal0, duvX, duvY, duvZ, dTri);
+                        float3 nPert = nDust;
+                        if (steepW > 0.002)
+                        {
+                            float3 nRock = TriplanarNormal(_TexDetailNormal1, duvX, duvY, duvZ, dTri);
+                            nPert = normalize(lerp(nDust, nRock, steepW));
+                        }
+                        float3 nObj = normalize(lerp(normalObject, nPert,
+                            _TerrainDetailNormalStrength * detailW * microSunFade));
+                        normal = normalize(TransformObjectToWorldDir(nObj));
+                    }
+                }
 
                 // Pixel footprint on the unit body direction, i.e. the pixel's angular
                 // size. A texel of the baked map spans _TerrainMacroTexelAngular:
@@ -621,8 +749,66 @@ Shader "Galilego/PlanetSurface"
                     }
                 }
 
+                // ---- Permanent tracks / footprints --------------------------------
+                // The height map is a depression, so the surface normal tilts toward
+                // the pit. Only 3 samples: the centre texel is reused for the
+                // compaction mask, and the two neighbours give the gradient. The
+                // patch is a tangent plane over 256 m (sag 2 cm at the edge).
+                float trackCompaction = 0.0;
+                float landingBrighten = 0.0;
+                if (regolith && _RegolithTrackOn > 0.5)
+                {
+                    float3 trackDelta = input.positionWS - _RegolithTrackOrigin.xyz;
+                    float2 trackUv = float2(
+                        dot(trackDelta, _RegolithTrackRight.xyz),
+                        dot(trackDelta, _RegolithTrackForward.xyz))
+                        / max(_RegolithTrackOrigin.w, 1.0) + 0.5;
+                    if (trackUv.x > 0.0 && trackUv.x < 1.0 && trackUv.y > 0.0 && trackUv.y < 1.0)
+                    {
+                        float2 centre = tex2D(_RegolithTrackMap, trackUv).rg;
+                        float2 alongX = tex2D(_RegolithTrackMap,
+                            trackUv + float2(_RegolithTrackTexel, 0.0)).rg;
+                        float2 alongY = tex2D(_RegolithTrackMap,
+                            trackUv + float2(0.0, _RegolithTrackTexel)).rg;
+                        float2 grad = float2(alongX.r - centre.r, alongY.r - centre.r)
+                            * (_RegolithTrackDepth / max(_RegolithTrackTexelMeters, 1e-5));
+                        normal = normalize(normal
+                            + (_RegolithTrackRight.xyz * grad.x)
+                            + (_RegolithTrackForward.xyz * grad.y));
+                        trackCompaction = saturate(centre.g);
+
+                        float landingDist = length(trackDelta);
+                        landingBrighten = 1.0 - smoothstep(
+                            _RegolithLandingRadius * 0.55, _RegolithLandingRadius, landingDist);
+                    }
+                }
+
                 float ndl = saturate(dot(normal, sunDir));
                 float moonNdl = saturate(dot(normal, moonDir));
+
+                // ---- Lunar photometry (airless only) --------------------------------
+                // Regolith is not Lambertian. Lommel-Seeliger keeps the disc flat
+                // toward the limb (the full Moon does not darken at its edge), and
+                // the Hapke opposition surge hides the grains' own shadows when the
+                // phase angle approaches 0 — the ground flares up around the
+                // observer's shadow, which is the same term that makes a full Moon
+                // bright. The L-S blend is capped at 2: at the terminator the
+                // denominator would otherwise run away.
+                float3 viewDirWS = GetCameraPositionWS() - input.positionWS;
+                float viewLen2 = dot(viewDirWS, viewDirWS);
+                viewDirWS = viewLen2 > 1e-12 ? viewDirWS * rsqrt(viewLen2) : normal;
+                float regolithSun = ndl;
+                if (regolith)
+                {
+                    float mu0 = saturate(dot(normal, sunDir));
+                    float mu = saturate(dot(normal, viewDirWS));
+                    float ls = 2.0 * mu0 / max(mu0 + mu, 0.02);
+                    float cosPhase = clamp(dot(sunDir, viewDirWS), -1.0, 1.0);
+                    float phase = acos(cosPhase);
+                    float opposition = 1.0 + (REGOLITH_OPPOSITION
+                        * exp(-phase / REGOLITH_OPPOSITION_WIDTH));
+                    regolithSun = lerp(mu0, min(ls, 1.7), REGOLITH_LOMMEL) * opposition;
+                }
 
                 // Long-range sun occlusion from the BAKED HORIZON MAP. HDRP's cascades
                 // end at ShadowDistance (2 km airless / 250 m elsewhere); a crater rim
@@ -648,7 +834,7 @@ Shader "Galilego/PlanetSurface"
                             ? float3(-dir.y, dir.x, 0.0) * rsqrt(eq2)
                             : float3(1.0, 0.0, 0.0);
                         float3 north = cross(dir, east);
-                        float sunElevation = asin(clamp(dot(sb, dir), -1.0, 1.0));
+                        float sunElevationBody = asin(clamp(dot(sb, dir), -1.0, 1.0));
                         float azimuth = atan2(dot(sb, east), dot(sb, north));
                         azimuth = azimuth < 0.0 ? azimuth + 6.283185307179586 : azimuth;
 
@@ -667,7 +853,7 @@ Shader "Galilego/PlanetSurface"
                         // its angular radius (0.7° at 0.37 AU), like HDRP's PCSS penumbra.
                         float sunRadius = max(_SunAngularRadiusRad, 0.0005);
                         horizonVis = smoothstep(horizon - sunRadius, horizon + sunRadius,
-                            sunElevation);
+                            sunElevationBody);
                         horizonVis = lerp(1.0, horizonVis, saturate(_TerrainHorizonOn));
                     }
                 }
@@ -710,13 +896,21 @@ Shader "Galilego/PlanetSurface"
                 // At night only _NightAmbient remains (≈0) → almost black. The
                 // sun term can exceed 1; HDRP global tonemapping handles it.
                 float sun = _TerrainSun;
-                float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
                 float dayLocal = smoothstep(-0.12, 0.08, dot(radialUp, sunDir));
                 float3 lightTerm = float3(_NightAmbient, _NightAmbient, _NightAmbient)
                     + (GalilegoSkyAmbient(normal) * _TerrainRadianceScale * dayLocal)
                     + (GalilegoMoonAmbient(normal) * _TerrainRadianceScale)
-                     + (_SunLightColor * (sun * ndl * shadow * cloudShadow * horizonVis) * _TerrainRadianceScale)
+                     + (_SunLightColor * (sun * regolithSun * shadow * cloudShadow * horizonVis) * _TerrainRadianceScale)
                      + (_MoonLightColor * (sun * moonNdl * shadow * cloudShadow) * _TerrainRadianceScale);
+
+                // Vacuum shadow: there is no air to scatter light into it, so the
+                // floor is the parent planet's reflected light (earthshine) — 2 % of
+                // the sunlit level, cool by definition. Without this the shadowed
+                // side of a rock is pure zero and reads as a hole in the frame.
+                if (regolith)
+                {
+                    lightTerm += REGOLITH_SHADOW_FILL * float3(0.72, 0.82, 1.0) * dayLocal;
+                }
 
                 // --- Per-pixel albedo -----------------------------------------
                 // Mask and detail are interpolated vertex values computed by the same
@@ -731,7 +925,12 @@ Shader "Galilego/PlanetSurface"
                 float vertexDetail = saturate(1.0 - macroW);
                 float mask = input.extra.z * vertexDetail;
                 float detail = input.extra.w;
-                if (_ColorDetailStrength != 0.0 && _ColorDetailFrequency > 0.0)
+                // The footprint fade exists because the per-vertex colour detail
+                // aliases when a quad is smaller than a pixel. On an airless body
+                // the macro map is the LOD authority (vertexDetail above), and the
+                // vertex albedo is the only close-up source of maria/rays: fading it
+                // by pixel angle erased it exactly where it is needed.
+                if (!regolith && _ColorDetailStrength != 0.0 && _ColorDetailFrequency > 0.0)
                 {
                     float footprint = angular * _ColorDetailFrequency;
                     detail *= saturate(1.0 - (footprint * 0.7));
@@ -757,11 +956,18 @@ Shader "Galilego/PlanetSurface"
                     // the moon ~4x, which is exactly what the Moon used to do.
                     if (detailOn)
                     {
-                        float2 duvX, duvY, duvZ;
-                        float3 dtri;
-                        float3 detailSample = TerrainDetailSample(input.positionWS, raw, slopeTan,
-                            normalize(TransformWorldToObjectNormal(normal)), duvX, duvY, duvZ, dtri);
-                        albedo *= detailSample * (1.0 / max(detailMean, 0.02));
+                        // Clamp the relative modulation: a bright grain at 1.6x the
+                        // mean times a 1.8x macro ray and a 2.5x sun scale clips to
+                        // pure white at a low sun. The regolith is uniform; keep the
+                        // grain visible without letting single texels become lamps.
+                        float3 detailRel = clamp(detailSample.rgb * (1.0 / max(detailMean, 0.02)),
+                            0.55, 1.35);
+                        albedo *= detailRel;
+                        // Cavity from the albedo's alpha: the regolith's own
+                        // micro-shadows. Mean is ~0.94, so the absolute level barely
+                        // moves; the pits and grain contacts go dark and the surface
+                        // gains depth that no albedo map can fake.
+                        albedo *= lerp(1.0, detailSample.a, REGOLITH_AO_STRENGTH);
                     }
                 }
                 else if (detailOn)
@@ -782,7 +988,8 @@ Shader "Galilego/PlanetSurface"
                 {
                     // Stored as factor / 2 (0..1 in 8 bit), the same encoding the far
                     // disc map uses, so one bake feeds both views.
-                    float macroAlbedo = tex2D(_TerrainMacroAlbedoMap, macroUv).r * 2.0;
+                    float macroAlbedo = clamp(tex2D(_TerrainMacroAlbedoMap, macroUv).r * 2.0,
+                        0.55, 1.35);
                     albedo *= lerp(1.0, macroAlbedo, macroAlbedoW);
                 }
 
@@ -791,6 +998,25 @@ Shader "Galilego/PlanetSurface"
                 // white edge matches the edge of the ice sheet (no shader-side noise).
                 float polarIce = saturate(input.extra2.x * 2.0);
                 albedo = lerp(albedo, _ColSnow.rgb, PaletteSmoothstep(polarIce));
+
+                // Sun-angle tint: high Sun -> warmer/browner, low Sun -> neutral
+                // grey. This is the brief's measured lunar phase-colour trend, and
+                // it belongs on the albedo so rocks and dust shift together.
+                if (regolith)
+                {
+                    albedo *= lerp(float3(1.0, 1.0, 1.0),
+                        GalilegoRegolithTint(sunElevation), REGOLITH_TINT_STRENGTH);
+                }
+
+                // Compacted prints are slightly darker (the fines are pressed out and
+                // the grains interlock). The landing blast is the opposite: the loose
+                // dust is gone, so the exposed, compacted ground reads a little
+                // brighter — a 55 m pale circle, no crater under the engine.
+                if (regolith)
+                {
+                    albedo *= lerp(1.0, 0.82, trackCompaction);
+                    albedo *= 1.0 + (0.10 * landingBrighten);
+                }
 
                 // Land.
                 float3 land = albedo * lightTerm;

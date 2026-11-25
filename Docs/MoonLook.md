@@ -237,6 +237,11 @@ too.
 
 ### The Moon's ground was 4× darker than its own disc (the albedo path)
 
+> **2026-11-25: the detail set, the airless photometry and the tracks were
+> replaced — see [Regolith.md](Regolith.md).** The ground is no longer a photo
+> modulation with no relief: it has a linear normal map + cavity, Lommel-Seeliger
+> + opposition, a sun-angle tint and a permanent local height map for prints.
+
 > **Status 2026-11-25: solved — and the albedo path was NOT the cause.** Everything below
 > (the regolith set, the relative modulation, the full-strength macro albedo) is in the
 > build and is correct. There were TWO defects outside it:
