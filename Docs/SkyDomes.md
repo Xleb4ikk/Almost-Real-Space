@@ -50,14 +50,15 @@ showed the atmosphere contributed **exactly `(0,0,0)`** over the whole planet di
 `Assets/_Project/Scripts/Planet/Sky/SkyDomeLayout.cs`:
 
 ```csharp
-float radius = SkyDomeLayout.Radius(camera);   // ~1 km, guarded
+float radius = SkyDomeLayout.Radius(camera);   // ~5 km, guarded
 ```
 
-* fixed `MinRadiusMeters = 1000f`, raised to `near * 10` if the near plane is large;
+* fixed `MinRadiusMeters = 5000f`, raised to `near * 10` if the near plane is large;
 * capped at `far * 0.25` so it can never approach the far plane.
 
-At ~1 km the proxy is always in the well-resolved part of the depth range,
-independent of altitude and of the near/far ratio.
+At a few km the proxy is always in the well-resolved part of the depth range,
+independent of altitude and of the near/far ratio — and clear of the near plane,
+including the 1 km one a flyby pins (see the next section).
 
 Occlusion does not depend on the proxy distance, so nothing else had to change:
 
@@ -91,6 +92,27 @@ precedent to copy:
 `SkyDomeLayout.MaxFarFraction = 0.25f` follows that precedent: nothing that is
 supposed to be visible may sit near the far plane when the near/far ratio is in
 the 1e7 range.
+
+## Second failure: the dome sat exactly on a flyby's near plane
+
+`FlybyViewAnchor` (the "К Метус/Aeolus (облёт)" cheat) pins `near = 1000 m`,
+`far = 4e8 m` in `LateUpdate` order **1000**. The sky views run at −35…−30, i.e.
+*before* it, and size their domes from the camera's near **of the previous frame**
+(the regular 0.03–12 m from `FirstPersonCamera`, order −40). The domes were then
+placed at 1 km — **exactly the near plane** the flyby was about to set — and the
+rasteriser clipped them away. Result: during the 90 s of a cheat flyby the planet was
+drawn while the stars (and the atmosphere/cloud domes) were not; they reappeared only
+when the anchor expired and `near` dropped back to metres, which reads as "the stars
+appear only when you fly far away".
+
+Measured in Play: `near=1000`, star dome scale 2000 (radius 1 km), `_StarVisibility=1`
+— black sky; one minute later (anchor gone) `near=4.06`, the sky had stars.
+
+Fix: `SkyDomeLayout.MinRadiusMeters = 5000` — the floor is now above any near plane a
+flyby uses, while `near × 10` still covers a real, large near plane (altitude). The
+diagnosis signature is the one to remember: **no stars/atmosphere while a big near
+plane is pinned, present again when it drops → compare `camera.nearClipPlane` with the
+dome radius.**
 
 ## Checklist when adding a new body / planet / sky effect
 

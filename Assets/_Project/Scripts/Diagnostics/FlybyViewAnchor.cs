@@ -19,6 +19,11 @@ namespace Galilego.Universe
         public Camera Camera;
         public SimulationRunner Runner;
         public OrbitingBody Body;
+
+        // Runs at order 1000, AFTER the sky views (-35…-30) have placed their domes
+        // from the camera's near. A dome that ends up at or inside this near plane is
+        // clipped away (stars/atmosphere vanish for the flyby). SkyDomeLayout keeps
+        // its floor at 5 km for exactly this reason — do not raise NearClip near it.
         public float NearClip = 1000f;
         public float FarClip = 4e8f;
         public float LifeSeconds = 60f;

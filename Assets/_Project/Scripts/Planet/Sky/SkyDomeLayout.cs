@@ -19,9 +19,11 @@ namespace Galilego.Universe
     /// the hole grew with altitude. Separating 0.40/0.45/0.50 fixed the
     /// atmosphere but left the cloud and star domes near the bad distance.
     ///
-    /// Fix: stop scaling the domes with far at all. A fixed radius of ~1 km
+    /// Fix: stop scaling the domes with far at all. A fixed radius of ~5 km
     /// is always in the well-resolved part of the depth range,
-    /// independent of altitude and near/far ratio. Occlusion is unaffected:
+    /// independent of altitude and near/far ratio (and above the 1 km near
+    /// plane a debug flyby pins *after* these views run — see MinRadiusMeters).
+    /// Occlusion is unaffected:
     /// the atmosphere and clouds use ZTest Always and their own analytic
     /// depth-based occlusion, and the star field discards every pixel where
     /// the opaque depth is not sky (IsSky), so it does not rely on being
@@ -32,8 +34,21 @@ namespace Galilego.Universe
     /// </summary>
     internal static class SkyDomeLayout
     {
-        /// <summary>Default proxy radius, metres.</summary>
-        public const float MinRadiusMeters = 1000f;
+        /// <summary>
+        /// Default proxy radius, metres. Must stay clear of the near plane used by
+        /// the DEBUG FLYBYS: FlybyViewAnchor pins near = 1000 m in LateUpdate order
+        /// 1000, i.e. AFTER the views have sized their domes (they run at -35…-30
+        /// and read the camera's near from the previous frame). A 1 km dome then sat
+        /// exactly ON the near plane and was clipped away for the whole 90 s of a
+        /// flyby: the planet was there, the stars and the atmosphere were not. That
+        /// is the "there are no stars near a planet until you fly away" report: the
+        /// stars returned only when the anchor expired and near dropped back to a
+        /// few metres. Even against the smallest far plane the game ever sets
+        /// (20 km, so the 0.25·far cap is 5 km) this floor fits; the radius has no
+        /// effect on the image: the domes are screen-space proxies and their shaders
+        /// use only the ray direction.
+        /// </summary>
+        public const float MinRadiusMeters = 5000f;
 
         /// <summary>Keep the proxy well in front of the near plane.</summary>
         public const float NearPlaneFactor = 10f;
