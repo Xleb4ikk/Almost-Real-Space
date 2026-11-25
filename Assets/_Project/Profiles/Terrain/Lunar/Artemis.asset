@@ -175,7 +175,7 @@ MonoBehaviour:
     TextureOcclusion: {fileID: 0}
     TextureDetailNormal: {fileID: 2800000, guid: 3d360506824b53e4f9f1a30566842722, type: 3}
     TextureDetailNormalSteep: {fileID: 2800000, guid: cff3552e54a51124f8202ad320f492d6, type: 3}
-    DetailNormalStrength: 0.5
+    DetailNormalStrength: 0.75
     TextureScale: 0.04
     DetailAlbedoMean: 0.2903
     MacroAlbedo: {fileID: 2800000, guid: 65451f9aeac2c6b4c8bc9ae733fd530a, type: 3}

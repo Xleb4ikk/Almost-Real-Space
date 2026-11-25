@@ -92,6 +92,70 @@ MonoBehaviour:
     ColorDetailOctaves: 3
     ColorDetailStrength: 0.15
     ColorDetailSeedOffset: 0
+    Martian:
+      Enabled: 0
+      HeightUnitMeters: 0
+      DichotomyAxisLatDeg: 0
+      DichotomyAxisLonDeg: 0
+      DichotomyThreshold: 0
+      DichotomyWidth: 0
+      DichotomyBoundaryWarp: 0
+      DichotomyDepthKm: 0
+      HighlandBaseKm: 0
+      SwellAmplitudeKm: 0
+      SwellFrequency: 0
+      RoughAmplitudeKm: 0
+      RoughFrequency: 0
+      RoughOctaves: 0
+      RoughLowlandFactor: 0
+      MassifAmplitudeKm: 0
+      MassifFrequency: 0
+      WrinkleAmplitudeKm: 0
+      HummockAmplitudeKm: 0
+      HummockFrequency: 0
+      HummockOctaves: 0
+      WarpStrength: 0
+      WarpFrequency: 0
+      CraterDensity: 0
+      CraterClasses: 0
+      CraterLargestDiameterKm: 0
+      CraterLowlandFactor: 0
+      CraterDepthScale: 0
+      CraterDegradation: 0
+      BasinCount: 0
+      BasinRadiusKm: 0
+      BasinDepthKm: 0
+      VolcanicProvinces: 0
+      RiseHeightKm: 0
+      RiseRadiusDeg: 0
+      ShieldHeightKm: 0
+      ShieldRadiusKm: 0
+      GrandShieldHeightKm: 0
+      GrandShieldRadiusKm: 0
+      CalderaDepthKm: 0
+      ScatteredVolcanoes: 0
+      CanyonLengthDeg: 0
+      CanyonWidthKm: 0
+      CanyonDepthKm: 0
+      OutflowChannels: 0
+      ChannelWidthKm: 0
+      ChannelDepthKm: 0
+      Fossae: 0
+      StrataMajorKm: 0
+      StrataMinorKm: 0
+      StrataMix: 0
+      StrataWallBoost: 0
+      StrataRegionFrequency: 0
+      StrataRegionThreshold: 0
+      StrataTilt: 0
+      StrataColorStrength: 0
+      PolarCapLatitudeDeg: 0
+      PolarCapFadeDeg: 0
+      PolarCapEdgeJitterDeg: 0
+      PolarCapHeightKm: 0
+      PolarSpiralArms: 0
+      PolarTroughDepthKm: 0
+      PolarLayerKm: 0
     Palette:
       Sand: {r: 0.8, g: 0.73, b: 0.55, a: 1}
       Desert: {r: 0.74, g: 0.6, b: 0.36, a: 1}
@@ -109,7 +173,11 @@ MonoBehaviour:
     TextureHigh: {fileID: 2800000, guid: efa875278ef421d46bcc72ed493fd545, type: 3}
     TextureSteep: {fileID: 2800000, guid: 1363d3212b9225a44b99ab3dcf9c0c4e, type: 3}
     TextureOcclusion: {fileID: 2800000, guid: 3537b2510ee6ead49aa7772a7db91838, type: 3}
+    TextureDetailNormal: {fileID: 0}
+    TextureDetailNormalSteep: {fileID: 0}
+    DetailNormalStrength: 0.75
     TextureScale: 0.04
+    DetailAlbedoMean: 0
     MacroAlbedo: {fileID: 0}
     MacroNormal: {fileID: 0}
     MacroAlbedoStrength: 1
@@ -141,6 +209,9 @@ MonoBehaviour:
       FreshnessExponent: 2.5
       MareAge: 0.6
       RayDensity: 0.12
+      CraterIrregularity: 1
+      SecondaryClusters: 0.55
+      SecondaryClusterFrequency: 7.5
       GiantBasinDiameterMeters: 2400000
       GiantX: -0.8
       GiantY: 0.25
@@ -165,6 +236,9 @@ MonoBehaviour:
       RegolithMeters: 2.5
       RegolithFrequency: 1700
       RegolithOctaves: 5
+      MegaregolithMeters: 14
+      MegaregolithFrequency: 59
+      MegaregolithOctaves: 4
       MareDarkness: 0.85
       HighlandVariation: 0.18
       FreshEjectaBrightness: 1

@@ -1732,6 +1732,7 @@ MonoBehaviour:
     JointAnchor: {x: 0, y: 0, z: 0}
     EngineOffset: {x: 0, y: 0, z: 0}
     PlayerPassthrough: 0
+    IsCrewCapsule: 0
   - Name: "\u0422\u043E\u043F\u043B\u0438\u0432\u043E"
     MassKg: 2000
     JointStrengthNewtons: 1000000000
@@ -1744,6 +1745,7 @@ MonoBehaviour:
     JointAnchor: {x: 0, y: 0, z: 0}
     EngineOffset: {x: 0, y: 0, z: 0}
     PlayerPassthrough: 0
+    IsCrewCapsule: 0
   - Name: "\u0414\u0432\u0438\u0433\u0430\u0442\u0435\u043B\u044C"
     MassKg: 500
     JointStrengthNewtons: 2000000
@@ -1756,6 +1758,7 @@ MonoBehaviour:
     JointAnchor: {x: 0, y: 0.6, z: 0}
     EngineOffset: {x: 0, y: -0.6, z: 0}
     PlayerPassthrough: 0
+    IsCrewCapsule: 0
   - Name: "\u041D\u043E\u0433\u0430 1"
     MassKg: 50
     JointStrengthNewtons: 400000
@@ -1768,6 +1771,7 @@ MonoBehaviour:
     JointAnchor: {x: 0, y: 1.25, z: 0}
     EngineOffset: {x: 0, y: 0, z: 0}
     PlayerPassthrough: 0
+    IsCrewCapsule: 0
   - Name: "\u041D\u043E\u0433\u0430 2"
     MassKg: 50
     JointStrengthNewtons: 400000
@@ -1780,6 +1784,7 @@ MonoBehaviour:
     JointAnchor: {x: 0, y: 1.25, z: 0}
     EngineOffset: {x: 0, y: 0, z: 0}
     PlayerPassthrough: 0
+    IsCrewCapsule: 0
   - Name: "\u041D\u043E\u0433\u0430 3"
     MassKg: 50
     JointStrengthNewtons: 400000
@@ -1792,6 +1797,7 @@ MonoBehaviour:
     JointAnchor: {x: 0, y: 1.25, z: 0}
     EngineOffset: {x: 0, y: 0, z: 0}
     PlayerPassthrough: 0
+    IsCrewCapsule: 0
   - Name: "\u041D\u043E\u0433\u0430 4"
     MassKg: 50
     JointStrengthNewtons: 400000
@@ -1804,6 +1810,7 @@ MonoBehaviour:
     JointAnchor: {x: 0, y: 1.25, z: 0}
     EngineOffset: {x: 0, y: 0, z: 0}
     PlayerPassthrough: 0
+    IsCrewCapsule: 0
   - Name: "\u041A\u0430\u0431\u0438\u043D\u0430 \u0441 \u043F\u043E\u043B\u0435\u0437\u043D\u043E\u0439 \u043D\u0430\u0433\u0440\u0443\u0437\u043A\u043E\u0439"
     MassKg: 1300
     JointStrengthNewtons: 1000000
@@ -1816,6 +1823,7 @@ MonoBehaviour:
     JointAnchor: {x: 0, y: -1.25, z: 0}
     EngineOffset: {x: 0, y: 0, z: 0}
     PlayerPassthrough: 0
+    IsCrewCapsule: 0
   DebrisLifetimeSeconds: 600
   DebrisSurfaceRestitution: 0.2
   VesselRoot: {fileID: 0}
@@ -2873,7 +2881,6 @@ MonoBehaviour:
   EyeAdaptationMaxEv: 8
   EyeAdaptBrightSeconds: 0.25
   EyeAdaptDarkSeconds: 1.2
-  StarHideDayLevel: 0.0001
   NightAdaptationMaxEv: 14
   ShadowHighDistanceMeters: 150
   ShadowMediumDistanceMeters: 400

@@ -168,11 +168,14 @@ MonoBehaviour:
       Sea: {r: 0.2, g: 0.12, b: 0.1, a: 1}
       Soil: {r: 0.38, g: 0.24, b: 0.17, a: 1}
       Lush: {r: 0.3, g: 0.28, b: 0.28, a: 1}
-    TextureLow: {fileID: 0}
-    TextureMid: {fileID: 0}
-    TextureHigh: {fileID: 0}
-    TextureSteep: {fileID: 0}
-    TextureOcclusion: {fileID: 0}
+    TextureLow: {fileID: 2800000, guid: a5d8100fccfd0ed40b8e51fb24062bc6, type: 3}
+    TextureMid: {fileID: 2800000, guid: 21a155fbbab87de42bca00e649a600e8, type: 3}
+    TextureHigh: {fileID: 2800000, guid: efa875278ef421d46bcc72ed493fd545, type: 3}
+    TextureSteep: {fileID: 2800000, guid: 1363d3212b9225a44b99ab3dcf9c0c4e, type: 3}
+    TextureOcclusion: {fileID: 2800000, guid: 3537b2510ee6ead49aa7772a7db91838, type: 3}
+    TextureDetailNormal: {fileID: 0}
+    TextureDetailNormalSteep: {fileID: 0}
+    DetailNormalStrength: 0.75
     TextureScale: 0.04
     DetailAlbedoMean: 0
     MacroAlbedo: {fileID: 0}
@@ -206,6 +209,9 @@ MonoBehaviour:
       FreshnessExponent: 2.5
       MareAge: 0.6
       RayDensity: 0.12
+      CraterIrregularity: 1
+      SecondaryClusters: 0.55
+      SecondaryClusterFrequency: 7.5
       GiantBasinDiameterMeters: 2400000
       GiantX: -0.8
       GiantY: 0.25
@@ -230,13 +236,16 @@ MonoBehaviour:
       RegolithMeters: 2.5
       RegolithFrequency: 1700
       RegolithOctaves: 5
+      MegaregolithMeters: 14
+      MegaregolithFrequency: 59
+      MegaregolithOctaves: 4
       MareDarkness: 0.85
       HighlandVariation: 0.18
       FreshEjectaBrightness: 1
     NormalEpsilonMeters: 0
     LowMidBlendStart: 30
     LowMidBlendEnd: 60
-    MidHighBlendStart: 2500
-    MidHighBlendEnd: 3500
+    MidHighBlendStart: 4500
+    MidHighBlendEnd: 5500
     SteepBlendStart: 0.7
     SteepBlendEnd: 1.4
