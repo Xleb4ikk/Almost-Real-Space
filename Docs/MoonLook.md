@@ -103,6 +103,50 @@ map and lights it with the same Lambert term. The disc is now a *rendered* Moon 
 rays, crater rims with real shading), not a painted circle, which is what makes the
 4 R → 1.6 R hand-over read as "more detail arriving" instead of "a different object".
 
+### …but it sampled the map in the WRONG axis frame: a different face at altitude
+
+Report: *"the Moon's texture changes very strongly when approaching — it is plainly
+visible"*, with two screenshots of the same body: the 134 px disc at 2 969 km and the
+mesh at 532 km. The two showed **different maria and different craters**, not one blurred
+and one sharp.
+
+`WorldToBodyDir(normalWS)` answers in **SIM body axes** (Y = up): `_BFD_Body*` are the
+columns of `AstroFrame.ToSimulation(orientation)`, i.e. the images of the sim basis. The
+shader then applied the **ASTRO** lat/lon convention to it (`asin(nb.z)` = latitude,
+Z = pole — the frame `LunarRelief` and the bake use). The pole landed on the equator, so
+the lookup was a re-projection of the map, not the map: for the same sub-observer point
+the shader asked for **71.2° / −145.0°** where the body-fixed direction was
+**−10.7° / −105.6°**.
+
+The same mistake in the second half: the map's normal is ASTRO while `nb` is SIM, so
+`lerp(nb, mapN, 1)` + `BodyToWorldDir` turned the reconstructed relief 90° away from the
+Sun — the disc's craters were lit as if the body were rotated (the same class of defect as
+the terrain normal in the "Moon went black" section, which had been fixed in
+`PlanetSurface.shader` only).
+
+Fix — the same bridges the terrain uses, both inside `BodyFarDisc.shader`:
+
+```hlsl
+float3 nbAstro = float3(nb.x, -nb.z, nb.y);       // SIM  -> ASTRO, map lookup
+float3 mapSim  = float3(mapN.x, mapN.z, -mapN.y); // ASTRO -> SIM,  map normal
+```
+
+Verified in Play (cheat flyby + noclip, 1.29 R): A/B with the body's
+`PlanetSurfaceRenderer` disabled (the disc then draws at its true angular size over the
+same mesh). Before the fix the disc's maria sat on the opposite side of the body from the
+mesh's and its centre was a bright rayed crater; after it the maria, the rayed crater and
+the terminator coincide, and the difference that remains between 3 000 km and 530 km is
+resolution (map mips vs 161 chunks), not identity.
+
+The disc also switched both map samples to `s_trilinear_repeat_sampler`: `linear` in an
+inline sampler is bilinear with **nearest mip**, so every mip step while the disc grew was
+a visible texture jump — part of the same complaint.
+
+> This also means the earlier "the hand-over reads as more detail" was measured on a
+> *different face*, and the 4 R → 1.6 R fade was hiding an identity change. Terra's disc
+> uses the same shader with a runtime-baked colour map (`TerrainMacroAlbedo`, same astro
+> convention), so every body seen from another body was showing a rotated map.
+
 ## Holding the disc until the sphere is worth showing
 
 `PlanetSurfaceRenderer.ViewCoverage` used to count a desired node as covered if **any**
@@ -437,5 +481,6 @@ composite is what it needs.
 | 30 km | unchanged (map fades out below ~1 texel/px) | unchanged |
 | 700 km | black crack hairlines at LOD junctions | surface-coloured (unshadowed skirt) |
 | from Terra, day | white lamp, no air | `T·body + in-scatter`, pale warm-grey disc |
+| 3 000 km → 530 km | the disc showed a *different face* (wrong axis frame, above) | the same mapped face; the change is resolution |
 
 Memory: two 2048×1024 BC7 maps ≈ 5.3 MB + mips each (~7 MB together).

@@ -173,9 +173,19 @@ Shader "Galilego/BodyFarDisc"
                 // Body-fixed albedo map (maria / highlands) so a 20 px disc still reads as
                 // THIS moon and not as a featureless ball. Same lat/lon convention as
                 // LunarRelief: dir = (cos lat cos lon, cos lat sin lon, sin lat).
+                //
+                // WorldToBodyDir answers in SIM body axes (Y = up): _BFD_Body* are the
+                // columns of AstroFrame.ToSimulation(orientation), i.e. the images of the
+                // sim basis. The bake is ASTRO (Z = pole), so the map lookup must bridge
+                // first. Sampling astro lat/lon from a sim vector puts the pole on the
+                // equator: at 3 000 km the disc showed a completely different face than
+                // the mesh at 500 km, and the hand-over read as "the texture changed" —
+                // measured 71.2° / −145.0° instead of −10.7° / −105.6° for the same
+                // sub-observer point. Terrain uses the same bridge (PlanetSurface.shader).
                 float3 nb = WorldToBodyDir(normalWS);
-                float lat = asin(clamp(nb.z, -1.0, 1.0));
-                float lon = atan2(nb.y, nb.x);
+                float3 nbAstro = float3(nb.x, -nb.z, nb.y);
+                float lat = asin(clamp(nbAstro.z, -1.0, 1.0));
+                float lon = atan2(nbAstro.y, nbAstro.x);
                 float2 uvMap = float2((lon * 0.15915494) + 0.5, (lat * 0.31830989) + 0.5);
 
                 // Baked body-space SURFACE normal: the disc is a flat quad with a sphere
@@ -183,13 +193,22 @@ Shader "Galilego/BodyFarDisc"
                 // a painted ball and the craters appear only when the chunks take over.
                 // The map holds the real relief (rims, basin walls, rilles), lit by the
                 // same Lambert term, which is what makes the hand-over invisible.
+                //
+                // The map is ASTRO (Z = pole); nb is SIM (Y = up). Mixing the two turns
+                // every reconstructed normal 90° away from the sun and the disc is lit as
+                // a different body — the exact mistake fixed in PlanetSurface.shader
+                // (MoonLook.md), and the reason the disc's relief differed from the mesh's.
                 if (_BFD_NormalStrength > 0.0)
                 {
-                    float3 mapN = (SAMPLE_TEXTURE2D(_BFD_NormalMap, s_linear_repeat_sampler, uvMap).xyz * 2.0) - 1.0;
+                    // Trilinear, not the bilinear-mip inline sampler: the disc grows from a
+                    // few pixels to hundreds while approaching, and with a nearest-mip
+                    // filter every mip step is a visible "the texture changed" jump.
+                    float3 mapN = (SAMPLE_TEXTURE2D(_BFD_NormalMap, s_trilinear_repeat_sampler, uvMap).xyz * 2.0) - 1.0;
                     float len2 = dot(mapN, mapN);
                     if (len2 > 1e-4)
                     {
-                        nb = normalize(lerp(nb, mapN * rsqrt(len2), _BFD_NormalStrength));
+                        float3 mapSim = float3(mapN.x, mapN.z, -mapN.y);
+                        nb = normalize(lerp(nb, mapSim * rsqrt(len2), _BFD_NormalStrength));
                         float3 nWorld = normalize(BodyToWorldDir(nb));
                         ndl = saturate(dot(nWorld, _BFD_SunDirWS.xyz));
                     }
@@ -200,7 +219,7 @@ Shader "Galilego/BodyFarDisc"
                 // body's own terrain palette) is used as-is: it already IS albedo, and
                 // taking only R would paint an ocean world red. Repeat sampling: u spans
                 // the full 360 deg and the antimeridian is a real wrap, not a clamp edge.
-                float3 mapSample = SAMPLE_TEXTURE2D(_BFD_Map, s_linear_repeat_sampler, uvMap).rgb;
+                float3 mapSample = SAMPLE_TEXTURE2D(_BFD_Map, s_trilinear_repeat_sampler, uvMap).rgb;
                 float3 mapAlbedo = _BFD_MapColor > 0.5 ? mapSample : (mapSample.r * 2.0).xxx;
                 float3 albedo = _BFD_Albedo.rgb * lerp(1.0, mapAlbedo, _BFD_MapStrength);
 
