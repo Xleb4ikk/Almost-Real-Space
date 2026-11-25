@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d445d08b279aaf1468ccc32db002e7a2, type: 3}
-  m_Name: MarsLike_Mars
+  m_Name: MarsLike_Metus
   m_EditorClassIdentifier: Assembly-CSharp::Galilego.Universe.TerrainProfileAsset
   Profile:
     AmplitudeMeters: 14161.380734621625

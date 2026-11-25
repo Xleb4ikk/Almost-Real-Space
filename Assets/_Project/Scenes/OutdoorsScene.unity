@@ -1643,7 +1643,7 @@ MonoBehaviour:
   FlyToBodyName: Aeolus
   OrbitBodyName: Terra
   OrbitAltitudeMeters: 200000
-  MarsBodyName: Mars
+  MetusBodyName: Metus
   OpenOnStart: 0
   MenuKey: 96
   ShowPerformance: 1
@@ -2979,7 +2979,7 @@ GameObject:
   - component: {fileID: 2116467484}
   - component: {fileID: 2116467483}
   m_Layer: 0
-  m_Name: Mars
+  m_Name: Metus
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

@@ -47,8 +47,8 @@ namespace Galilego.Universe
         [Tooltip("Высота круговой орбиты для кнопки «на орбиту в кресле», м.")]
         public double OrbitAltitudeMeters = 200000d;
 
-        [Tooltip("Тело для кнопки «К Марсу» (добавлено вместе с планетой Mars).")]
-        public string MarsBodyName = "Mars";
+        [Tooltip("Тело для кнопки «К Метусу» (добавлено вместе с планетой Metus).")]
+        public string MetusBodyName = "Metus";
 
         [Tooltip("Показывать окно сразу при старте (для отладки и скриншотов).")]
         public bool OpenOnStart;
@@ -269,13 +269,13 @@ namespace Galilego.Universe
 
             GUILayout.Label("2.2 R, фаза 35°, ноуклип включится сам", CheatGuiSkin.LabelMuted);
 
-            string marsLabel = string.IsNullOrEmpty(MarsBodyName) ? "Mars" : MarsBodyName;
-            if (GUILayout.Button("  К " + marsLabel + " (облёт)", CheatGuiSkin.Button))
+            string metusLabel = string.IsNullOrEmpty(MetusBodyName) ? "Metus" : MetusBodyName;
+            if (GUILayout.Button("  К " + metusLabel + " (облёт)", CheatGuiSkin.Button))
             {
-                FlyToBody(marsLabel);
+                FlyToBody(metusLabel);
             }
 
-            GUILayout.Label("Марс: 2.2 R, фаза 35°, ноуклип включится сам", CheatGuiSkin.LabelMuted);
+            GUILayout.Label("Метус: 2.2 R, фаза 35°, ноуклип включится сам", CheatGuiSkin.LabelMuted);
 
             if (NoclipExternallyDriven)
             {

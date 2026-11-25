@@ -8,7 +8,7 @@ using Galilego.Core;
 namespace Galilego.Universe.EditorTools
 {
     /// <summary>
-    /// One-shot authoring for the game's Mars: a Mars-like terrain (MartianRelief) on a
+    /// One-shot authoring for Metus: a Mars-like terrain (MartianRelief) on a
     /// body with 7 % of Mars' mass inside R = 800 km, on an orbit that runs from 610 to
     /// 720 million km from Sol.
     ///
@@ -22,9 +22,9 @@ namespace Galilego.Universe.EditorTools
     /// e = (720 - 610)/(720 + 610) = 0.082707. Rotation, obliquity and J2 stay Mars'.
     /// No atmosphere: the body is airless like the real Mars analogue.
     /// </summary>
-    public static class MarsSetup
+    public static class MetusSetup
     {
-        public const string BodyName = "Mars";
+        public const string BodyName = "Metus";
 
         /// <summary>IAU 2015 nominal GM of the Mars system, m3/s2.</summary>
         public const double MarsNominalGm = 4.282837e13d;
@@ -44,7 +44,7 @@ namespace Galilego.Universe.EditorTools
 
         public const double Eccentricity = (ApoapsisMeters - PeriapsisMeters) / (ApoapsisMeters + PeriapsisMeters);
 
-        [MenuItem("Tools/Galilego/Planets/Setup Mars (7% Mars, R=800 km)")]
+        [MenuItem("Tools/Galilego/Planets/Setup Metus (7% Mars, R=800 km)")]
         public static void Run()
         {
             var settings = new MarsLikeSettings
@@ -100,7 +100,7 @@ namespace Galilego.Universe.EditorTools
                 UnityEngine.Object.DestroyImmediate(atmosphereView, true);
             }
 
-            // Mars is alone in deep space: spend the whole budget on its globe.
+            // Metus is alone in deep space: spend the whole budget on its globe.
             // Full grid at every LOD depth (no far-level halving), no speed-tier
             // coarsening, and a denser base grid than the default 65.
             var surface = body.GetComponent<PlanetSurfaceRenderer>();
@@ -126,7 +126,7 @@ namespace Galilego.Universe.EditorTools
             Selection.activeGameObject = body.gameObject;
             EditorGUIUtility.PingObject(body.gameObject);
             Debug.Log(
-                "[Mars] Готово: R = " + (RadiusMeters / 1000d).ToString("F0") + " км, μ = " +
+                "[Metus] Готово: R = " + (RadiusMeters / 1000d).ToString("F0") + " км, μ = " +
                 body.StandardGravitationalParameter.ToString("E6") + " м³/с² (7 % от GM Марса), " +
                 "орбита " + (PeriapsisMeters / 1e9).ToString("F0") + "–" + (ApoapsisMeters / 1e9).ToString("F0") +
                 " млн км (a = " + (SemiMajorAxisMeters / 1e9).ToString("F1") + " млн км, e = " +
