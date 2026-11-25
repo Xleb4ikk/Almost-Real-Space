@@ -11,8 +11,9 @@
 //
 // Distance LOD of filtering: up to _ShadowHighDistance the stock HQ filter HDRP
 // (PCSS per asset); up to _ShadowMediumDistance GATHER (4 taps); beyond that a
-// single tap. Band transitions are chosen by dithering per screen coordinate
-// rather than lerping two real samples, so the transition zone pays only one cost.
+// single tap. Band transitions are a real lerp between both filters: the old
+// per-pixel dither picked one or the other, and with PCSS the surviving pixels
+// formed a band of noise that slid across the ground as the camera moved.
 
 // Set by SkyEnvironment every frame.
 float3 _TerrainSunDir;
@@ -178,8 +179,6 @@ float GalilegoSunShadow(float2 positionSS, float3 positionWS, float3 normalWS, f
     float med0 = _ShadowMediumDistance - (_ShadowBlendWidth * 0.5);
     float med1 = _ShadowMediumDistance + (_ShadowBlendWidth * 0.5);
     float blend = max(1e-4, _ShadowBlendWidth);
-    uint taaFrame = (uint)_TaaFrameInfo.z;
-    float dither = InterleavedGradientNoise(positionSS, taaFrame);
 
     float shadow;
     if (dist <= high0)
@@ -188,10 +187,14 @@ float GalilegoSunShadow(float2 positionSS, float3 positionWS, float3 normalWS, f
     }
     else if (dist <= high1)
     {
-        // HQ <-> MQ: stochastic tier selection (we don't pay both filters).
-        shadow = (dither < saturate((dist - high0) / blend))
-            ? GalilegoShadowMedium(positionWS, normalWS, sunDir)
-            : GetDirectionalShadowAttenuation(shadowContext, positionSS, positionWS, normalWS, 0, sunDir);
+        // HQ <-> MQ: a real crossfade. The old per-pixel dither picked one filter or
+        // the other, so the 25 m band became a field of surviving pixels that slid
+        // across the ground as the camera moved — the "shadow crawls when I walk"
+        // report. Two samples only in the band are cheap next to that.
+        float t = saturate((dist - high0) / blend);
+        float hq = GetDirectionalShadowAttenuation(shadowContext, positionSS, positionWS, normalWS, 0, sunDir);
+        float mq = GalilegoShadowMedium(positionWS, normalWS, sunDir);
+        shadow = lerp(hq, mq, t);
     }
     else if (dist <= med0)
     {
@@ -199,10 +202,11 @@ float GalilegoSunShadow(float2 positionSS, float3 positionWS, float3 normalWS, f
     }
     else if (dist <= med1)
     {
-        // MQ <-> LQ: same.
-        shadow = (dither < saturate((dist - med0) / blend))
-            ? GalilegoShadowCheap(positionWS, normalWS, sunDir)
-            : GalilegoShadowMedium(positionWS, normalWS, sunDir);
+        // MQ <-> LQ: same crossfade, not a dither.
+        float t = saturate((dist - med0) / blend);
+        float mq = GalilegoShadowMedium(positionWS, normalWS, sunDir);
+        float lq = GalilegoShadowCheap(positionWS, normalWS, sunDir);
+        shadow = lerp(mq, lq, t);
     }
     else
     {

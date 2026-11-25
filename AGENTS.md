@@ -108,6 +108,12 @@ angles) and kept current automatically by `LunarMacroMapAutoBaker` (fingerprint 
 1.5 s debounce + background worker), so a profile edit or seed change rebakes itself.
 Full write-up: **[`Docs/Terminator.md`](Docs/Terminator.md)**.
 
+The regolith *detail normal* is part of the same story: fade it by the surface's own
+`dot(normal, sunDir)`, never by the sun's elevation above the observer. Keyed to the
+global elevation, a dune's lee face at a 25° sun still gets the 0.5-strength normal map
+and its terminator aliases into black/white static. The stipple survives
+`_ShadowStrength = 0`, which is how to tell it from a cast shadow.
+
 ## Nav tablet — the trail is the selected time window, not a whole orbit
 
 The map draws **every** body's history/forecast over the slider windows, in the

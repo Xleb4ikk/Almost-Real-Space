@@ -95,6 +95,34 @@ texels (~70 km on Artemis).
   the horizon map handles everything beyond (kilometre-scale). `MacroHorizonStrength
   = 0` disables the map (A/B), and the map itself is optional (`_TerrainHorizonOn`).
 
+## 4. The black/white static on a shadowed slope is the micro-normal
+
+**Symptom.** The day/night edge of a dune is a smooth gradient at noon but a 1–2 px
+black/white stipple where the slope itself turns away from the sun. It looks like a
+broken shadow map, and the stipple survives `_ShadowStrength = 0` — that is the
+quickest way to tell it apart from a cast shadow: **the shadow term is not involved.**
+
+**Cause.** `microSunFade` (the guard that removes the regolith normal map at grazing
+light, see the comment in `PlanetSurface.shader`) was keyed to
+`dot(radialUp, sunDir)` — the sun's elevation above the **observer's** horizon. At a
+25° sun a dune's lee face still reports 25°, while its own `N·L` is 0, so the 0.5
+strength normal map kept flipping `N·L` from +ε to −ε texel by texel. The geometry is
+clean: a screen-space derivative normal (`cross(ddx(positionWS), ddy(positionWS))`)
+gives a smooth terminator at the same pixels, so the static comes entirely from the
+shading normal.
+
+**Fix.** Gate the micro-normal by the **local** incidence of the unperturbed (mesh)
+normal: `microSunFade = smoothstep(0.12, 0.70, saturate(dot(normal, sunDir)))` with
+`normal` read *before* the detail perturbation. The plain at a 25° sun keeps the same
+0.53 weight it had; only slopes within ~44° of their own terminator lose the grain,
+which is exactly where the texture aliases.
+
+**How to check.** Debug the signed term as `saturate(dot(normal, sunDir) * 50 + 0.5)`:
+with the micro-normal on, the boundary is speckled; with `DetailNormalStrength = 0`
+or with the fix it is a clean curve. The same rule applies to any future body-level
+detail normal — never gate it by the sun's elevation, always by the surface's own
+incidence.
+
 ## What was measured
 
 * A 5 m × 20 m wall with the terrain material cast a crisp shadow on the terrain:

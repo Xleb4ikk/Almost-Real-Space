@@ -627,9 +627,16 @@ Shader "Galilego/PlanetSurface"
                 // whole plain into black-and-white static near the terminator. The
                 // real regolith self-shadows at grazing incidence; fade the MICRO
                 // normal there (the coherent macro/mesh normals stay).
+                //
+                // The gate must be the LOCAL incidence of the unperturbed normal, not
+                // the sun's elevation above the observer's horizon. A dune's lee face
+                // has sunElevation = 25 deg while its own N·L is 0: keying the fade to
+                // the global elevation let the micro-normal flip N·L texel-by-texel
+                // there — the black/white static along every shadowed slope.
                 float3 radialUp = normalize(input.positionWS - _TerrainBodyCenterWS);
                 float sunElevation = dot(radialUp, sunDir);
-                float microSunFade = smoothstep(0.12, 0.70, saturate(sunElevation));
+                float meshNdl = saturate(dot(normal, sunDir));
+                float microSunFade = smoothstep(0.12, 0.70, meshNdl);
 
                 // ---- Airless regolith micro-relief ---------------------------------
                 // Airless bodies carry a detail set as a RELATIVE albedo modulation

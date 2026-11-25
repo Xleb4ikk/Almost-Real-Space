@@ -8,7 +8,7 @@ pointed the wrong way:
 |---|---|---|---|
 | Per-cascade resolution | **512** (`m_Level: 0`) | **2048** (`m_Level: 2`) | the `Sun` light, `HDAdditionalLightData.m_ShadowResolution` |
 | Sun angular diameter (penumbra) | **2.5°** | **the star's real size** (1.47° at 0.37 AU) | `SkyEnvironment.ApplyGlobalsNow` |
-| PCSS samples / minimum penumbra | 4 + 8 taps, 1.5 texels | 16 + 24 taps, **2 texels** | the `Sun` light |
+| PCSS samples / minimum penumbra | 4 + 8 taps, 1.5 texels | **32 + 32 taps**, **2 texels** | the `Sun` light |
 | Bias | 0.2 / 0.15 | 0.75 / 0.5 | the `Sun` light |
 
 The useful mental model: `shadowDistance = 250 m` is split into 3 cascades, and the
@@ -80,6 +80,19 @@ Two more rules apply where there is no atmosphere:
 
 Beyond 2 km even that cannot help; the terrain terminator there comes from the baked
 horizon map. Full write-up: **[Terminator.md](Terminator.md)**.
+
+### The lunar near field is coarse by design — and needs the taps
+
+`AirlessShadowDistanceMeters = 2000` is 8× Terra's 250 m, so cascade 0 covers 100 m
+with 2048 texels = **5 cm/texel** (Terra: 12.5 m = 6 mm). At a 25° sun that step is
+stretched by ~1/sin 25° to ~12 cm on the ground and is visible at walking distance.
+The PCSS penumbra is physically wide there too (a rim 60 m away gives 0.3 m), so 16
+filter taps left a fan of discrete bands along the edge; the sun now runs **32 + 32**
+taps. The High/Medium/Low handoff is a **real crossfade**, not a per-pixel dither: the
+dithered band was a ribbon of surviving pixels that crawled across the ground as the
+camera moved ("the shadow jitters when I walk"). If lunar shadows still read as
+stepped, the next lever is the range: 1000 m halves every texel and lets the horizon
+map own everything beyond it.
 
 ## Night: the Moon owns the cascades
 
