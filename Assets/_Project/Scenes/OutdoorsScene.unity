@@ -2756,7 +2756,7 @@ MonoBehaviour:
   PlayerCamera: {fileID: 1823688466}
   FarFraction: 0.28
   MinScreenRadiusPixels: 0.5
-  GroundScreenRadiusPixels: 11
+  GroundScreenRadiusPixels: 0
   GroundScreenRadiusFullAltitudeMeters: 100000
   GroundScreenRadiusFadeAltitudeMeters: 20000000
   HandoverRadii: 1.6

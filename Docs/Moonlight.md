@@ -194,9 +194,9 @@ one frame.
 At the launch site the gas giant **Aeolus** far disc (`GasGiantView`) may cover a large
 part of the sky near the Moon; it is a separate artistic proxy with its own screen-size
 floor, not a moonlight artifact. The Moon itself is 0.525° — about 5 px at 720p/83° FOV —
-and `BodyFarDiscView.GroundScreenRadiusPixels` (11 px on `Артемида`) lifts it to a readable
-disc while the eye is over a landscape; in space it is physical (see
-[LunarBodies.md](LunarBodies.md#the-size-floor-minscreenradiuspixels-groundscreenradiuspixels)).
+and it is drawn strictly physical (`BodyFarDiscView.MinScreenRadiusPixels` 0.5 px,
+`MinEnergyScale = 0`); see
+[LunarBodies.md](LunarBodies.md#the-size-floor-minscreenradiuspixels-groundscreenradiuspixels).
 
 ## Tunables
 

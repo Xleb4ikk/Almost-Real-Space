@@ -111,35 +111,28 @@ own terrain, which makes the hand-over seamless); by day the disc then goes thro
 air the sky does, so it is the atmosphere — not the exposure — that decides how washed out
 it looks. See [MoonLook.md](MoonLook.md#the-daytime-moon-looked-like-a-moon-with-no-atmosphere).
 
-**The size floor has two regimes: over a landscape it is a readability concession, in
-vacuum it is physics.** `MinScreenRadiusPixels` (0.5 px = the display limit) is always on and
-flux-conserving (`MinEnergyScale = 0`): a sub-pixel body is a faint one-pixel dot, never a
-lamp. On top of it `GroundScreenRadiusPixels` lets a distant body be lifted while the
-observer is over a landscape — on its OWN altitude range (`GroundScreenRadiusFullAltitudeMeters`
-100 km → `GroundScreenRadiusFadeAltitudeMeters` **20 000 km**), deliberately not the night
-boost's 100 → 2 000 km: at 1 950 km the physical Moon is 6 px, and that range made a normal
-climb read as *"the Moon shrank to a point after a short flight"*. `Артемида` carries
-**11 px** there, because from the pad the Moon is 0.32° = **6–7 px** and at that size it is
-invisible in the daytime haze — it is the map's main landmark. The lifted disc keeps its
-SURFACE brightness (otherwise the lift would dim it 12× and undo the concession); the
-physical floor does not.
+**The disc is strictly physical: 0.5 px floor, flux-conserving.** `MinScreenRadiusPixels`
+(0.5 px = the display limit) is the only floor; `MinEnergyScale = 0` keeps the total flux, so
+a sub-pixel body is a faint one-pixel dot, never a lamp. From the pad the Moon is 0.32° =
+**6–7 px** and grows monotonically as you approach: 9 px at 50 000 km from it, 44 px at
+10 000 km, 110 px at 3 800 km, the mesh below 4 R. Nothing shrinks as you fly away from Terra
+and nothing is drawn larger than it is.
 
-Both halves are deliberate, and each fixes a report the other one caused:
+`GroundScreenRadiusPixels` (the "readable landmark" floor) exists in the component but is
+**0 on every body**, and that is the decision, not an oversight. It was tried twice:
 
-* report *"the Moon is the same size at 50 000 km as from Earth"* — the old 11 px floor with
-  `MinEnergyScale = 1` applied at EVERY distance and never dimmed, so the Moon was 22 px
-  from the pad, 22 px at 50 000 km and 22 px at 50 million km. The floor is now gated to the
-  ground and conserves flux in vacuum: 22 px from the pad, **9 px at 50 000 km**, 0.5 px (a
-  dim dot) at interplanetary distances;
-* report *"the Moon is gone"* (after only the first half was applied) — a strictly physical
-  Moon is 6–7 px from the pad and does not read at all in daylight. Hence the ground-only
-  concession.
+* 11 px at EVERY distance with `MinEnergyScale = 1` — the Moon was 22 px from the pad, 22 px
+  at 50 000 km and 22 px at 50 million km: *"the Moon is the same size at 50 000 km as from
+  Earth"*;
+* 11 px gated to the landscape (100 km → 20 000 km) — *"it shrinks abruptly on a short
+  flight"*: 22 px at the pad, 13 px at 9 500 km, 9 px at 20 000 km.
 
-The one visible consequence is that the Moon shrinks from 22 px at the pad towards its
-physical size as you climb — but over 20 000 km, not 2 000: at 2 000 km it is still 21 px, at
-10 000 km 12 px, at 20 000 km (50 000 km from the Moon) 9 px, and from there it grows with the
-real angular size. A distance-independent marker belongs in the nav tablet, not in the body's
-angular size.
+A floor larger than the true size always produces a shrink somewhere, because the physical
+Moon from the pad (6.5 px) is smaller than any readable marker. The player chose the physical
+size; a navigational marker belongs in the nav tablet, not in the body's angular size. The
+fields remain for a future body that wants one (`GroundScreenRadiusPixels > 0`), with the
+lift keeping SURFACE brightness so the concession is not immediately undone by flux
+conservation.
 
 ### The ground went dark brown on approach: the regolith set was overwritten
 

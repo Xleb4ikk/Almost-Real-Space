@@ -376,8 +376,8 @@ Debug: `DebugMode` 0 normal, 1 depth coverage, 2 veil, 3 ghosts, 4 spikes;
     2026-11-25 (4.10 AU, sun 0.048°): Aeolus sat 0.6° from the Sun, its 0.25° marker
     covered the 0.57-px disc, and the only visible remnant was the lens-flare veil at
     **56/255** against ground at **103–111/255** — “the sun on Mars is dim”. The markers
-    are now physical (0.5-px floor, `MinEnergyScale = 0`; `Артемида` adds the ground-only
-    `GroundScreenRadiusPixels` lift, which is off in vacuum), but the draw order stays the
+    are now physical (0.5-px floor, `MinEnergyScale = 0`; the optional
+    `GroundScreenRadiusPixels` lift is 0 on every body), but the draw order stays the
     guarantee. A real transit is already carried by `_EclipseVisibility`, and with
     `Blend One One` a fully eclipsed disc writes zero and lets the planet's marker
     show through. While `_EclipseVisibility < 1` (a body really covers the disc) the
