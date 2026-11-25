@@ -74,6 +74,8 @@ namespace Galilego.Universe
             L.ComplexTransitionMeters = LunarBodyPhysics.ComplexTransition(surfaceGravity);
             L.MaxCraterDiameterMeters = 0.8d * R;
             L.RegolithFrequency = R / 1000d;
+            L.MegaregolithFrequency = R / 7000d;
+            L.SecondaryClusterFrequency = R / 55000d;
 
             L.GlobalReliefMeters *= reliefScale;
             L.NearFarOffsetMeters *= reliefScale;
@@ -84,6 +86,7 @@ namespace Galilego.Universe
             L.WrinkleRidgeMeters *= reliefScale;
             L.RilleDepthMeters *= reliefScale;
             L.DomeHeightMeters *= reliefScale;
+            L.MegaregolithMeters *= reliefScale;
 
             Color baseCol;
             Color dark;

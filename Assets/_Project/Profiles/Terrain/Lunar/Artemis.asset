@@ -185,11 +185,11 @@ MonoBehaviour:
     MacroHorizonA: {fileID: 2800000, guid: e418371a4f2acca41a00986d765b2655, type: 3}
     MacroHorizonB: {fileID: 2800000, guid: e6391ce1edde9554cb45f1d01ac6e1c9, type: 3}
     MacroHorizonStrength: 1
-    MacroBakeHash: -5114699620988365590
+    MacroBakeHash: 2712460244200891972
     Lunar:
       Enabled: 1
       RadiusMeters: 412000
-      MeanOffsetMeters: 143.16678378622254
+      MeanOffsetMeters: 199.3
       GlobalReliefMeters: 1794.5719736599176
       GlobalFrequency: 1.001231339760698
       NearFarOffsetMeters: 996.9844298110654
@@ -207,8 +207,12 @@ MonoBehaviour:
       MinCraterDiameterMeters: 12
       ComplexTransitionMeters: 17945.719736599178
       FreshnessExponent: 2.191690699228407
-      MareAge: 0.4760261840308207
+      MareAge: 0.72
       RayDensity: 0.12
+      CraterIrregularity: 1
+      CraterRimVariety: 1
+      SecondaryClusters: 0.55
+      SecondaryClusterFrequency: 7.5
       GiantBasinDiameterMeters: 512250.208870645
       GiantX: 0.9406289221098749
       GiantY: -0.06317194298539769
@@ -230,9 +234,12 @@ MonoBehaviour:
       ScarpHeightMeters: 0
       ScarpFrequency: 14
       ScarpAmount: 0.25
-      RegolithMeters: 2.5
+      RegolithMeters: 9
       RegolithFrequency: 412
-      RegolithOctaves: 5
+      RegolithOctaves: 6
+      MegaregolithMeters: 30
+      MegaregolithFrequency: 59
+      MegaregolithOctaves: 4
       MareDarkness: 0.85
       HighlandVariation: 0.18
       FreshEjectaBrightness: 1

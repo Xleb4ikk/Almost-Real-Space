@@ -23,6 +23,41 @@ matter and none of them are visible from the generator's own code:
 The window creates the profile asset and the scene body (`BodyAuthoring` + `BodyView` +
 `PlanetSurfaceRenderer`, no atmosphere, no water) in one click.
 
+## Crater morphology — why a procedural crater field reads as "too perfect"
+
+A crater is not `-d + (d + hr)·ρ²`. That one formula is what makes a generated field
+look stamped: every crater is the same smooth dish, the rim is a constant-height ring,
+the floor is the analytic bottom, and two neighbours are just two overlapping dishes.
+The generator now sculpts each crater in its own frame (`AddCrater`), and the amplitudes
+are driven by the crater's own age and by the simple→complex transition:
+
+| Ingredient | What it fixes |
+|---|---|
+| **Harmonic outline** — 2- and 3-lobe terms with a per-crater phase, plus noise at 1.35 and 4.2 crater radii | fresh simple craters stay round (physics says they are); degraded and complex ones are lumpy. `CraterIrregularity` scales all of it |
+| **Uneven crest** — the rim height is modulated in phase with the outline | the sector that got pushed out stands higher; no more a constant-height ring |
+| **Rim as a landform** — a skewed per-crater `rimProm` (0.45…2.0 around a mean of 1, knob `CraterRimVariety`) and a broad/sharp crest width `s` | some craters stand on a strong raised ring, some have almost none, and no two look alike. A sector may be breached (a slump or a later impact), so the ring is open on one side |
+| **Wall profile** — `-(d) + (d+hr)·t^k` with a flat floor `rf` that grows with age, `k` that steepens the wall | flat floors and slumped walls instead of a parabola for everything |
+| **Floor/wall rubble** — one crater-anchored noise, amplitude `min(0.10·d, 0.02·D)` | the floor is a rubble sheet, not a turned bowl; scales with the crater |
+| **Ejecta hummocks** — `±42 %` noise inside 1.6 Rc, fading outward | the apron reads as a splash instead of a cone |
+| **Secondary swarms** — the small-crater density is multiplied by a low-frequency field (`SecondaryClusters`) | the small half of the population clusters where a primary threw it, instead of dusting the sphere evenly |
+| **Megaregolith** — a 0.4–7 km fractal band (`MegaregolithMeters`) | between the 100 km swells and the 1 km regolith there used to be nothing, so craters sat on a smooth sheet. Fades under the maria |
+| **Regolith is a fractal, not a wobble** — 9 m at 1 km with 6 octaves | 2.5 m at 1 km with 5 octaves is a 0.14 % slope: invisible. The ground read as glass |
+
+`Mars`'s `MartianRelief.Craters` gets the same treatment (outline harmonics, uneven crest,
+floor rubble, ejecta hummocks), scaled by aeolian fill so a dusty crater stays soft.
+
+**Cost**: one sample of the lunar surface went from ~18 µs to ~20 µs (+10 %), measured
+with `AgentScripts/CraterLab.cs` (`unity command run_script --file … --entry CraterLab.Run`).
+The saving comes from moving the complex-crater noise behind `if (cw > 0.02)`, where it
+used to be computed for every simple crater and thrown away.
+
+**The macro maps must match the new geometry.** `LunarMacroMapBaker.BakeVersion` is
+bumped whenever the generator's *code* changes without its parameters changing
+(currently **4**), so every body rebakes its albedo / normal / horizon once after
+pulling a morphology change. The baked maps are the orbital view: with a stale set the
+craters would still look stamped from altitude while the ground under the player is
+correct.
+
 ## Artemis
 
 | | |

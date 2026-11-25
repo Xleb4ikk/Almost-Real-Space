@@ -44,7 +44,7 @@ namespace Galilego.Universe.EditorTools
         /// <summary>Bump when the bake's OUTPUT changes (not when only its speed does).
         /// It is part of the fingerprint, so every body rebakes once after an algorithm
         /// change instead of keeping maps that no longer match the code.</summary>
-        internal const int BakeVersion = 2;
+        internal const int BakeVersion = 4;
 
         private const float AlbedoRangeMin = 0.15f;
         private const float AlbedoRangeMax = 1.8f;

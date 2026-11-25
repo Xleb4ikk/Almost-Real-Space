@@ -223,7 +223,7 @@ namespace Galilego.Universe
             m.WarpFrequency = 3.0;
 
             m.CraterDensity = 1.0;
-            m.CraterClasses = 8;
+            m.CraterClasses = 10;
             m.CraterLargestDiameterKm = 420.0;
             m.CraterLowlandFactor = 0.30;
             m.CraterDepthScale = 1.0;
@@ -929,7 +929,24 @@ namespace Galilego.Universe
                                 continue;
                             }
 
-                            double x = r / rU;
+                            // ---- relief in the crater's own frame. A crater is not a dish:
+                            // the outline is harmonic + ragged, the crest is uneven, the floor
+                            // carries hummocks. On Mars all of it is muted by aeolian fill, so
+                            // the amplitudes scale with (1 - deg).
+                            double3 ch = math.abs(dk.z) < 0.9 ? new double3(0.0, 0.0, 1.0) : new double3(1.0, 0.0, 0.0);
+                            double3 ce1 = math.normalize(math.cross(dk, ch));
+                            double3 ce2 = math.cross(dk, ce1);
+                            double xt = math.dot(q, ce1) / rU;
+                            double yt = math.dot(q, ce2) / rU;
+                            double alen = math.sqrt((xt * xt) + (yt * yt));
+                            double c1 = 1.0;
+                            double s1 = 0.0;
+                            if (alen > 1e-9)
+                            {
+                                c1 = xt / alen;
+                                s1 = yt / alen;
+                            }
+
                             double dKm = 2.0 * rU * MarsRadiusKm;
                             double age = U01(Mix(hh + 6u));
                             double deg = math.min(1.0, m.CraterDegradation * (0.25 + (1.5 * age)));
@@ -938,6 +955,33 @@ namespace Galilego.Universe
                             double rimH = 0.036 * math.pow(dKm, 0.7) * (1.0 - (0.8 * deg)) * m.CraterDepthScale;
                             double cplx = Smooth(7.0, 40.0, dKm);
                             double fade = (1.0 - burial) * (1.0 - (0.85 * quiet));
+
+                            double ph2 = 2.0 * Pi * U01(Mix(hh + 7u));
+                            double ph3 = 2.0 * Pi * U01(Mix(hh + 8u));
+                            double c2 = (c1 * c1) - (s1 * s1);
+                            double s2 = 2.0 * c1 * s1;
+                            double c3 = c1 * ((4.0 * c1 * c1) - 3.0);
+                            double s3 = s1 * (3.0 - (4.0 * s1 * s1));
+                            double lobe = ((0.030 + (0.11 * deg)) * (0.5 + U01(Mix(hh + 9u))) * ((c2 * math.cos(ph2)) - (s2 * math.sin(ph2))))
+                                + ((0.020 + (0.07 * deg)) * (0.5 + U01(Mix(hh + 10u))) * ((c3 * math.cos(ph3)) - (s3 * math.sin(ph3))));
+
+                            double invR = 1.0 / rU;
+                            double nox = U01(Mix(hh + 11u)) * 500.0;
+                            double noy = U01(Mix(hh + 12u)) * 500.0;
+                            double noz = U01(Mix(hh + 13u)) * 500.0;
+                            double nRim = Noise3((q.x * invR * 0.9) + nox, (q.y * invR * 0.9) + noy, (q.z * invR * 0.9) + noz, SaltCrater + 41);
+                            double nFine = Noise3((q.x * invR * 3.4) + noz, (q.y * invR * 3.4) + nox, (q.z * invR * 3.4) + noy, SaltCrater + 42);
+                            double x = alen * (1.0 + lobe + ((0.045 + (0.11 * deg)) * nRim) + ((0.02 + (0.05 * deg)) * nFine));
+                            if (x < 0.0)
+                            {
+                                x = 0.0;
+                            }
+
+                            double rimVar = math.clamp(1.0 + ((0.45 + (0.35 * deg)) * ((0.6 * nRim) + (0.3 * nFine) + (0.8 * lobe))), 0.15, 1.7);
+                            // Some crests are strong raised rings, some are pounded flat —
+                            // skewed around 1 like the lunar ones, only muted by dust.
+                            double rimProm = (0.50 + (1.40 * math.pow(U01(Mix(hh + 14u)), 1.8))) * (0.80 + (0.40 * (1.0 - deg)));
+                            double rimE = rimH * rimVar * rimProm;
                             double dh;
                             if (x < 1.0)
                             {
@@ -954,12 +998,25 @@ namespace Galilego.Universe
                                     peak = 0.22 * depth * (1.0 - fill) * math.exp(-rr * rr);
                                 }
 
-                                dh = bowl + peak + (rimH * Smooth(0.78, 1.0, x));
+                                dh = bowl + peak + (rimE * Smooth(0.78, 1.0, x));
+                                if (deg < 0.85)
+                                {
+                                    // floor rubble: only where aeolian fill has not buried it
+                                    double floorW = 1.0 - Smooth(0.15, 0.95, x);
+                                    dh += nFine * 0.05 * depth * (1.0 - deg) * floorW;
+                                }
+
                                 expo = math.max(expo, Smooth(0.5, 0.97, x) * fade * (0.4 + (0.6 * (1.0 - fill))));
                             }
                             else
                             {
-                                dh = rimH * math.pow(x, -3.0) * (1.0 - Smooth(1.5, 2.2, x));
+                                double ej = rimE * math.pow(x, -3.0) * (1.0 - Smooth(1.5, 2.2, x));
+                                if (dKm > 1.0)
+                                {
+                                    ej *= 1.0 + (0.35 * nFine * (1.0 - Smooth(1.0, 2.0, x)));
+                                }
+
+                                dh = ej;
                             }
 
                             total += dh * fade;

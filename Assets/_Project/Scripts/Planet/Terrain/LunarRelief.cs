@@ -38,6 +38,14 @@ namespace Galilego.Universe
         public int FirstCells;
         public int LevelCount;
         public double RayDensity;
+        /// <summary>Scales the rim-outline harmonics, crest asymmetry and floor sculpture (1 = physical).</summary>
+        public double CraterIrregularity;
+        /// <summary>Scales the per-crater rim prominence and breaches (0 = the formula's rim for every crater, 1 = physical).</summary>
+        public double RimVariety;
+        /// <summary>Strength of the secondary-crater clusters (0 = uniform density, 1 = strong swarms).</summary>
+        public double SecondaryClusters;
+        /// <summary>Cluster field frequency, cycles per unit direction (wavelength ≈ R / f).</summary>
+        public double SecondaryFreq;
 
         // ---- giant basin (South-Pole-Aitken analogue) ----
         public double GiantD;
@@ -69,6 +77,10 @@ namespace Galilego.Universe
         public double RegolithAmp;
         public double RegolithBaseFreq;
         public int RegolithOctaves;
+        /// <summary>Amplitude (m) of the 1–50 km "megaregolith" band between the swells and the regolith.</summary>
+        public double MegaAmp;
+        public double MegaFreq;
+        public int MegaOctaves;
 
         // ---- albedo (written to the colour-detail channel) ----
         public double MareDark;
@@ -324,15 +336,29 @@ namespace Galilego.Universe
             FaceCoord f1 = MakeFace(dir, 1);
             FaceCoord f2 = MakeFace(dir, 2);
 
+            // Secondary-crater swarms: the small-crater density is not uniform over the
+            // body. A fresh primary throws its ejecta — and hundreds of small, shallow,
+            // often elongated craters — in patches a few tens of kilometres across, so
+            // the small half of the population clusters instead of dusting the sphere evenly.
+            double cluster = 1d;
+            if (p.SecondaryClusters > 0d && p.SecondaryFreq > 0d)
+            {
+                double cn = Noise3((dir * p.SecondaryFreq) + SaltVec(seedSalt, 16u), seedSalt + 101u);
+                cluster = 1d + (2.4d * p.SecondaryClusters * cn);
+                if (cluster < 0.15d) cluster = 0.15d;
+            }
+
             double faceWidth = HalfPi * R;
             double rho = p.CraterDensity * math.pow((faceWidth / p.FirstCells) / 20000d, 2d - p.ProductionSlope);
             double rhoStep = math.pow(2d, p.ProductionSlope - 2d);
+            double clusterMaxS = R * 0.11d;
             for (int k = 0; k < p.LevelCount; k++)
             {
                 int N = p.FirstCells << k;
                 double S = faceWidth / N;
                 double rk = rho;
                 if (S >= 300000d) rk *= p.BasinDensityScale;
+                else if (S < clusterMaxS) rk *= cluster;
                 if (rk > 1d) rk = 1d;
                 ProcessLevel(p, dir, f0, f1, f2, seedSalt, k, N, rk, 0.5d, 1d, -1d, 0, wa, ref old, ref young, ref bright);
                 rho *= rhoStep;
@@ -386,7 +412,10 @@ namespace Galilego.Universe
                     {
                         double nr = Noise3((dir * p.RilleFreq) + SaltVec(seedSalt, 9u), seedSalt + 67u);
                         double edge = M * (1d - Sm((floodDepth - 300d) / 1200d));
-                        h -= p.RilleDepth * rsel * edge * math.exp(-(nr * nr) / 0.0009d);
+                        // A narrow Gaussian groove is a sub-pixel scratch from orbit: the core
+                        // is ~450 m, the slumped shoulder ~1.8 km. Both belong to the rille.
+                        double g = math.exp(-(nr * nr) / 0.006d) + (0.35d * math.exp(-(nr * nr) / 0.09d));
+                        h -= p.RilleDepth * rsel * edge * g * 0.8d;
                     }
                 }
 
@@ -406,7 +435,21 @@ namespace Galilego.Universe
 
             if (p.RegolithAmp > 0d)
             {
-                h += p.RegolithAmp * 2d * Fbm((dir * p.RegolithBaseFreq) + SaltVec(seedSalt, 13u), p.RegolithOctaves, 0.55d, seedSalt + 83u);
+                // A fractal, not a wobble: 1 km base with 7 octaves reaches 15 m, so the
+                // surface keeps a ~4° slope at every scale. Maria are flooded lava, and
+                // their rubble cover is far thinner, so the band fades under the flood.
+                h += p.RegolithAmp * 2d * Fbm((dir * p.RegolithBaseFreq) + SaltVec(seedSalt, 13u), p.RegolithOctaves, 0.55d, seedSalt + 83u)
+                    * (1d - (0.6d * lava));
+            }
+
+            if (p.MegaAmp > 0d)
+            {
+                // 1–50 km band. Without it the surface has only 100 km swells and 200 m
+                // regolith between the craters, so every crater sits on a smooth sheet.
+                // Maria are lava, not rubble: the band fades out under the flood.
+                double meg = p.MegaAmp * 2d * Fbm(
+                    (dir * p.MegaFreq) + SaltVec(seedSalt, 15u), p.MegaOctaves, 0.55d, seedSalt + 97u);
+                h += meg * (1d - (0.75d * lava));
             }
 
             h += p.MeanOffset;
@@ -445,7 +488,6 @@ namespace Galilego.Universe
             double ratio = dHi / dLo;
             double q = math.pow(ratio, -slope);
             double invSlope = -1d / slope;
-            double dMean = 0.5d * (dLo + dHi);
 
             for (int fi = 0; fi < 3; fi++)
             {
@@ -505,9 +547,6 @@ namespace Galilego.Universe
                     }
                 }
             }
-
-            // (dMean kept for readability of the size model; not otherwise used)
-            if (dMean < 0d) old += 0d;
         }
 
         // ------------------------------------------------------------------ one crater
@@ -536,6 +575,7 @@ namespace Galilego.Universe
 
             double m = 1d - math.pow(ageU, p.FreshnessExp);
             m = math.clamp(m, 0d, 1d);
+            double fresh = 1d - m;
             d *= 1d - (0.65d * m);
             hr *= 1d - (0.8d * m);
 
@@ -543,49 +583,128 @@ namespace Galilego.Universe
             double u1 = U01(h); h = Next(h);
             double u2 = U01(h); h = Next(h);
             double u3 = U01(h); h = Next(h);
-            double u4 = U01(h);
+            double u4 = U01(h); h = Next(h);
+            double u5 = U01(h); h = Next(h);
+            double u6 = U01(h); h = Next(h);
+            double u7 = U01(h); h = Next(h);
+            double u8 = U01(h); h = Next(h);
+            double u9 = U01(h); h = Next(h);
+            double u10 = U01(h);
 
-            // non-circular rim and unique hummocks: noise anchored to the crater, not to the sample
             double invRc = R / Rc;
-            double3 off = new double3(u1 * 300d, u2 * 300d, u3 * 300d);
-            double nRim = Noise3((dir * (invRc * 0.8d)) + off, 101u);
-            double eps = 0.04d + (0.08d * cw) + (0.07d * m);
-            double re = rho * (1d + (eps * nRim));
-            if (re < 0d) re = 0d;
 
-            // local frame (crater radii units) for peaks, azimuth sculpture and rays
-            double xt = 0d;
-            double yt = 0d;
-            double phi = 0d;
-            bool needFrame = cw > 0.3d || (rayMode == 1 && wantAlbedo == 1);
-            if (needFrame)
+            // ---- local frame, in units of the crater radius: azimuth is what makes a rim
+            //      a rim instead of a circle. cos/sin come from the raw offsets, no atan2.
+            double3 helper = math.abs(cdir.z) < 0.9d ? new double3(0d, 0d, 1d) : new double3(1d, 0d, 0d);
+            double3 e1 = math.normalize(math.cross(cdir, helper));
+            double3 e2 = math.cross(cdir, e1);
+            double xt = math.dot(dir, e1) * invRc;
+            double yt = math.dot(dir, e2) * invRc;
+            double azLen = math.sqrt((xt * xt) + (yt * yt));
+            double c1 = 1d;
+            double s1 = 0d;
+            if (azLen > 1e-12d)
             {
-                double3 helper = math.abs(cdir.z) < 0.9d ? new double3(0d, 0d, 1d) : new double3(1d, 0d, 0d);
-                double3 e1 = math.normalize(math.cross(cdir, helper));
-                double3 e2 = math.cross(cdir, e1);
-                xt = math.dot(dir, e1) * invRc;
-                yt = math.dot(dir, e2) * invRc;
-                phi = math.atan2(yt, xt);
+                double invAz = 1d / azLen;
+                c1 = xt * invAz;
+                s1 = yt * invAz;
             }
 
-            // ---- cavity
-            double bowl = -d + ((d + hr) * re * re);
+            double c2 = (c1 * c1) - (s1 * s1);
+            double s2 = 2d * c1 * s1;
+            double c3 = c1 * ((4d * c1 * c1) - 3d);
+            double s3 = s1 * (3d - (4d * s1 * s1));
 
-            double rf = 0.30d + (0.20d * cw) + (0.10d * ringW);
-            // slump terraces: few, wobbling, and present only in some sectors (not vinyl-record grooves)
-            double nTer = Noise3((dir * (invRc * 2.2d)) + off, 211u);
-            double nBlk = Noise3((dir * (invRc * 1.1d)) + off, 227u);
-            double t = math.clamp(((re + (0.07d * nTer)) - rf) / (1d - rf), 0d, 1d);
-            double w0 = math.pow(t, 1.35d);
-            double nT = 2d + math.floor(u4 * 2.5d);
-            double st = t * nT;
-            double fl = math.floor(st);
-            double stair = (fl + Sm(((st - fl) - 0.25d) / 0.5d)) / nT;
-            double terr = math.clamp(0.45d + (1.6d * nBlk), 0d, 1d) * 0.6d * (1d - m);
-            double W = math.lerp(w0, stair, terr);
-            double complexC = -d + ((d + hr) * W);
+            // ---- outline. Two low-order harmonics (an ellipse and a triangle) plus two
+            // octaves of noise anchored to the crater. A fresh simple crater stays nearly
+            // round — the physics does say so — but degradation and the complex transition
+            // are exactly what turns a stamped ring into a ragged one, so both scale the
+            // amplitudes: this is where the variety in a crater field comes from.
+            double irr = p.CraterIrregularity;
+            if (!(irr > 0d)) irr = 0d;
+            double a2 = (0.026d + (0.080d * cw) + (0.135d * m)) * (0.55d + (0.90d * u1)) * irr;
+            double a3 = (0.017d + (0.045d * cw) + (0.090d * m)) * (0.55d + (0.90d * u2)) * irr;
+            double cp2, sp2, cp3, sp3;
+            UnitCircle(u3, u4, out cp2, out sp2);
+            UnitCircle(u5, u6, out cp3, out sp3);
+            double lobe = (a2 * ((c2 * cp2) - (s2 * sp2))) + (a3 * ((c3 * cp3) - (s3 * sp3)));
 
-            double c = math.lerp(bowl, complexC, cw);
+            double3 off = new double3(u1 * 300d, u2 * 300d, u3 * 300d);
+            double nRim = Noise3((dir * (invRc * 1.35d)) + off, 101u) * irr;
+            double nSc = D > 90d ? Noise3((dir * (invRc * 4.2d)) + off, 103u) * irr : 0d;
+            double epsBig = (0.060d + (0.050d * cw) + (0.130d * m)) * irr;
+            double epsFine = D > 90d ? (0.025d + (0.050d * m)) * irr : 0d;
+            double re = rho * (1d + lobe + (epsBig * nRim) + (epsFine * nSc));
+            if (re < 0d) re = 0d;
+
+            // ---- crest. A rim is a landform in its own right, and real craters scatter
+            //      enormously: a fresh simple crater stands on a high raised ring, a degraded
+            //      one has lost most of it, and two craters of the same size side by side do
+            //      not look alike at all. rimProm is skewed around 1 so most crests are
+            //      ordinary and a minority dominate the field.
+            double rimProm = (0.45d + (1.55d * math.pow(u9, 1.8d))) * (0.75d + (0.50d * fresh));
+            double rv = p.RimVariety;
+            if (rv != 1d)
+            {
+                rimProm = 1d + (rv * (rimProm - 1d));
+            }
+
+            double rimN = (0.60d * nRim) + (0.30d * nSc) + (0.80d * lobe);
+            double hrE = hr * rimProm * math.clamp(1d + ((0.55d + (0.45d * m)) * rimN), 0.08d, 1.80d);
+
+            // An older crater is often breached: a slump or a later impact took out a sector
+            // of the crest, so the ring is open on one side instead of being a closed circle.
+            if (u10 < 0.42d && rv > 0.05d)
+            {
+                double bc, bs;
+                UnitCircle(u10 * (1d / 0.42d), u1, out bc, out bs);
+                double azB = (c1 * bc) + (s1 * bs);
+                double breach = Sm((azB - 0.45d) / 0.45d) * (0.30d + (0.70d * m)) * (0.55d + (0.45d * u2));
+                hrE *= 1d - (0.85d * breach * math.min(1d, rv));
+            }
+
+            // ---- cavity. The exponent decides how much of the inner slope is wall and how
+            //      flat the centre is; rf lifts the floor by the fill the age allows.
+            double rfS = 0.12d * m;
+            double kw = 2.00d + (0.30d * fresh) - (0.30d * cw);
+            double tS = math.clamp((re - rfS) / (1d - rfS), 0d, 1d);
+            double bowl = -d + ((d + hrE) * math.pow(tS, kw));
+
+            double c = bowl;
+            if (cw > 0.02d || ringW > 0.01d)
+            {
+                double rf = 0.30d + (0.20d * cw) + (0.10d * ringW);
+                // slump terraces: few, wobbling, and present only in some sectors (not vinyl-record grooves)
+                double nTer = Noise3((dir * (invRc * 2.2d)) + off, 211u);
+                double nBlk = Noise3((dir * (invRc * 1.1d)) + off, 227u);
+                double t = math.clamp(((re + (0.07d * nTer)) - rf) / (1d - rf), 0d, 1d);
+                double w0 = math.pow(t, 1.35d);
+                double nT = 2d + math.floor(u4 * 2.5d);
+                double st = t * nT;
+                double fl = math.floor(st);
+                double stair = (fl + Sm(((st - fl) - 0.25d) / 0.5d)) / nT;
+                double terr = math.clamp(0.45d + (1.6d * nBlk), 0d, 1d) * 0.65d * fresh;
+                double W = math.lerp(w0, stair, terr);
+                double complexC = -d + ((d + hrE) * W);
+                c = math.lerp(bowl, complexC, cw);
+            }
+
+            // ---- rubble. One crater-anchored noise sculpts the floor sheet and the wall
+            //      slumps; without it the cavity is the analytic bottom of a dish, which is
+            //      the single most artificial thing about a procedural crater field.
+            if (D > 140d)
+            {
+                double floorW = 1d - Sm((re - 0.20d) / 0.72d);
+                double wallW = Sm((re - 0.30d) / 0.35d) * (1d - Sm((re - 0.98d) / 0.30d));
+                double sculpt = (floorW * 0.85d) + (wallW * 0.55d);
+                if (sculpt > 0.004d)
+                {
+                    // Floor relief scales with the crater, not with a global constant: a 300 m
+                    // crater's floor is a rubble sheet of a few metres, a 10 km crater's floor
+                    // is a hummock field of hundreds.
+                    c += nSc * math.min(math.min(0.10d * d, 0.02d * D), 200d) * sculpt * (0.35d + (0.65d * fresh));
+                }
+            }
 
             if (multiW > 0.001d)
             {
@@ -593,34 +712,39 @@ namespace Galilego.Universe
                     + (0.26d * (1d - Sm(((re - 0.63d) / 0.08d))))
                     + (0.20d * (1d - Sm(((re - 0.46d) / 0.08d))))
                     + (0.26d * (1d - Sm(((re - 0.29d) / 0.08d))));
-                double crests = hr * ((0.6d * G(re, 0.91d, 0.03d)) + (0.5d * G(re, 0.65d, 0.03d))
+                double crests = hrE * ((0.6d * G(re, 0.91d, 0.03d)) + (0.5d * G(re, 0.65d, 0.03d))
                     + (0.4d * G(re, 0.48d, 0.03d)) + (0.3d * G(re, 0.31d, 0.03d)));
-                double cm = (hr * Sm((re - 0.8d) / 0.2d)) - (d * T) + crests;
+                double cm = (hrE * Sm((re - 0.8d) / 0.2d)) - (d * T) + crests;
                 c = math.lerp(c, cm, multiW);
             }
 
-            double a = math.min(c, hr);
+            double a = math.min(c, hrE);
 
-            // ---- ejecta blanket
-            double s = 0.02d + (0.35d * m);
-            double e = hr * math.pow((1d + (s * s)) / ((re * re) + (s * s)), 1.5d);
-            if (e > hr) e = hr;
-            if (D > 1000d)
+            // ---- ejecta blanket. Its thickness is smooth everywhere except right outside
+            //      the rim, where the flow left hummocks and blocky rays; a smooth apron is
+            //      what makes two neighbouring craters look glued on rather than excavated.
+            //      s is the width of the inner shoulder: a small s is a sharp crest, a large
+            //      one a broad rounded berm, so rims differ in breadth as well as in height.
+            double s = (0.02d + (0.35d * m)) * (0.55d + (1.10d * u7));
+            double e = hrE * math.pow((1d + (s * s)) / ((re * re) + (s * s)), 1.5d);
+            if (e > hrE) e = hrE;
+            if (D > 120d)
             {
-                double nH = Noise3((dir * (invRc * 2.5d)) + off, 131u);
-                e *= 1d + (0.30d * nH);
+                double ejW = 1d - Sm((re - 1.0d) / 1.6d);
+                double nH2 = D > 4000d ? Noise3((dir * (invRc * 7.0d)) + off, 137u) : 0d;
+                e *= 1d + ((((0.42d * nSc) + (0.20d * nH2)) * ejW * (0.40d + (0.60d * fresh))) * irr);
             }
 
             if (multiW > 0.02d)
             {
-                double nH2 = Noise3((dir * (invRc * 1.5d)) + off, 151u);
-                e *= 1d + (multiW * 0.45d * math.cos((14d * phi) + (3d * nH2)));
+                // basin ejecta is ringed, not conical: a slow azimuthal wave on the apron
+                e *= 1d + (multiW * 0.45d * CosK(7, c1));
             }
 
             double win = 1d - Sm((rho - (0.55d * rhoMax)) / (0.45d * rhoMax));
-            double b = math.min(hr, e) * win;
+            double b = math.min(hrE, e) * win;
 
-            double hc = SMin(a, b, hr * (0.08d + (0.9d * m)) + 1e-6d);
+            double hc = SMin(a, b, hrE * (0.08d + (0.9d * m)) + 1e-6d);
 
             // ---- central peak / peak ring
             if (cw > 0.3d)
@@ -658,7 +782,7 @@ namespace Galilego.Universe
                 if (rayMode == 1 && rho > 1d)
                 {
                     double reachRho = (0.85d * (HalfPi * R / 4d)) / Rc;
-                    double nr = Noise3(new double3(math.cos(phi) * 5d, math.sin(phi) * 5d, u1 * 50d), 191u);
+                    double nr = Noise3(new double3(c1 * 5d, s1 * 5d, u1 * 50d), 191u);
                     double sr = math.clamp((nr * 1.8d) + 0.35d, 0d, 1d);
                     double rr = math.min(1d, math.pow(1.6d / rho, 1.1d));
                     double fade = 1d - Sm((rho - (0.55d * reachRho)) / (0.45d * reachRho));
@@ -685,6 +809,34 @@ namespace Galilego.Universe
             if (q >= 1d) return 0d;
             double v = 1d - q;
             return v * math.sqrt(v);
+        }
+
+        /// <summary>
+        /// cos and sin of a uniformly distributed angle from two uniforms. Cheaper than a
+        /// trigonometry call on every crater in every sample: cos θ is uniform in [-1, 1].
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void UnitCircle(double ux, double uy, out double c, out double s)
+        {
+            c = (2d * ux) - 1d;
+            s = math.sqrt(math.max(0d, 1d - (c * c)));
+            if (uy < 0.5d) s = -s;
+        }
+
+        /// <summary>Chebyshev T_k: cos(k·φ) from cos φ alone. Used for ringed basin ejecta.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static double CosK(int k, double c)
+        {
+            double a = 1d;
+            double b = c;
+            for (int i = 2; i <= k; i++)
+            {
+                double n = (2d * c * b) - a;
+                a = b;
+                b = n;
+            }
+
+            return k <= 0 ? 1d : b;
         }
     }
 }

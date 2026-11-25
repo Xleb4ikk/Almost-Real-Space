@@ -117,7 +117,7 @@ MonoBehaviour:
       WarpStrength: 0.07
       WarpFrequency: 3
       CraterDensity: 1
-      CraterClasses: 8
+      CraterClasses: 10
       CraterLargestDiameterKm: 420
       CraterLowlandFactor: 0.3
       CraterDepthScale: 1

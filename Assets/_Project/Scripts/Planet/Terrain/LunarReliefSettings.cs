@@ -77,6 +77,23 @@ namespace Galilego.Universe
         [Tooltip("Плотность редких свежих кратеров с лучевыми системами (0 = лучей нет).")]
         public double RayDensity = 0.12d;
 
+        [Tooltip("Неравномерность кратеров: размах гармоник контура, высоты вала и скульптуры дна. " +
+                 "1 = физически правдоподобно (свежие простые кратеры почти круглые, старые — рваные), " +
+                 "0 = идеальные круглые чаши, 2 = карикатурно мятые.")]
+        public double CraterIrregularity = 1d;
+
+        [Tooltip("Разброс валов: 0 = у всех кратеров вал ровно по формуле, " +
+                 "1 = у одних вал высокий и широкий, у других почти нет, у части вал разорван с одной стороны, " +
+                 "2 = подчёркнуто (для настройки «на глаз»).")]
+        public double CraterRimVariety = 1d;
+
+        [Tooltip("Сила скоплений вторичных кратеров 0..1. Реальный молодой кратер выбрасывает сотни мелких " +
+                 "кратеров-сателлитов кучей, а не посыпает ими весь шар равномерно. 0 = равномерная плотность.")]
+        public double SecondaryClusters = 0.55d;
+
+        [Tooltip("Частота поля скоплений, циклов на радиус. Меньше — крупные поля шириной в сотни км.")]
+        public double SecondaryClusterFrequency = 7.5d;
+
         [Header("Гигантский бассейн (аналог Южный полюс–Эйткен)")]
         [Tooltip("Диаметр (м). 0 = нет.")]
         public double GiantBasinDiameterMeters = 2400000d;
@@ -136,12 +153,23 @@ namespace Galilego.Universe
         public double ScarpAmount = 0.25d;
 
         [Header("Реголит (мелкая шероховатость)")]
-        [Tooltip("Амплитуда (м) на масштабе ~1 км.")]
-        public double RegolithMeters = 2.5d;
-        [Tooltip("Базовая частота (циклов на радиус). 1.7e6/1000 ≈ 1700 → длина волны ~1 км.")]
+        [Tooltip("Амплитуда (м) на масштабе ~1 км — база фрактала: 9 м и 6 октав дают наклон ~10° на всех масштабах от 30 м до 1 км. 2–3 м даёт стеклянную поверхность.")]
+        public double RegolithMeters = 9d;
+        [Tooltip("Базовая частота (циклов на радиус): длина волны ≈ R / частота. Заводской пресет ставит R / 1000.")]
         public double RegolithFrequency = 1700d;
         [UnityEngine.Range(1, 8)]
-        public int RegolithOctaves = 5;
+        public int RegolithOctaves = 6;
+
+        [Header("Мегареголит (между валами кратеров)")]
+        [Tooltip("Амплитуда (м) полосы 0.5–10 км. Заполняет разрыв между крупными вздутиями (сотни км) и реголитом (~1 км): " +
+                 "без неё каждый кратер лежит на гладком листе. На морях гаснет (лава, а не щебень).")]
+        public double MegaregolithMeters = 14d;
+
+        [Tooltip("Базовая частота мегареголита (циклов на радиус): длина волны ≈ R / частота. Заводской пресет ставит R / 7000.")]
+        public double MegaregolithFrequency = 59d;
+
+        [UnityEngine.Range(1, 8)]
+        public int MegaregolithOctaves = 4;
 
         [Header("Альбедо (канал цветовой детали)")]
         [Tooltip("Насколько темнее моря (0..1). Мера лерпа в палитровый цвет Soil.")]
@@ -201,6 +229,10 @@ namespace Galilego.Universe
                 FirstCells = first,
                 LevelCount = levels,
                 RayDensity = Math.Max(0d, RayDensity),
+                CraterIrregularity = Math.Max(0d, Math.Min(2d, CraterIrregularity)),
+                RimVariety = Math.Max(0d, Math.Min(2d, CraterRimVariety)),
+                SecondaryClusters = Math.Max(0d, Math.Min(1d, SecondaryClusters)),
+                SecondaryFreq = Math.Max(0d, SecondaryClusterFrequency),
                 GiantD = Math.Max(0d, GiantBasinDiameterMeters),
                 GiantX = GiantX,
                 GiantY = GiantY,
@@ -228,6 +260,9 @@ namespace Galilego.Universe
                 RegolithAmp = RegolithMeters,
                 RegolithBaseFreq = RegolithFrequency,
                 RegolithOctaves = Math.Max(1, Math.Min(8, RegolithOctaves)),
+                MegaAmp = Math.Max(0d, MegaregolithMeters),
+                MegaFreq = Math.Max(0d, MegaregolithFrequency),
+                MegaOctaves = Math.Max(1, Math.Min(8, MegaregolithOctaves)),
                 MareDark = MareDarkness,
                 HighlandVar = HighlandVariation,
                 FreshBright = FreshEjectaBrightness
