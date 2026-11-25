@@ -499,9 +499,21 @@ namespace Galilego.Universe
             // lunar surface. The eye is adapted to the GROUND, so the field fades with
             // the sunlit ground level (1 = Terra's noon): gone above ~10 lx, full below
             // ~0.3 lx. The sun does it because the sun, not the sky, sets the pupil.
+            //
+            // ...but ONLY while the eye is still adapted to the ground. Above 100 km
+            // the view is space: the ground is a landscape in the lower half, the sky is
+            // black, and every real photograph from orbit shows stars. Without this gate
+            // the field was hidden at 300-1 000 km over Terra, Artemis, Metus and Aeolus
+            // on their day side - the player's "there are no stars near a surface"
+            // report, and the reason the far disc seemed to change size when the stars
+            // appeared (both flipped with the observer's day/night: the star gate here
+            // and nothing on the disc - the disc's floor depends on ALTITUDE only). The
+            // Apollo rule stays where it belongs: on the ground, below ~10 km.
+            double groundAdaptation = 1d - SkyPhysics.Smoothstep(10000d, 100000d, altitude);
             double dayGround = starLightScale * System.Math.Max(0d, sinEl) * eclipse;
             double groundStarHide = StarHideDayLevel > 0f
                 ? SkyPhysics.Smoothstep(StarHideDayLevel * 0.03d, StarHideDayLevel, dayGround)
+                    * groundAdaptation
                 : 0d;
             double starVisibility = SkyPhysics.StarVisibility(skyLuminance, StarVisibilityK)
                 * (1d - groundStarHide);
