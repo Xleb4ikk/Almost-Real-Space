@@ -193,13 +193,23 @@ too.
 
 ### The Moon's ground was 4× darker than its own disc (the albedo path)
 
-> **Status 2026-11-24: this fix does not work.** The regolith set, the relative modulation
-> (`DetailAlbedoMean`), the full-strength macro albedo and the `LandscapeFactor` gate below
-> are all in the build, and the numbers here are what they actually compute per frame — but
-> the reported behaviour is unchanged: the Moon still reads wrong in flight, and it still
-> changes tone on approach. So the approach is **not** solved. Read these sections as "what
-> the shader does now", not as a closed symptom, and do not take the per-frame tables as the
-> observed result.
+> **Status 2026-11-25: solved — and the albedo path was NOT the cause.** Everything below
+> (the regolith set, the relative modulation, the full-strength macro albedo) is in the
+> build and is correct. There were TWO defects outside it:
+>
+> 1. `_BFD_Albedo` was declared `Color`, so Unity decoded the ALREADY-LINEAR palette value
+>    a second time on upload (0.214 → 0.0366, every far disc 5.85× dark).
+> 2. `TerrainTextureDeband` overwrote Artemis' regolith set with the Earth photo set, and
+>    the shader then divided the grass photo by the regolith mean — the GROUND came out
+>    dark olive at low altitude. See
+>    [LunarBodies.md](LunarBodies.md#the-ground-went-dark-brown-on-approach-the-regolith-set-was-overwritten).
+>
+> `Material.SetVector`/`GetVector` both round-trip the stored (gamma) value, so the
+> material readback looked perfect and three sessions of albedo-source work could not move
+> the number. The property is now a `Vector` (uploaded verbatim), and the disc measures
+> `0.675–0.682` sRGB against the terrain's `0.584–0.598` at the same point, same sun, same
+> session. The per-frame tables below are still worth reading as "what the shader does",
+> but ignore their diagnosis of the symptom.
 
 Report: *"in space the Moon is some grey, very dark; when I arrive it is clearly
 brighter"*, then *"up close it is kind of grey — shouldn't it be bright?"*.
@@ -284,12 +294,14 @@ Verified in Play (`CheatMenu.FlyToBody` on Артемида and a noclip descent
 | 2 km / 150 m (ground) | light grey cratered regolith, black sky, no green |
 | A/B at 800 km (`BodyFarDiscView` on/off) | the frame does not change to the eye |
 
-The far disc is *darker* in an isolated frame (little more than the disc on black) than the
-ground seen from low orbit. The disc's own uniforms are the physical ones — albedo 0.21,
-`_BFD_SunScale` 2.5, `Brightness` 1, i.e. ~0.5 radiance at normal incidence — so the
-difference is exposure/tonemapping of a mostly-black frame, not the albedo. `Brightness` is
-not the place to compensate: raising it above 1 puts the disc above the terrain again and
-the 4 R → 1.6 R cross-fade becomes a step. If the Moon has to read brighter from Terra, the
+The far disc was *believed* to be darker in an isolated frame because of "exposure/tonemapping
+of a mostly-black frame". It was not: the disc's albedo was gamma-decoded twice (see the
+status block above), so its radiance really was 5.85× below the terrain's. Measured with
+HDRP's exposure forced to Fixed 0 EV — the same numbers — and with the ACES fit, which maps
+the measured `0.0946` to `0.048` and `0.553` to `0.410` exactly: `0.0366·2.585` vs
+`0.214·2.585`, i.e. the albedo, not the exposure. `Brightness` is not the place to
+compensate: raising it above 1 puts the disc above the terrain again and the 4 R → 1.6 R
+cross-fade becomes a step. If the Moon has to read brighter from Terra, the
 lever is an exposure bias in space, not the disc's albedo.
 
 Re-check on the ground: the mare/highland boundary must still be readable (the macro map is

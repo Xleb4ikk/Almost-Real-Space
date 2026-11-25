@@ -1526,11 +1526,14 @@ MonoBehaviour:
   Star: {fileID: 0}
   PlayerCamera: {fileID: 1823688466}
   FarFraction: 0.28
-  MinScreenRadiusPixels: 4
+  MinScreenRadiusPixels: 0.5
+  GroundScreenRadiusPixels: 0
+  GroundScreenRadiusFullAltitudeMeters: 100000
+  GroundScreenRadiusFadeAltitudeMeters: 20000000
   HandoverRadii: 1.6
   FadeStartRadii: 4
   HandoverCoverage: 0.98
-  MinEnergyScale: 1
+  MinEnergyScale: 0
   Brightness: 1
   NightBrightness: 24
   NightBoostFullAltitudeMeters: 100000
@@ -2752,11 +2755,14 @@ MonoBehaviour:
   Star: {fileID: 0}
   PlayerCamera: {fileID: 1823688466}
   FarFraction: 0.28
-  MinScreenRadiusPixels: 11
+  MinScreenRadiusPixels: 0.5
+  GroundScreenRadiusPixels: 11
+  GroundScreenRadiusFullAltitudeMeters: 100000
+  GroundScreenRadiusFadeAltitudeMeters: 20000000
   HandoverRadii: 1.6
   FadeStartRadii: 4
   HandoverCoverage: 0.98
-  MinEnergyScale: 1
+  MinEnergyScale: 0
   Brightness: 1
   NightBrightness: 24
   NightBoostFullAltitudeMeters: 100000
@@ -3021,14 +3027,14 @@ MonoBehaviour:
   WaterSkirtFactor: 0.03
   ShoreWetMeters: 3
   ShoreWetTint: {r: 0.42, g: 0.52, b: 0.56, a: 1}
-  BuildsPerFrame: 16
+  BuildsPerFrame: 64
   DecorBuildsPerFrame: 8
   DecorBuildBudgetMs: 4
   DecorRescanCooldownSeconds: 0.2
   MaxDecorBuildSessions: 8
   LogDecorAllocation: 0
-  MaxNodes: 6000
-  MaxCachedChunks: 1024
+  MaxNodes: 12000
+  MaxCachedChunks: 8192
   MaxEvictionsPerFrame: 4
   TerrainShadowDepthBand: 3
   AsyncChunkBuild: 1

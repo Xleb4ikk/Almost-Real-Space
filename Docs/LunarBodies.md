@@ -96,32 +96,74 @@ current rails is `f = 0.326` at `t = 363.486 d`, because the Earth's umbra at 90
 has a radius of only ~9 km and the Moon's centre never reaches totality. See
 [Moonlight.md](Moonlight.md) and [Eclipses.md](Eclipses.md).
 
-### The size floor (`MinScreenRadiusPixels`)
+### The size floor (`MinScreenRadiusPixels`, `GroundScreenRadiusPixels`)
 
-**The disc is drawn at the body's true angular radius.** The only floor is the display's
-own limit — **0.5 px radius** (one pixel across): a smaller quad is not representable, so
-a sub-pixel body becomes a point. `MinEnergyScale = 0` keeps the *total flux*: when the
-disc is lifted to that one-pixel floor its surface brightness is multiplied by
-`(trueRadius / 0.5 px)²`, so a 5.6-px Moon is untouched, a 0.2-px one is a dim dot, and
-nothing is ever painted larger than it is.
+**In vacuum the disc is drawn at the body's true angular radius.** The only floor is the
+display's own limit — **0.5 px radius** (one pixel across): a smaller quad is not
+representable, so a sub-pixel body becomes a point. `MinEnergyScale = 0` keeps the *total
+flux*: when the disc is lifted to that one-pixel floor its surface brightness is multiplied
+by `(trueRadius / 0.5 px)²`, so a 5-px Moon is untouched, a 0.2-px one is a dim dot, and
+nothing is painted larger than it is. That is what leaves Aeolus (0.044 px true radius) as
+one dim pixel instead of a 0.25° black disc that covered the 0.048° Sun.
+`MinScreenRadiusPixels = 0` is also available (strictly physical: a sub-pixel quad may
+vanish). `Brightness` is a multiplier on the scene's sunlit-surface scale (1 = the Moon's
+own terrain, which makes the hand-over seamless); by day the disc then goes through the same
+air the sky does, so it is the atmosphere — not the exposure — that decides how washed out
+it looks. See [MoonLook.md](MoonLook.md#the-daytime-moon-looked-like-a-moon-with-no-atmosphere).
 
-This replaced the old 11-px floor with `MinEnergyScale = 1` (surface brightness kept),
-which drew a 5.6-px Moon as 22 px — a 4× lie in size and a 16× error in flux. The
-physical size is what makes a body read as itself: at an 83° FOV the real Moon is 5–6 px,
-and on Mars the same rule leaves Aeolus (0.044 px true radius) as one dim pixel instead of
-a 0.25° black disc that covered the 0.048° Sun. `MinScreenRadiusPixels = 0` is also
-available (strictly physical: a sub-pixel quad may vanish). `Brightness` is a
-multiplier on the scene's sunlit-surface scale (1 = the Moon's own terrain, which makes the
-hand-over seamless); by day the disc then goes through the same air the sky does, so it is
-the atmosphere — not the exposure — that decides how washed out it looks. See
-[MoonLook.md](MoonLook.md#the-daytime-moon-looked-like-a-moon-with-no-atmosphere).
+**The size floor has two regimes: over a landscape it is a readability concession, in
+vacuum it is physics.** `MinScreenRadiusPixels` (0.5 px = the display limit) is always on and
+flux-conserving (`MinEnergyScale = 0`): a sub-pixel body is a faint one-pixel dot, never a
+lamp. On top of it `GroundScreenRadiusPixels` lets a distant body be lifted while the
+observer is over a landscape — on its OWN altitude range (`GroundScreenRadiusFullAltitudeMeters`
+100 km → `GroundScreenRadiusFadeAltitudeMeters` **20 000 km**), deliberately not the night
+boost's 100 → 2 000 km: at 1 950 km the physical Moon is 6 px, and that range made a normal
+climb read as *"the Moon shrank to a point after a short flight"*. `Артемида` carries
+**11 px** there, because from the pad the Moon is 0.32° = **6–7 px** and at that size it is
+invisible in the daytime haze — it is the map's main landmark. The lifted disc keeps its
+SURFACE brightness (otherwise the lift would dim it 12× and undo the concession); the
+physical floor does not.
 
-**The Moon itself keeps the floor, and that is deliberate.** `MinScreenRadiusPixels` is a
-per-component field and the two AUTHORED discs override the physical default:
-`Артемида` = **11 px**, `Terra` = **4 px**, both with `MinEnergyScale = 1`. Reason, measured
-from the pad: the Moon is 0.334° away — **6–7 px across at 1080p** — and at that size it is
-invisible in the daytime haze; it is the map's main landmark, not a background star. The
-physical rule still holds for every auto-added disc (`BodyView.EnsureFarProxy`, Mars) and
-for the gas giant, and `0` restores it for the Moon as well. The one body that is allowed
-to be 4× larger than physics is the one you navigate by — the exception is the price of a
-readable Moon, and it is written down here so nobody "fixes" it blind again.
+Both halves are deliberate, and each fixes a report the other one caused:
+
+* report *"the Moon is the same size at 50 000 km as from Earth"* — the old 11 px floor with
+  `MinEnergyScale = 1` applied at EVERY distance and never dimmed, so the Moon was 22 px
+  from the pad, 22 px at 50 000 km and 22 px at 50 million km. The floor is now gated to the
+  ground and conserves flux in vacuum: 22 px from the pad, **9 px at 50 000 km**, 0.5 px (a
+  dim dot) at interplanetary distances;
+* report *"the Moon is gone"* (after only the first half was applied) — a strictly physical
+  Moon is 6–7 px from the pad and does not read at all in daylight. Hence the ground-only
+  concession.
+
+The one visible consequence is that the Moon shrinks from 22 px at the pad towards its
+physical size as you climb — but over 20 000 km, not 2 000: at 2 000 km it is still 21 px, at
+10 000 km 12 px, at 20 000 km (50 000 km from the Moon) 9 px, and from there it grows with the
+real angular size. A distance-independent marker belongs in the nav tablet, not in the body's
+angular size.
+
+### The ground went dark brown on approach: the regolith set was overwritten
+
+Report: *"when I get close it changes colour to a dark one"* — the far disc was grey, the
+terrain below the 4 R hand-over was dark olive/brown, and the terrain's measured luminance was
+0.316 sRGB against the disc's 0.675 at the same phase.
+
+`TerrainTextureDeband.AssignToProfiles` (the clean-texture tool, auto-run keyed by
+`Temp/terrain-textures-clean-v1.done`) stamped the Earth **grass/soil** photo set into
+**every** `TerrainProfileAsset` with no airless guard. `Temp/` is wiped routinely (Unity does
+it on restart, the pipeline uses it for screenshots), so the tool re-ran on later domain
+reloads and overwrote Artemis' regolith set. `DetailAlbedoMean` stayed `0.292` (the regolith
+mean), so the shader divided the grass photo by the regolith mean — the relative-modulation
+path with the wrong set. Result: the ground was ~4× darker than its own palette and green-brown,
+while the disc (palette × macro map) stayed grey. The hand-over at 4 R then read as a colour
+change, not as more detail.
+
+Two fixes: the tool now **skips `Lunar.Enabled` profiles** (the same guard
+`TerrainTextureSetup.Run` has), and Artemis' profile was restored with
+`Tools/Galilego/Assign lunar regolith textures`. Measured after: **0.584** sRGB for the ground
+at 312 km against **0.675** for the disc, both neutral grey. If a future bake or tool turns the
+Moon's ground olive again, check `Artemis.asset`'s `TextureLow/Mid/High/Steep` GUIDs first —
+they must be `regolith_flat_clean.png` / `regolith_rock_clean.png`, not `terrain_*_clean`.
+
+`Brightness` is a multiplier on the scene's sunlit-surface scale (1 = the Moon's own
+terrain, which makes the hand-over seamless): raising it above 1 is the only "make the Moon
+read harder" lever, and it breaks the disc/terrain match by construction.

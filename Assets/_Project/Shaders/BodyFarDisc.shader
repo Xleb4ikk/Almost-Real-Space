@@ -15,7 +15,17 @@ Shader "Galilego/BodyFarDisc"
         [HideInInspector] _BFD_MapColor("Map Is Colour", Float) = 0
         [HideInInspector] _BFD_NormalMap("Surface Relief (body-space normal)", 2D) = "white" {}
         [HideInInspector] _BFD_NormalStrength("Relief Strength", Float) = 0
-        [HideInInspector] _BFD_Albedo("Albedo", Color) = (0.5, 0.49, 0.47, 1)
+        // VECTOR, not Color. BodyFarDiscView passes an ALREADY-LINEAR albedo
+        // (TerrainPaletteData.SnowLinear = 0.214 for the 0.5 grey the palette is
+        // authored in). A ShaderLab Color property is sRGB and Unity DECODES it to
+        // linear on upload in this project (Linear colour space), so the value was
+        // converted twice: 0.214 reached the shader as 0.0366 and every far disc was
+        // 5.8x darker than the body's own terrain under the same sun — the "grey
+        // moon in space that turns bright only when you arrive" report. The
+        // SetVector/GetVector round-trip in C# never shows it (both hold the stored
+        // gamma value), and the material readback of the property looks correct.
+        // A Vector property is uploaded verbatim, which is what the call site means.
+        [HideInInspector] _BFD_Albedo("Albedo (linear)", Vector) = (0.214, 0.205, 0.187, 1)
         [HideInInspector] _BFD_SunDirWS("Sun Direction", Vector) = (1, 0, 0, 0)
         [HideInInspector] _BFD_RightWS("Screen Right", Vector) = (1, 0, 0, 0)
         [HideInInspector] _BFD_UpWS("Screen Up", Vector) = (0, 1, 0, 0)

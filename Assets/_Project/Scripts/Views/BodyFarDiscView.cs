@@ -43,6 +43,22 @@ namespace Galilego.Universe
             "0 = строго физический размер (квад может исчезнуть совсем).")]
         public float MinScreenRadiusPixels = 0.5f;
 
+        [Tooltip("Пол радиуса на экране, px, ПОКА наблюдатель стоит над пейзажем. Это уступка " +
+            "ЧИТАЕМОСТИ, не физика: Луна с площадки 0.32° — 6 px, и в дневной дымке такой " +
+            "кружок не найти, хотя это главный ориентир карты. 0 = без уступки. Пока пол " +
+            "поднимает диск, его поверхностная яркость сохраняется (см. energyScale в LateUpdate).")]
+        public float GroundScreenRadiusPixels;
+
+        [Tooltip("Высота над текущим телом, ниже которой уступка полная. 100 км — верх " +
+            "атмосферы: там земля ещё и есть кадр.")]
+        public float GroundScreenRadiusFullAltitudeMeters = 100000f;
+
+        [Tooltip("Высота, к которой уступка полностью выключается. НЕ привязывать к 2 000 км " +
+            "(адаптации ночи): на 1 950 км физическая Луна — 6 px, это читается как «Луна " +
+            "пропала после короткого подлёта». 20 000 км — до Луны ещё ~50 000 км, её физический " +
+            "диск там 9 px, и уступка уходит постепенно, без прыжка.")]
+        public float GroundScreenRadiusFadeAltitudeMeters = 20000000f;
+
         [Tooltip("Расстояние до ПОВЕРХНОСТИ (в радиусах тела), на котором диск полностью уступает " +
             "рельефу. Внутри этого радиуса плоский билборд уже физически неверен (параллакс), и его " +
             "нельзя возвращать даже ради дыр в рельефе. 1.6 = 659 км над Artemis.")]
@@ -304,7 +320,29 @@ namespace Galilego.Universe
             float angularRadius = Mathf.Atan2((float)body.Radius, (float)distance);
             float fovRadians = Mathf.Max(0.01f, camera.fieldOfView) * Mathf.Deg2Rad;
             float pixelRadius = angularRadius / Mathf.Tan(fovRadians * 0.5f) * (Screen.height * 0.5f);
-            float floorPixels = Mathf.Max(pixelRadius, MinScreenRadiusPixels);
+
+            // The size floor has TWO regimes, and the boundary is "over a landscape" vs
+            // vacuum — but on its OWN altitude range (GroundScreenRadius*), not the night
+            // boost's. The night range (100 km → 2 000 km) is where the eye is adapted to
+            // the ground; the size concession must survive a normal climb, and at 1 950 km
+            // the physical Moon is 6 px — the user reported exactly that as "the Moon
+            // shrank to a point after a short flight". Its range is 100 km → 20 000 km,
+            // where the Moon is ~50 000 km away and already 9 px physical, so the floor
+            // fades out gradually instead of collapsing at 2 000 km.
+            //
+            // * Over a landscape the floor may lift a distant body to
+            //   GroundScreenRadiusPixels: the Moon from the pad is 0.32 deg = 6 px, and in
+            //   daylight haze a 6-px pale dot is invisible — it is the map's main landmark.
+            //   This is a readability concession, so the lifted disc keeps its SURFACE
+            //   BRIGHTNESS (energyScale below); flux-conserving here would dim it 12x and
+            //   undo the concession.
+            // * In space the floor is only the display limit, MinScreenRadiusPixels
+            //   (0.5 px), and the disc is strictly physical: a body must shrink with
+            //   distance. Keeping the 11-px lift there made the Moon the same 22 px at
+            //   50 000 km as from the pad ("it never gets smaller").
+            float groundScreen = GroundScreenFactor();
+            float groundFloor = Mathf.Max(MinScreenRadiusPixels, GroundScreenRadiusPixels);
+            float floorPixels = Mathf.Max(pixelRadius, Mathf.Lerp(MinScreenRadiusPixels, groundFloor, groundScreen));
             LastBodyPosition = bodyPos;
             LastRadius = body.Radius;
             LastFar = far;
@@ -423,11 +461,18 @@ namespace Galilego.Universe
 
             float size = discDistance * 2f * Mathf.Tan(angularRadius) * 1.02f;
 
-            // Subpixel discs flicker; the floor keeps them readable, and MinEnergyScale
-            // decides whether the extra area costs surface brightness or total flux.
+            // Subpixel discs flicker; the floor keeps them readable. WHAT the extra area
+            // costs depends on why it exists:
+            //  * on the ground the ground floor is a readability concession -> keep the
+            //    surface brightness (energyScale 1), or the lifted Moon is 12x dimmer and
+            //    invisible again;
+            //  * in space the floor is only the one-pixel display limit -> conserve the
+            //    total flux (1/pixelScale^2), so a sub-pixel body is a faint dot, never a
+            //    lamp. MinEnergyScale can still force a floor on top (1 = surface).
             float pixelScale = pixelRadius > 1e-6f ? Mathf.Max(1f, floorPixels / pixelRadius) : 1f;
             disc.localScale = new Vector3(size * pixelScale, size * pixelScale, 1f);
-            float energyScale = Mathf.Max(MinEnergyScale, 1f / (pixelScale * pixelScale));
+            float energyScale = Mathf.Max(MinEnergyScale,
+                Mathf.Lerp(1f / (pixelScale * pixelScale), 1f, groundScreen));
 
             star.EvaluateWorldState(Runner.TimeSeconds, out Vector3d starPos, out _);
             Vector3 sunDirection = AstroFrame.ToSimulation((starPos - bodyPos).Normalized);
@@ -460,10 +505,15 @@ namespace Galilego.Universe
             // is a fallback before the (lazy) map lands, so it must not tint the map.
             bool colorMap = SurfaceMap != null && SurfaceMapIsColor;
             // SetVector, not SetColor: Albedo is ALREADY linear (Palette.SnowLinear), the
-            // same way the terrain receives its colours (SetGlobalVector). SetColor stores
-            // the value untouched today (no [Gamma]/[HDR] on the property — measured in
-            // 6000.6: 0.214 stays 0.214), but SetVector states the colour space in the
-            // call instead of relying on a ShaderLab attribute nobody will remember.
+            // same way the terrain receives its colours (SetGlobalVector).
+            //
+            // The shader declares _BFD_Albedo as a VECTOR for this reason. While it was a
+            // ShaderLab Color, Unity decoded it from sRGB to linear on upload and the
+            // already-linear value was converted twice: the palette's 0.214 reached the
+            // GPU as 0.0366, so every far disc was 5.8x darker than the same body's
+            // terrain — the Moon read as grey in space and became bright only at the
+            // hand-over. SetVector + GetVector both round-trip the stored value and hide
+            // the conversion, so the property TYPE is the thing to check, not the number.
             material.SetVector("_BFD_Albedo", LinearVector(colorMap ? Color.white : Albedo));
             material.SetFloat("_BFD_MapColor", colorMap ? 1f : 0f);
             material.SetVector("_BFD_SunDirWS", ToVec(sunDirection));
@@ -631,7 +681,8 @@ namespace Galilego.Universe
         /// A colour that is ALREADY in linear space, as a shader vector. The disc's albedo
         /// comes from the terrain palette (<see cref="TerrainPaletteData.SnowLinear"/>), so
         /// it must reach the shader exactly as authored — no colour-space conversion on the
-        /// way (see the SetVector call in LateUpdate).
+        /// way (see the SetVector call in LateUpdate and why _BFD_Albedo is a Vector in
+        /// BodyFarDisc.shader: a Color property would decode it a second time).
         /// </summary>
         private static Vector4 LinearVector(Color linear)
         {
@@ -687,8 +738,28 @@ namespace Galilego.Universe
         /// </summary>
         private float LandscapeFactor()
         {
-            float full = NightBoostFullAltitudeMeters;
-            float none = NightBoostFadeAltitudeMeters;
+            return AltitudeFactor(NightBoostFullAltitudeMeters, NightBoostFadeAltitudeMeters);
+        }
+
+        /// <summary>
+        /// 1 over a landscape, 0 in space, on the SIZE concession's own range
+        /// (<see cref="GroundScreenRadiusFullAltitudeMeters"/> →
+        /// <see cref="GroundScreenRadiusFadeAltitudeMeters"/>). Separate from the night
+        /// boost on purpose: 2 000 km is where the night-adapted landscape ends, but a
+        /// climb to 1 950 km must not turn the Moon into a 6-px dot.
+        /// </summary>
+        private float GroundScreenFactor()
+        {
+            return AltitudeFactor(GroundScreenRadiusFullAltitudeMeters, GroundScreenRadiusFadeAltitudeMeters);
+        }
+
+        /// <summary>
+        /// Smooth 1 → 0 ramp over [full, none] of the observer's altitude above the
+        /// camera body. Zero slope at both ends: a kink is visible as a moment where the
+        /// disc "stops" and then starts shrinking.
+        /// </summary>
+        private float AltitudeFactor(float full, float none)
+        {
             if (none <= full || Runner == null || Runner.SystemState == null)
             {
                 return 1f;
@@ -713,8 +784,6 @@ namespace Galilego.Universe
                 return 0f;
             }
 
-            // Smoothstep: zero slope at both ends, so there is no kink at 100 km (the
-            // moment the boost starts to fade) or at 2000 km (where it ends).
             float u = (float)t;
             return 1f - (u * u * (3f - (2f * u)));
         }

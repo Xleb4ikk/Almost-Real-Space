@@ -162,6 +162,21 @@ namespace Galilego.Universe.EditorTools
                     continue;
                 }
 
+                // AIRLESS BODIES OWN THEIR REGOLITH SET. This loop used to stamp the
+                // Earth grass/soil photos into EVERY profile, Artemis included, on its
+                // marker-keyed auto-run (Temp/ is wiped often, so it re-ran on a domain
+                // reload). `DetailAlbedoMean` stays 0.292 for the Moon, so the shader
+                // divided the grass photo by the regolith mean: the ground came out dark
+                // olive (0.05-0.08 linear instead of 0.21) while the far disc kept the
+                // palette — the Moon "changed colour and went dark" at the 4 R hand-over.
+                // TerrainTextureSetup.Run has had this guard for the same reason.
+                // Mars owns the same kind of generated albedo via the Martian generator.
+                if ((asset.Profile.Lunar != null && asset.Profile.Lunar.Enabled)
+                    || asset.Profile.Martian.Enabled != 0)
+                {
+                    continue;
+                }
+
                 asset.Profile.TextureLow = low;
                 asset.Profile.TextureMid = mid;
                 asset.Profile.TextureHigh = high;

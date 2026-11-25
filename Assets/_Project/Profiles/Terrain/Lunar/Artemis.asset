@@ -92,6 +92,70 @@ MonoBehaviour:
     ColorDetailOctaves: 3
     ColorDetailStrength: 0
     ColorDetailSeedOffset: 0
+    Martian:
+      Enabled: 0
+      HeightUnitMeters: 0
+      DichotomyAxisLatDeg: 0
+      DichotomyAxisLonDeg: 0
+      DichotomyThreshold: 0
+      DichotomyWidth: 0
+      DichotomyBoundaryWarp: 0
+      DichotomyDepthKm: 0
+      HighlandBaseKm: 0
+      SwellAmplitudeKm: 0
+      SwellFrequency: 0
+      RoughAmplitudeKm: 0
+      RoughFrequency: 0
+      RoughOctaves: 0
+      RoughLowlandFactor: 0
+      MassifAmplitudeKm: 0
+      MassifFrequency: 0
+      WrinkleAmplitudeKm: 0
+      HummockAmplitudeKm: 0
+      HummockFrequency: 0
+      HummockOctaves: 0
+      WarpStrength: 0
+      WarpFrequency: 0
+      CraterDensity: 0
+      CraterClasses: 0
+      CraterLargestDiameterKm: 0
+      CraterLowlandFactor: 0
+      CraterDepthScale: 0
+      CraterDegradation: 0
+      BasinCount: 0
+      BasinRadiusKm: 0
+      BasinDepthKm: 0
+      VolcanicProvinces: 0
+      RiseHeightKm: 0
+      RiseRadiusDeg: 0
+      ShieldHeightKm: 0
+      ShieldRadiusKm: 0
+      GrandShieldHeightKm: 0
+      GrandShieldRadiusKm: 0
+      CalderaDepthKm: 0
+      ScatteredVolcanoes: 0
+      CanyonLengthDeg: 0
+      CanyonWidthKm: 0
+      CanyonDepthKm: 0
+      OutflowChannels: 0
+      ChannelWidthKm: 0
+      ChannelDepthKm: 0
+      Fossae: 0
+      StrataMajorKm: 0
+      StrataMinorKm: 0
+      StrataMix: 0
+      StrataWallBoost: 0
+      StrataRegionFrequency: 0
+      StrataRegionThreshold: 0
+      StrataTilt: 0
+      StrataColorStrength: 0
+      PolarCapLatitudeDeg: 0
+      PolarCapFadeDeg: 0
+      PolarCapEdgeJitterDeg: 0
+      PolarCapHeightKm: 0
+      PolarSpiralArms: 0
+      PolarTroughDepthKm: 0
+      PolarLayerKm: 0
     Palette:
       Sand: {r: 0.5, g: 0.49, b: 0.47, a: 1}
       Desert: {r: 0.5, g: 0.49, b: 0.47, a: 1}
