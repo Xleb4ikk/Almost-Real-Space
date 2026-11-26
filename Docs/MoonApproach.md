@@ -49,17 +49,34 @@ share of the screen but a small share of the solid angle.
 `1` makes the disc exactly as bright as the Moon's own terrain, which is what the 14 → 24
 raise was reaching for.
 
-## 3. near = 0.1 m against far = 1 200 km renders NOTHING
+## 3. near = 0.1 m against far = 1 200 km — the floor was a misdiagnosis
 
-In EVA the near plane is a fixed `EvaNearClipMeters` (0.1 m), and above the atmosphere
-`far` is the physical horizon. At 660 km over Artemis that is `far = 1 223 km`, ratio 1.2e7,
-and **the whole terrain failed to rasterise** — a black Moon at 660 km, a normal one at
-700 km, with nothing in between but the far plane. Setting `near = 1 m` or more brought it
-back; the stars were unaffected, which is why it read as "the planet disappeared".
+The first pass read the black Moon at 660 km as depth precision and added a floor
+`near >= far · 2.5e-6` above 10 km. That was wrong, and it cost the cockpit: at 200 km
+the floor is 2.7 m and it cuts the whole cabin (walls, seat, consoles) out of the frame,
+leaving only the planet — the "the capsule disappeared in orbit, I can see only a part a
+couple of metres away" report.
 
-Fix in `FirstPersonCamera.UpdateClipPlanes`: above 10 km altitude the near plane is at least
-`far · 2.5e-6`. Below 10 km the mode's near is kept untouched (the cabin interior and the
-ground at your feet need centimetres).
+The evidence points to the **far-disc hand-over**, not depth. `BodyFarDiscView` turns the
+disc off at `HandoverRadii = 1.6 R` while `PlanetSurfaceRenderer.SurfaceVisible` says the
+chunks are drawn; at 2.6 R the disc is already gone, so a frame in which the chunk set is
+not actually on screen shows nothing at all. The frame that produced the "black Moon" log
+had the disc OFF at `opacity = 0.00` and a surface renderer claiming `SurfaceVisible`;
+the near change coincided with the disc/chunk set toggling, which is why it looked like a
+depth threshold.
+
+A clean play-mode probe (ephemeral `run_script`, so no domain reload and `Runner.step`
+survives; `shipAlive=true`, `surfVisible=true`, `chunks=559`/`144`) captured the same frame
+at six near values:
+
+| body | altitude | far | near values | result |
+|---|---|---:|---|---|
+| Terra | 200 km | 1 067 km | 0.03 … 4 m | 559 chunks render at every value |
+| Артемида | 660 km | 1 223 km | 0.03 … 4 m | 144 chunks render at every value |
+
+`0.03 m` is not worse than `3 m`. `FirstPersonCamera.UpdateClipPlanes` therefore keeps the
+mode's near (0.03 m in the cabin, 0.1 m in EVA) and has no altitude floor. If a far body
+ever disappears again, check the hand-over/`SurfaceVisible` pair before touching near.
 
 ## 4. The player's physics ran in the CRAFT's frame
 

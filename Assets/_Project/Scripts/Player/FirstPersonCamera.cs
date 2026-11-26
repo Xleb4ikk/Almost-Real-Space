@@ -922,7 +922,9 @@ namespace Galilego.Universe
             // cabin and the monitors away, leaving only the terrain (see
             // SeatedNearClipMeters). While carried this also hides the lag of the
             // double-world position used above.
-            if (Runner.PlayerSeated || Runner.PlayerCarried || Runner.PlayerMode == PlayerMode.InShip)
+            bool insideVessel = Runner.PlayerSeated || Runner.PlayerCarried
+                || Runner.PlayerMode == PlayerMode.InShip;
+            if (insideVessel)
             {
                 near = SeatedNearClipMeters;
             }
@@ -948,16 +950,17 @@ namespace Galilego.Universe
             double horizon = SkyPhysics.MaxSightDistance(radius, cameraHeight, peakHeight);
             double far = System.Math.Max((horizon * 1.1d) + 1e3d, 20000d);
 
-            // The near plane has to grow with the far one above the atmosphere.
-            // Measured over Artemis in EVA: far = the horizon = 1 200 km with near = 0.1 m
-            // and the whole terrain failed to rasterise — the Moon was BLACK at 660 km and
-            // visible at 700 km, and the only change that brought it back was near >= 1 m.
-            // Below 10 km the mode's near (a few cm in the cabin, at the feet on the ground)
-            // is kept: only the altitude case has a far plane this large.
-            if (altitude > 10000d)
-            {
-                near = System.Math.Max(near, far * 2.5e-6d);
-            }
+            // No altitude floor on near. The old `near >= far * 2.5e-6` rule was added
+            // for a "black Moon at 660 km", but that Moon was the far-disc hand-over
+            // (the disc switches off at HandoverRadii while the chunks are drawn), not
+            // depth precision. At 200 km the rule gives 2.7 m and cuts the cabin —
+            // walls, seat, consoles — out of the frame, leaving only the planet:
+            // "the capsule disappeared in orbit, I still see a small part a couple of
+            // metres away". A play-mode probe (NearProbe, ephemeral run_script, no
+            // domain reload, ship alive, surface visible) measured the real behaviour:
+            // near 0.03 m renders Terra's 559 chunks at 200 km (far 1.07 Mm) and
+            // Artemis's 144 chunks at 660 km (far 1.22 Mm) like near 3 m, and the far
+            // disc of Terra from Artemis is unaffected too. Keep the mode's near.
 
             // far is NOT stretched for the atmosphere: it is drawn as a
             // camera-centered dome and always fits the frustum. Otherwise

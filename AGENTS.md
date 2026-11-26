@@ -152,11 +152,23 @@ amber dashed, the manoeuvre path white. Full write-up and the headless render re
   `ShipTablet.UpdateWorldPointer`). Stop Play (or wait for the user) before
   `AssetDatabase.Refresh`; after a reload the session is already broken, so stopping it
   is the honest move.
+* **If `Runner.step`/`Runner.SystemState` are null mid-play while `Runner.System` is
+  set**, the session took a script reload: non-serialized state is gone, `Ship` is null
+  and every surface/disc stops updating without an exception. Do not measure rendering
+  there. For play-mode probes use an ephemeral `run_script` (in-memory compile, no reload)
+  instead of repeated `eval`; the probe also proved the near-plane fix above.
 * `Tools/P1bTests` currently does not compile for unrelated reasons; `Test572` is the
   contract, but validate with the standalone probe until the harness is repaired.
 
 ## Debugging rendering at altitude
 
+* **A cabin that disappears in orbit is the near plane, not the hull.** The camera near
+  was floored at `far·2.5e-6` above 10 km; at 200 km that is 2.7 m, so the walls, seat and
+  consoles are clipped and only the planet remains ("the capsule vanished, I see a small
+  part a couple of metres away"). The floor is gone: the cabin keeps 0.03 m, EVA 0.1 m.
+  The "black Moon" that motivated the floor was the far-disc hand-over, not depth; the
+  probe at Terra 200 km and Artemis 660 km renders the terrain at 0.03 m exactly like at
+  3 m (`Docs/MoonApproach.md` §3).
 * Freeze the frame first: `SimulationRunner.Paused = true` (the ship moves at km/s).
 * Toggle the **component** (`PlanetAtmosphereView.enabled = false`), not just the
   GameObject — the views re-activate their dome in `LateUpdate`.

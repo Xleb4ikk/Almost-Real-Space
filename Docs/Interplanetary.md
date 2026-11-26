@@ -130,11 +130,15 @@ Frozen runner (`Paused = true`), teleport + `SnapLookDirection`, 1954×983 game 
 
 ## Still open
 
-* The in-ship/EVA near plane is still `max(modeNear, far·2.5e-6)`
-  (`FirstPersonCamera.UpdateClipPlanes`): at 200 km that is 2.7 m and it clips the cabin,
-  at 89 million km 395 km. It does not affect planets (the discs are at `0.25·far`), but
-  the cockpit view needs a separate solution. Do not fix it by lowering `near` alone: the
-  far/near ratio is what kept the terrain rasterising (`Docs/MoonApproach.md` §3).
+* The in-ship/EVA near plane is now the mode's near (`SeatedNearClipMeters` 0.03 m,
+  `EvaNearClipMeters` 0.1 m); the old `far·2.5e-6` floor was removed. It was added for a
+  black Moon at 660 km that turned out to be the far-disc hand-over, and at 200 km it was
+  2.7 m — enough to cut the whole cabin out of the frame. The cookie-cutter probe at Terra
+  200 km and Artemis 660 km renders the terrain at 0.03 m exactly like at 3 m
+  (`Docs/MoonApproach.md` §3). The remaining limit is the **far disc** at extreme
+  distances: it sits at `0.25·far`, so at tens of millions of km its clip-space depth can
+  still collapse; that is the case to test if a planet ever vanishes while the cabin is
+  visible.
 * A far disc of an atmospheric body gets the body's own atmosphere only through the
   foreign dome at queue 3005; the disc's own baked map has no cloud layer, so at > ~30 px
   the real mesh (with clouds) is still the better representation — which is why the disc
