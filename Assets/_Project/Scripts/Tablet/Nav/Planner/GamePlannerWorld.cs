@@ -11,20 +11,22 @@ namespace Galilego.Tablet
     /// Мир планировщика поверх StarSystem игры. Индекс тела = позиция в StarSystem.AllBodies — тот же, что у
     /// NavState.BodyNames и Maneuver.FrameBody. Все обращения к эфемеридам идут из главного потока.
     /// </summary>
-    public sealed class GamePlannerWorld : IPlannerWorld, IBodyStateSource
+    public sealed class GamePlannerWorld : IPlannerWorld, IBodyStateSource, IPlannerShipState
     {
         private readonly StarSystem system;
         private readonly Func<double> clock;
         private readonly Func<Ship> ship;
+        private readonly Func<bool> freeFlying;
         private readonly IReadOnlyList<OrbitingBody> bodies;
         private readonly int[] parent;
         private readonly Dictionary<OrbitingBody, int> index = new Dictionary<OrbitingBody, int>();
 
-        public GamePlannerWorld(StarSystem system, Func<double> universeClock, Func<Ship> shipSource)
+        public GamePlannerWorld(StarSystem system, Func<double> universeClock, Func<Ship> shipSource, Func<bool> freeFlying = null)
         {
             this.system = system;
             clock = universeClock;
             ship = shipSource;
+            this.freeFlying = freeFlying;
             bodies = system.AllBodies;
             parent = new int[bodies.Count];
             for (int i = 0; i < bodies.Count; i++) { index[bodies[i]] = i; }
@@ -83,6 +85,8 @@ namespace Galilego.Tablet
             int i;
             return b != null && index.TryGetValue(b, out i) ? i : -1;
         }
+
+        public bool ShipIsFreeFlying { get { return freeFlying == null || freeFlying(); } }
 
         public double ShipMass { get { Ship s = ship(); return s != null ? s.Mass : 1d; } }
     }

@@ -1,5 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:nav="Galilego.Tablet" editor-extension-mode="False">
     <Style src="NavTablet.uss" />
+    <Style src="NavTabletPlanner.uss" />
     <ui:VisualElement name="dev" class="dev">
 
         <!-- left column: map + line-length panel -->

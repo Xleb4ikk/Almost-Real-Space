@@ -6,7 +6,7 @@ namespace Galilego.Planning
     /// <summary>
     /// Ламберт с заданным смыслом обращения: h·n̂ &gt; 0 (prograde) либо &lt; 0. Решатель — LambertLagrange (форма Лагранжа,
     /// устойчив у дуги 180°); прежний LambertSolver (BMWS) остаётся для перекрёстной проверки.
-    /// Проверяется независимым оракулом (mp-60) в tests.
+    /// Проверяется автономным стендом Tools/PlannerCheck (mpmath/DOP853), не тестами Unity.
     /// </summary>
     public static class LambertPrograde
     {

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Standalone verification stand for Assets/_Project/Scripts/Trajectory/Planner/*.
+
+    The planner maths is pure C# (no Unity), so it can be compiled and checked
+    outside the Editor.  The C# side only dumps golden vectors (out.txt,
+    diag.txt); every check lives in verify.py / verify_diag.py, which use
+    independent oracles (scipy DOP853 direct ODE integration and mpmath 50-digit
+    classical elements + Kepler equation).  A test whose expected value came from
+    the code under test proves nothing, so nothing here does that.
+
+    See README.md for the commands.  Override the game sources with
+    /p:GameScripts=<path> if the layout moves.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>PlannerCheck</AssemblyName>
+    <RootNamespace>PlannerCheck</RootNamespace>
+    <GameScripts Condition="'$(GameScripts)' == ''">$(MSBuildThisFileDirectory)..\..\Assets\_Project\Scripts\</GameScripts>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Diag.cs" />
+    <Compile Include="$(GameScripts)Core\Math\Vector3d.cs" Link="Game\Vector3d.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\ConicMath.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\LambertLagrange.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\LambertPrograde.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\UniversalKepler.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\EscapeSolver.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\CaptureGeometry.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\FlybyGeometry.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\TransferScanner.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\NelderMead.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\PlannerWorld.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\ShipDeparture.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\FlybySearch.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\ShootingCorrector.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Planner\PlannerEngine.cs" />
+    <Compile Include="$(GameScripts)Trajectory\Transfers\LambertSolver.cs" />
+  </ItemGroup>
+</Project>

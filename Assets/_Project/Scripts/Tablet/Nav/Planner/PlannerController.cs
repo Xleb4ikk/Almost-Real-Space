@@ -35,6 +35,9 @@ namespace Galilego.Tablet
         public int Shots { get; private set; }
         public int Version { get; private set; }
 
+        /// <summary>Bumped whenever the window list itself changes (new search, selection, clear).</summary>
+        public int WindowsVersion { get; private set; }
+
         public int FromBody { get; private set; } = -1;
         public PorkchopGrid Grid { get; private set; }
         public readonly List<TransferSolution> Windows = new List<TransferSolution>();
@@ -55,7 +58,17 @@ namespace Galilego.Tablet
         {
             if (i < 0 || i >= WindowCount || i == Selected) { return; }
             Cancel();
-            Selected = i; Draft = null; Version++;
+            Selected = i; Draft = null; Version++; WindowsVersion++;
+        }
+
+        /// <summary>Сбрасывает найденные окна и черновик, сохраняя настройки поиска (смена цели/режима в окне).</summary>
+        public void Clear(string status = "Окна не рассчитаны.")
+        {
+            Cancel();
+            Windows.Clear(); FlybyWindows.Clear(); Grid = null; Draft = null;
+            TransferSpec = null; FlybySpec = null; Selected = -1;
+            Status = status;
+            Version++; WindowsVersion++;
         }
 
         /// <summary>Сколько отлёту/прилёту до окна i (секунды от «сейчас»).</summary>
@@ -66,8 +79,14 @@ namespace Galilego.Tablet
         public bool Search()
         {
             Cancel();
-            Windows.Clear(); FlybyWindows.Clear(); Grid = null; Draft = null; Selected = -1; Version++;
+            Windows.Clear(); FlybyWindows.Clear(); Grid = null; Draft = null; Selected = -1; Version++; WindowsVersion++;
             if (World == null) { Status = "Нет мира."; return false; }
+            if (World is IPlannerShipState shipState && !shipState.ShipIsFreeFlying)
+            {
+                Status = "Корабль под тягой, на поверхности или разрушен: план строится из свободного полёта.";
+                return false;
+            }
+
             FromBody = World.ShipBody();
             if (FromBody < 0 || !World.TryShipState(out Vector3d sp, out Vector3d sv)) { Status = "Нет аппарата или он вне сферы тела."; return false; }
             if (Settings.To < 0 || Settings.To >= World.BodyCount) { Status = "Выберите цель."; return false; }
@@ -76,18 +95,45 @@ namespace Galilego.Tablet
             double shipRadius = (sp - bp).Magnitude;
             const double Day = 86400d;
 
+            // Планировщик строит отлётную гиперболу из ТЕКУЩЕЙ орбиты. Если корабль на поверхности/в атмосфере,
+            // мгновенное состояние — не орбита, и такой план не имеет смысла: отсекаем это до поиска окон.
+            double minShipRadius = World.Radius(FromBody) + World.SafeAltitude(FromBody);
+            if (shipRadius < minShipRadius)
+            {
+                Status = "Корабль ниже безопасной высоты (" + ((shipRadius - World.Radius(FromBody)) / 1e3).ToString("F0")
+                    + " км при минимуме " + (World.SafeAltitude(FromBody) / 1e3).ToString("F0") + " км). Поднимите орбиту.";
+                return false;
+            }
+
+            // Высоты ниже SafeAltitude (атмосфера/корона) не годятся ни для парковки, ни для захвата.
+            // Не меняем поля игрока, но в расчёт передаём безопасный минимум и сообщаем об этом в статусе.
+            double parkKm = Settings.UseCurrentOrbit
+                ? Settings.ParkAltitudeKm
+                : Math.Max(Settings.ParkAltitudeKm, World.SafeAltitude(FromBody) / 1e3);
+            double arrKm = Math.Max(Settings.ArrivalAltitudeKm, World.SafeAltitude(Settings.To) / 1e3);
+            bool altClamped = (!Settings.UseCurrentOrbit && parkKm > Settings.ParkAltitudeKm + 1e-9d)
+                || (arrKm > Settings.ArrivalAltitudeKm + 1e-9d);
+            string altNote = altClamped ? "Высоты подняты до безопасных. " : "";
+
             if (Settings.Mode == PlannerMode.Transfer)
             {
                 tRq = new TransferRequest
                 {
-                    From = FromBody, To = Settings.To, UseCurrentOrbit = Settings.UseCurrentOrbit, ParkAltitudeM = Settings.ParkAltitudeKm * 1e3,
-                    Capture = Settings.Capture, ArrivalAltitudeM = Settings.ArrivalAltitudeKm * 1e3, CaptureEccentricity = Settings.CaptureEccentricity,
+                    From = FromBody, To = Settings.To, UseCurrentOrbit = Settings.UseCurrentOrbit, ParkAltitudeM = parkKm * 1e3,
+                    Capture = Settings.Capture, ArrivalAltitudeM = arrKm * 1e3, CaptureEccentricity = Settings.CaptureEccentricity,
                     SearchSpanS = Settings.SearchSpanDays * Day, TofMaxS = Settings.MaxFlightDays * Day,
                 };
                 if (!PlannerEngine.TryBuildSpec(World, tRq, now, shipRadius, out TransferSpec spec, out string why)) { Status = why; return false; }
                 TransferSpec = spec;
                 PlannerEngine.DefaultWindow(World, tRq, now, out double start, out double span, out double tofMin, out double tofMax);
-                if (tofMax <= tofMin) { tofMax = tofMin * 2d; }
+                if (Settings.MaxFlightDays > 0d && tofMax < tofMin)
+                {
+                    Status = "Максимальное время полёта " + Settings.MaxFlightDays.ToString("0.###") + " сут меньше минимального "
+                        + (tofMin / Day).ToString("0.#") + " сут.";
+                    return false;
+                }
+
+                if (tofMax <= tofMin) { tofMax = tofMin; }
                 Windows.AddRange(PlannerEngine.FindWindows(spec, start, span, tofMin, tofMax, 120, out PorkchopGrid grid));
                 Grid = grid;
             }
@@ -97,17 +143,23 @@ namespace Galilego.Tablet
                 fRq = new FlybyRequest
                 {
                     From = FromBody, Via = Settings.Via, To = Settings.To, Capture = Settings.Capture,
-                    ArrivalAltitudeM = Settings.ArrivalAltitudeKm * 1e3, CaptureEccentricity = Settings.CaptureEccentricity,
+                    ArrivalAltitudeM = arrKm * 1e3, CaptureEccentricity = Settings.CaptureEccentricity,
                     SearchSpanS = Settings.SearchSpanDays * Day,
                 };
                 if (!FlybyPlanner.TryBuildSpec(World, fRq, now, shipRadius, out FlybySpec fs, out string why)) { Status = why; return false; }
                 FlybySpec = fs;
                 FlybyPlanner.DefaultWindows(World, fRq, now, out double a0, out double a1, out double b0, out double b1, out double c0, out double c1);
                 if (Settings.MaxFlightDays > 0d) { c1 = Math.Min(c1, a0 + (Settings.MaxFlightDays * Day)); b1 = Math.Min(b1, c1); }
+                if (b1 < b0 || c1 < c0)
+                {
+                    Status = "Максимальное время полёта " + Settings.MaxFlightDays.ToString("0.###") + " сут не оставляет окна у гиганта.";
+                    return false;
+                }
+
                 FlybyWindows.AddRange(FlybyPlanner.FindWindows(fs, a0, a1, b0, b1, c0, c1));
             }
 
-            Status = WindowCount > 0 ? "Найдено окон: " + WindowCount : "Окон нет: расширьте поиск или измените цель.";
+            Status = altNote + (WindowCount > 0 ? "Найдено окон: " + WindowCount : "Окон нет: расширьте поиск или измените цель.");
             if (WindowCount > 0) { Selected = 0; }
             Version++;
             return WindowCount > 0;

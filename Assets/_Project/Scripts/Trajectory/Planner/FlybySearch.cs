@@ -40,8 +40,17 @@ namespace Galilego.Planning
         /// <summary>Выигрыш скорости относительно родителя от пассивной части (изменение вектора, F-MAN-10).</summary>
         public double FreeVelocityChange { get { return Flyby.VelocityChange; } }
 
-        /// <summary>Энергия в СК родителя: |v_out|²−|v_in|² = 2·V_тела·(v∞_out − v∞_in) (F-MAN-10).</summary>
-        public double HelioEnergyGain { get { return 2d * Vector3d.Dot(VVia, VInfOut - VInfIn); } }
+        /// <summary>
+        /// Энергия в СК родителя: |v_out|²−|v_in|² = 2·V_тела·(v∞_out − v∞_in) + (|v∞_out|²−|v∞_in|²).
+        /// Второе слагаемое нулевое только для пассивного пролёта; для powered-пролёта его нельзя терять.
+        /// </summary>
+        public double HelioEnergyGain
+        {
+            get
+            {
+                return (2d * Vector3d.Dot(VVia, VInfOut - VInfIn)) + (VInfOut.SqrMagnitude - VInfIn.SqrMagnitude);
+            }
+        }
 
         /// <summary>true — проход позади планеты по её движению (разгон), false — впереди (торможение).</summary>
         public bool Trailing { get { return Vector3d.Dot(Flyby.PeriapsisDir, VVia) < 0d; } }

@@ -193,6 +193,7 @@ namespace Galilego.Tablet
                 RebuildMap(true);
             };
             view.CenterChanged += _ => RebuildMap(true);
+            view.PlannerClosed += () => RebuildMap(true);
             view.OrbitToggled += _ => RebuildMap(true);
             view.MapDragged += OnMapDragged;
             view.MapZoomed += OnMapZoomed;
@@ -622,6 +623,13 @@ namespace Galilego.Tablet
         private void RebuildMapIfNeeded(bool force)
         {
             if (view == null || !view.Bound || runner == null || runner.SystemState == null)
+            {
+                return;
+            }
+
+            // The drawer covers the map; rebuilding it under the panel only steals
+            // time from the planner. PlannerClosed forces one rebuild on close.
+            if (view.PlannerOpen)
             {
                 return;
             }
@@ -1074,7 +1082,8 @@ namespace Galilego.Tablet
         private void AttachPlannerOnce()
         {
             if (planner != null || view == null || !view.Bound || runner == null || runner.SystemState == null) { return; }
-            var world = new GamePlannerWorld(runner.SystemState, () => runner.TimeSeconds, () => runner.Ship);
+            var world = new GamePlannerWorld(runner.SystemState, () => runner.TimeSeconds, () => runner.Ship,
+                () => runner.Regime == VesselRegime.Flying && runner.RawThrottle < 1e-6d);
             var physics = new GamePlannerPropagator(runner.SystemState, () => world.ShipMass);
             planner = new PlannerController { World = world, Propagator = physics };
             view.AttachPlanner(planner, () => double.NaN);

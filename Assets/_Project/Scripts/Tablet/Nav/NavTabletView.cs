@@ -41,6 +41,7 @@ namespace Galilego.Tablet
         public event Action<Vector2, float> MapZoomed;   // cursor position (unused for the pivot), wheel delta
         public event Action<Vector2> MapHovered;         // cursor position in map (for picking planets / markers)
         public event Action MapPointerLeft;
+        public event Action PlannerClosed;
         public event Action MapReset;                    // double-click: back to the default view
 
         private sealed class Card
@@ -65,7 +66,7 @@ namespace Galilego.Tablet
         private readonly Label[] panelLabels = new Label[3];
         private static readonly string[] PanelTitles = { "СИСТЕМЫ ОТСЧЁТА", "ВРЕМЯ ЛИНИЙ", "ПЛАН ПОЛЁТА" };
 
-        private VisualElement root, mapView, framesTable, clock;
+        private VisualElement root, mapView, mapRoot, devRoot, framesTable, clock;
         private Label tip, mission, worldDate, framesDesc, sDv, sBurn, sNext;
         private ScrollView planList;
         private TextField fForecast, fHistory;
@@ -75,7 +76,7 @@ namespace Galilego.Tablet
         private PlannerController plannerController;
         private PlannerView planner;
         private Func<double> plannerShipDv;
-        private Button plannerButton;
+        private VisualElement plannerTab;
         private bool bound;
         private float refreshTimer;
         private Texture lastMapTexture;
@@ -147,11 +148,52 @@ namespace Galilego.Tablet
             if (!bound || plannerController == null || planner != null) { return; }
             planner = new PlannerView(plannerController, () => State.Plan, plannerShipDv, SetViewFrame,
                 () => new[] { State.FrameIndex, State.CenterIndex }, RebuildCards);
-            root.Add(planner);
-            plannerButton = new Button(() => { if (planner.IsOpen) { planner.Close(); } else { planner.Open(); } }) { text = "ПЛАНИРОВЩИК" };
-            plannerButton.AddToClassList("btn");
-            VisualElement host = planList != null ? planList.parent : null;
-            if (host != null) { host.Insert(host.IndexOf(planList), plannerButton); } else { root.Add(plannerButton); }
+            // Both menus live on the map; opening one closes the other so the
+            // overlay never covers the panel the player is reading.
+            planner.Opened += () =>
+            {
+                if (State.Panels[(int)NavPanel.Frames].Open)
+                {
+                    State.Panels[(int)NavPanel.Frames].Open = false;
+                    ApplyPanel(NavPanel.Frames);
+                }
+            };
+            planner.Closed += () => { if (PlannerClosed != null) { PlannerClosed(); } };
+            VisualElement host = devRoot != null ? devRoot : root;
+            host.Add(planner);
+
+            plannerTab = new VisualElement { name = "planner-tab" };
+            plannerTab.AddToClassList("planner-rail-tab");
+            var plannerLabel = new Label("ПЛАНИРОВЩИК");
+            plannerLabel.AddToClassList("planner-rail-label");
+            plannerTab.Add(plannerLabel);
+            plannerTab.tooltip = "Планировщик манёвров: открыть/закрыть";
+            plannerTab.AddManipulator(new Clickable(TogglePlanner));
+            VisualElement tabHost = mapRoot != null ? mapRoot : root;
+            tabHost.Add(plannerTab);
+            VisualElement framesPanel = panelRoots[(int)NavPanel.Frames];
+            if (framesPanel != null) { framesPanel.RegisterCallback<GeometryChangedEvent>(_ => PositionPlannerTab()); }
+            if (mapRoot != null) { mapRoot.RegisterCallback<GeometryChangedEvent>(_ => PositionPlannerTab()); }
+            PositionPlannerTab();
+        }
+
+        /// <summary>
+        /// The planner tab is the second entry in the left menu rail: it sits
+        /// directly under the reference-frame panel, whatever its height is.
+        /// </summary>
+        private void PositionPlannerTab()
+        {
+            if (plannerTab == null || mapRoot == null) { return; }
+            VisualElement framesPanel = panelRoots[(int)NavPanel.Frames];
+            float top = framesPanel != null ? framesPanel.layout.yMax + 6f : 300f;
+            float maxTop = Mathf.Max(44f, mapRoot.layout.height - 94f);
+            plannerTab.style.top = Mathf.Min(top, maxTop);
+        }
+
+        private void TogglePlanner()
+        {
+            if (planner == null) { return; }
+            if (planner.IsOpen) { planner.Close(); } else { planner.Open(); }
         }
 
         /// <summary>
@@ -195,6 +237,8 @@ namespace Galilego.Tablet
 
             root = tree;
             mapView = root.Q("map-view");
+            mapRoot = root.Q("map");
+            devRoot = root.Q("dev");
 
             tip = root.Q<Label>("tip");
             mission = root.Q<Label>("mission");
@@ -437,6 +481,10 @@ namespace Galilego.Tablet
             {
                 State.TogglePanel(id);
                 ApplyPanel(id);
+                if (id == NavPanel.Frames && State.Panels[(int)NavPanel.Frames].Open && planner != null)
+                {
+                    planner.Close();
+                }
             }));
         }
 

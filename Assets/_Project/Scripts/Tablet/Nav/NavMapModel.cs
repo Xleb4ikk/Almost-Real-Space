@@ -2091,10 +2091,10 @@ namespace Galilego.Tablet
             Vector3d binormal = Vector3d.Cross(r, v).Normalized;
             if (!binormal.IsFinite || !(binormal.SqrMagnitude > 0.5d))
             {
-                // Radial flight has no orbital plane: fall back to the map plane.
-                binormal = OrbitNormal.IsFinite && OrbitNormal.SqrMagnitude > 0.5d
-                    ? OrbitNormal.Normalized
-                    : new Vector3d(0d, 0d, 1d);
+                // Radial flight has no orbital plane. ManeuverAxes (and therefore every planner/card T/N/B)
+                // uses world Z as the fallback; the forecast must use the SAME normal, or an identical T/N/B
+                // triple means a different world impulse in the plan and in the predicted line.
+                binormal = new Vector3d(0d, 0d, 1d);
             }
 
             Vector3d normal = Vector3d.Cross(binormal, tangent).Normalized;

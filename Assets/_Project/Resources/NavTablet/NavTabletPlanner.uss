@@ -1,0 +1,193 @@
+/* Maneuver planner: a wide slide-in drawer over the tablet, opened from the
+   clock bar. It is deliberately not attached to the flight-plan column. */
+
+.planner-drawer {
+    position: absolute;
+    left: 32px;
+    top: 0;
+    bottom: 0;
+    width: 92%;
+    flex-direction: column;
+    background-color: rgba(8, 26, 18, 0.97);
+    border-width: 1px;
+    border-color: rgba(76, 224, 124, 0.2);
+    border-radius: 14px;
+    transition-property: width;
+    transition-duration: 0.3s;
+    transition-timing-function: ease-in-out;
+}
+.planner-drawer.collapsed { width: 0; border-width: 0; }
+.planner-drawer.collapsed .planner-body { opacity: 0; visibility: hidden; transition-delay: 0s; }
+
+.planner-rail-tab {
+    position: absolute;
+    left: 0;
+    width: 18px;
+    height: 88px;
+    background-color: rgba(8, 26, 18, 0.93);
+    border-width: 1px;
+    border-color: rgba(76, 224, 124, 0.2);
+    border-top-right-radius: 14px;
+    border-bottom-right-radius: 14px;
+}
+.planner-rail-tab:hover { background-color: rgba(76, 224, 124, 0.08); }
+.planner-rail-label {
+    position: absolute;
+    left: 14px;
+    top: 8px;
+    width: 160px;
+    transform-origin: left top;
+    rotate: 90deg;
+    color: rgb(111, 184, 138);
+    font-size: 8.5px;
+    letter-spacing: 1.2px;
+    white-space: nowrap;
+}
+.planner-rail-tab:hover .planner-rail-label { color: rgb(228, 255, 240); }
+
+.planner-body {
+    flex-grow: 1;
+    min-width: 0;
+    padding: 8px 12px 10px 12px;
+    opacity: 1;
+    transition-property: opacity;
+    transition-duration: 0.15s;
+    transition-delay: 0.15s;
+}
+.planner-scroll { flex-grow: 1; min-width: 0; }
+
+/* The runtime theme's scroller is a 24 px white strip with white arrows; the
+   tablet uses thin phosphor scrollbars like the rest of the console. */
+.planner-scroll .unity-scroll-view__vertical-scroller,
+.planner-windows .unity-scroll-view__vertical-scroller {
+    width: 8px;
+    min-width: 8px;
+    max-width: 8px;
+    background-color: rgba(0, 0, 0, 0.18);
+    border-radius: 4px;
+}
+.planner-scroll .unity-scroller__low-button,
+.planner-scroll .unity-scroller__high-button,
+.planner-windows .unity-scroller__low-button,
+.planner-windows .unity-scroller__high-button { display: none; }
+.planner-scroll .unity-scroller__slider,
+.planner-windows .unity-scroller__slider { background-color: rgba(76, 224, 124, 0.18); border-radius: 4px; }
+.planner-scroll .unity-scroller__slider:hover,
+.planner-windows .unity-scroller__slider:hover { background-color: rgba(76, 224, 124, 0.32); }
+.planner-scroll .unity-base-slider__input,
+.planner-windows .unity-base-slider__input { background-color: transparent; }
+.planner-scroll .unity-base-slider__drag-container,
+.planner-windows .unity-base-slider__drag-container { background-color: rgb(76, 224, 124); border-radius: 4px; }
+
+.planner-head { flex-direction: row; align-items: center; margin-bottom: 4px; }
+.planner-title {
+    flex-grow: 1;
+    color: rgb(228, 255, 240);
+    font-size: 10.5px;
+    letter-spacing: 1.2px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    white-space: normal;
+}
+.planner-close { width: 22px; height: 20px; padding: 0; margin-left: 6px; -unity-text-align: middle-center; }
+.planner-seg { margin-right: 4px; }
+.planner-from { color: rgb(191, 242, 208); font-size: 9.5px; white-space: normal; margin-bottom: 2px; }
+.planner-status { color: rgb(240, 196, 80); font-size: 9px; white-space: normal; margin-bottom: 6px; }
+
+.planner-columns { flex-direction: row; align-items: flex-start; }
+.planner-col-left { width: 258px; flex-shrink: 0; margin-right: 8px; }
+.planner-col-right { flex-grow: 1; }
+.planner-card {
+    margin-bottom: 8px;
+    padding: 6px 8px 7px 8px;
+    background-color: rgba(0, 0, 0, 0.22);
+    border-width: 1px;
+    border-color: rgba(76, 224, 124, 0.14);
+    border-radius: 10px;
+}
+.planner-card-title { color: rgb(111, 184, 138); font-size: 8.5px; letter-spacing: 1.3px; margin-bottom: 4px; }
+
+.planner-row { flex-direction: row; align-items: center; margin-top: 3px; margin-bottom: 3px; }
+.planner-label { width: 82px; flex-shrink: 0; color: rgb(111, 184, 138); font-size: 9px; white-space: normal; }
+.planner-field { flex-grow: 1; margin-left: 4px; }
+.planner-dd { flex-grow: 1; margin-left: 4px; }
+
+.planner-search { margin-top: 6px; -unity-text-align: middle-center; }
+.planner-primary {
+    background-color: rgba(76, 224, 124, 0.18);
+    border-color: rgba(76, 224, 124, 0.55);
+    color: rgb(228, 255, 240);
+}
+.planner-danger {
+    background-color: rgba(255, 92, 92, 0.14);
+    border-color: rgba(255, 92, 92, 0.55);
+    color: rgb(255, 186, 186);
+}
+.planner-actions { flex-direction: row; flex-wrap: wrap; margin-top: 6px; }
+.planner-actions .btn { margin-right: 4px; margin-bottom: 3px; }
+.planner-footer {
+    flex-direction: row;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+    margin-top: 4px;
+    padding-top: 6px;
+    border-top-width: 1px;
+    border-color: rgba(76, 224, 124, 0.18);
+}
+.planner-footer .btn { flex-grow: 1; margin-right: 4px; margin-bottom: 3px; -unity-text-align: middle-center; }
+
+.planner-caption { color: rgb(111, 184, 138); font-size: 8px; letter-spacing: 0.6px; margin-bottom: 3px; white-space: normal; }
+.planner-heat-box {
+    height: 168px;
+    background-color: rgba(0, 0, 0, 0.35);
+    border-width: 1px;
+    border-color: rgba(76, 224, 124, 0.14);
+    border-radius: 6px;
+    margin-bottom: 3px;
+}
+.planner-heat { flex-grow: 1; }
+.planner-heat-empty {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    top: 0;
+    bottom: 0;
+    color: rgb(111, 184, 138);
+    font-size: 9px;
+    white-space: normal;
+    -unity-text-align: middle-center;
+}
+.planner-heat-axes { flex-direction: row; justify-content: space-between; margin-bottom: 4px; }
+.planner-axis { color: rgb(111, 184, 138); font-size: 7.5px; letter-spacing: 0.8px; }
+
+.planner-windows { height: 112px; margin-top: 2px; }
+.planner-window {
+    margin-bottom: 2px;
+    white-space: normal;
+    -unity-text-align: middle-left;
+    font-size: 8.5px;
+}
+.planner-empty { color: rgb(111, 184, 138); font-size: 9px; margin-top: 6px; margin-bottom: 6px; }
+
+.planner-summary { color: rgb(191, 242, 208); font-size: 9px; white-space: normal; margin-top: 4px; }
+.planner-flags { color: rgb(240, 196, 80); font-size: 8.5px; white-space: normal; margin-top: 3px; }
+
+.planner-tiles { flex-direction: row; flex-wrap: wrap; }
+.planner-tile {
+    width: 48%;
+    margin: 1%;
+    padding: 3px 6px;
+    background-color: rgba(0, 0, 0, 0.25);
+    border-width: 1px;
+    border-color: rgba(76, 224, 124, 0.12);
+    border-radius: 8px;
+}
+.planner-tile-cap { font-size: 8px; color: rgb(111, 184, 138); white-space: normal; }
+.planner-tile-val { font-size: 10px; color: rgb(228, 255, 240); -unity-font-style: bold; white-space: normal; }
+.planner-warn { color: rgb(240, 196, 80); }
+
+.planner-impulses { margin-top: 2px; }
+.planner-impulse { flex-direction: row; flex-wrap: wrap; margin-top: 2px; }
+.planner-impulse-role { width: 96px; flex-shrink: 0; color: rgb(191, 242, 208); font-size: 8.5px; }
+.planner-impulse-meta { color: rgb(111, 184, 138); font-size: 8.5px; white-space: normal; }
+.planner-note { color: rgb(240, 196, 80); font-size: 8.5px; white-space: normal; margin-top: 4px; }

@@ -30,6 +30,15 @@ namespace Galilego.Planning
         bool TryPropagate(double t0, Vector3d worldPos, Vector3d worldVel, double t1, out Vector3d pos, out Vector3d vel);
     }
 
+    /// <summary>
+    /// Необязательный контекст аппарата: false — корабль на поверхности/разрушен или под тягой. Планировщик
+    /// строит отлёт из свободного баллистического состояния; под тягой мгновенное состояние — не орбита.
+    /// </summary>
+    public interface IPlannerShipState
+    {
+        bool ShipIsFreeFlying { get; }
+    }
+
     /// <summary>Трек тела относительно родителя в инерциальных осях (то, что нужно решателю Ламберта).</summary>
     public sealed class BodyTrack : IOrbitTrack
     {

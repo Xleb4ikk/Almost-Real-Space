@@ -32,8 +32,23 @@ namespace Galilego.Planning
         public bool Refined;
         /// <summary>Окно далеко: фаза корабля на орбите по двухтельной модели не предсказуема — пересчитайте за ≤ ShortHorizonS до отлёта.</summary>
         public bool Preliminary;
-        /// <summary>Сколько стоит несогласованность плоскости/фазы орбиты корабля относительно идеала (PatchedDv − IdealDv).</summary>
-        public double PlanePenaltyDv { get { return Math.Max(0d, PatchedDv - IdealDv); } }
+        /// <summary>
+        /// Сколько стоит несогласованность плоскости/фазы орбиты корабля относительно идеала.
+        /// Подготовка орбиты (PrepOrbit) — это запрошенный игроком манёвр, а не рассогласование.
+        /// </summary>
+        public double PlanePenaltyDv
+        {
+            get
+            {
+                double prep = 0d;
+                foreach (PlannedImpulse i in Impulses)
+                {
+                    if (i.Role == ImpulseRole.PrepOrbit) { prep += i.DvWorld.Magnitude; }
+                }
+
+                return Math.Max(0d, PatchedDv - IdealDv - prep);
+            }
+        }
         public double TotalDv { get { double s = 0d; foreach (PlannedImpulse i in Impulses) { s += i.DvWorld.Magnitude; } return s; } }
     }
 
@@ -117,7 +132,22 @@ namespace Galilego.Planning
             }
 
             // Одинаковая цена (в пределах 0.1 %) — раньше лучше: повторяющиеся окна не вытесняют ближайшее.
-            res.Sort((x, y) => Math.Abs(x.Total - y.Total) <= 1e-3d * Math.Min(x.Total, y.Total) ? x.T0.CompareTo(y.T0) : x.Total.CompareTo(y.Total));
+            // Сортировка в два уровня, а не компаратор с допуском: компаратор «допуск + T0 vs Total» нетранзитивен,
+            // и List.Sort на нём может бросить InvalidOperationException. Группы считаются от первого элемента.
+            res.Sort((x, y) => x.Total.CompareTo(y.Total));
+            for (int i = 0; i < res.Count; )
+            {
+                int j = i + 1;
+                double baseTotal = res[i].Total;
+                while (j < res.Count && res[j].Total <= (baseTotal * 1.001d) + 1e-9d) { j++; }
+                if (j - i > 1)
+                {
+                    res.Sort(i, j - i, Comparer<TransferSolution>.Create((a, b) => a.T0.CompareTo(b.T0)));
+                }
+
+                i = j;
+            }
+
             return res;
         }
 
@@ -163,11 +193,14 @@ namespace Galilego.Planning
             }
 
             // 2) отлёт с орбиты корабля
-            double period = 2d * Math.PI * Math.Sqrt(Math.Pow(1d / Math.Abs((2d / r0.Magnitude) - (v0.SqrMagnitude / muA)), 3d) / muA);
-            if (!double.IsFinite(period) || period > 3d * 86400d) { period = 3d * 86400d; }
-            double from = Math.Max(Math.Max(now + rq.LeadTimeS, shipEpoch + 60d), win.T0 - period), to = Math.Max(from + period, win.T0 + period);
-            // Состояние корабля до импульса: n-body прогноз, если окно близко и он есть; иначе Кеплер (+ пометка «ориентировочно»)
+            // Состояние корабля до импульса: n-body прогноз, если окно близко и он есть; иначе Кеплер (+ пометка «ориентировочно»).
+            // Для точного трека фазу ищем в пределах 30 сут (покрывает GEO/лунные орбиты), для Кеплера — только 3 сут:
+            // дальше двухтельная фаза всё равно помечена Preliminary и должна быть пересчитана перед отлётом.
             bool exact = prop != null && rq.UseCurrentOrbit && win.T0 - now <= rq.ShortHorizonS;
+            double period = 2d * Math.PI * Math.Sqrt(Math.Pow(1d / Math.Abs((2d / r0.Magnitude) - (v0.SqrMagnitude / muA)), 3d) / muA);
+            double phaseSearch = exact ? 30d * 86400d : 3d * 86400d;
+            if (!double.IsFinite(period) || period > phaseSearch) { period = phaseSearch; }
+            double from = Math.Max(Math.Max(now + rq.LeadTimeS, shipEpoch + 60d), win.T0 - period), to = Math.Max(from + period, win.T0 + period);
             IShipTrack ship = exact ? (IShipTrack)new NBodyShipTrack(w, prop, rq.From, now, sp, sv) : new KeplerShipTrack(muA, shipEpoch, r0, v0);
             d.Preliminary = !exact && win.T0 - now > rq.ShortHorizonS;
             if (!ShipDeparture.Find(spec, muA, minPer, ship, win.T1, from, to, 600, out DeparturePlan dep)) { d.Note = "Не удалось построить отлёт с текущей орбиты."; yield break; }
@@ -241,11 +274,16 @@ namespace Galilego.Planning
             }
 
             AddImpulse(d, w, ImpulseRole.Correction, tTcm, parent, dvTcm, "КОРРЕКЦИЯ 1", spec.MuCentral, rTcm, vTcm, 0d, forceState: true, worldPos: wpTcm, worldVel: wvTcm);
-            // захват: касательно к скорости в периапсисе до скорости орбиты (круг: √(μ/r), эллипс: √(μ(1+e)/r))
-            double rCap = capRel.Magnitude;
-            double vTarget = rq.Capture == CaptureKind.Elliptic ? Math.Sqrt(spec.MuTo * (1d + rq.CaptureEccentricity) / rCap) : Math.Sqrt(spec.MuTo / rCap);
-            Vector3d capDv = capVel.Normalized * (vTarget - capVel.Magnitude);
-            AddImpulse(d, w, ImpulseRole.Capture, tPeri, rq.To, capDv, "ЗАХВАТ", spec.MuTo, capRel, capVel, 0d, forceState: true, worldPos: capWp, worldVel: capWv);
+            // Захват: касательно к скорости в периапсисе до скорости орбиты (круг: √(μ/r), эллипс: √(μ(1+e)/r)).
+            // CaptureKind.None — это пролёт мимо цели без торможения: цель по-прежнему нужна для прицеливания
+            // (aim выше), но импульса захвата в плане быть не должно, иначе цена окна и план расходятся.
+            if (rq.Capture != CaptureKind.None)
+            {
+                double rCap = capRel.Magnitude;
+                double vTarget = rq.Capture == CaptureKind.Elliptic ? Math.Sqrt(spec.MuTo * (1d + rq.CaptureEccentricity) / rCap) : Math.Sqrt(spec.MuTo / rCap);
+                Vector3d capDv = CaptureBurn(capRel, capVel, vTarget);
+                AddImpulse(d, w, ImpulseRole.Capture, tPeri, rq.To, capDv, "ЗАХВАТ", spec.MuTo, capRel, capVel, 0d, forceState: true, worldPos: capWp, worldVel: capWv);
+            }
             d.RefinedDv = d.TotalDv;
             d.Valid = true;
             yield break;
@@ -253,8 +291,29 @@ namespace Galilego.Planning
 
         private static double PrepDv(PlanDraft d)
         {
-            double s = 0d; foreach (PlannedImpulse i in d.Impulses) { if (i.Role == ImpulseRole.PrepOrbit) { s += i.DvWorld.Magnitude; } }
+            double s = 0d;
+            foreach (PlannedImpulse i in d.Impulses)
+            {
+                if (i.Role == ImpulseRole.PrepOrbit) { s += i.DvWorld.Magnitude; }
+            }
+
             return s;
+        }
+
+        /// <summary>
+        /// Импульс захвата в периапсисе: после него скорость строго перпендикулярна радиусу
+        /// (круг или эллипс с периапсисом r). Прежняя форма capVel.normalized·(vTarget−|capVel|)
+        /// оставляла радиальную составляющую, и после n-body прицеливания орбита получала e ≈ v_r/v_c.
+        /// </summary>
+        internal static Vector3d CaptureBurn(Vector3d relPos, Vector3d relVel, double vTarget)
+        {
+            double rn = relPos.Magnitude;
+            Vector3d radialHat = rn > 0d ? relPos / rn : Vector3d.Zero;
+            Vector3d tangential = relVel - (radialHat * Vector3d.Dot(relVel, radialHat));
+            Vector3d tangentHat = tangential.Magnitude > 1e-9d * Math.Max(1d, relVel.Magnitude)
+                ? tangential.Normalized
+                : relVel.Normalized;
+            return (tangentHat * vTarget) - relVel;
         }
 
         private static void SetLastDeparture(PlanDraft d, Vector3d dv)
@@ -296,6 +355,13 @@ namespace Galilego.Planning
 
     public static class FlybyPlanner
     {
+        /// <summary>
+        /// Допустимый недобор поворота у гиганта, м/с. Оптимум пролёта лежит ровно на границе
+        /// rp = rpMin, поэтому дуга с настоящей орбиты корабля почти всегда просит чуть больше
+        /// поворота; такой недобор (единицы м/с) поглощается коррекцией 2, а не отменяет план.
+        /// </summary>
+        public const double FlybyDeficitToleranceM = 2d;
+
         public static bool TryBuildSpec(IPlannerWorld w, FlybyRequest rq, double now, double shipRadius, out FlybySpec spec, out string why)
         {
             spec = null;
@@ -359,7 +425,11 @@ namespace Galilego.Planning
         {
             d.IdealDv = win.Total; d.DepartTime = win.T0; d.ArriveTime = win.T2;
             double now = w.UniverseNow;
-            if (!win.Feasible) { d.Note = "Планета не может повернуть вектор настолько (недобор поворота " + (win.Flyby.DeficitDv).ToString("F0") + " м/с). Выберите другое окно."; yield break; }
+            if (!win.Feasible && win.Flyby.DeficitDv > FlybyDeficitToleranceM)
+            {
+                d.Note = "Планета не может повернуть вектор настолько (недобор поворота " + win.Flyby.DeficitDv.ToString("F0") + " м/с). Выберите другое окно.";
+                yield break;
+            }
             if (!w.TryShipState(out Vector3d sp, out Vector3d sv)) { d.Note = "Нет состояния корабля."; yield break; }
             if (w.ShipBody() != rq.From) { d.Note = "Корабль не в сфере действия тела старта."; yield break; }
             w.TryBodyState(rq.From, now, out Vector3d bp, out Vector3d bv);
@@ -373,21 +443,41 @@ namespace Galilego.Planning
                 MuCentral = spec.MuCentral, CentralRadius = 0d, MinCentralRadius = spec.MinCentralRadius, From = spec.From, To = spec.Via, Normal = spec.Normal, Prograde = true,
                 MuFrom = spec.MuFrom, ParkRadiusFrom = spec.ParkRadiusFrom, MuTo = spec.MuVia, ParkRadiusTo = spec.ViaMinPeriapsis, Capture = CaptureKind.None,
             };
-            double period = 2d * Math.PI * Math.Sqrt(Math.Pow(1d / Math.Abs((2d / rRel.Magnitude) - (vRel.SqrMagnitude / muA)), 3d) / muA);
-            if (!double.IsFinite(period) || period > 3d * 86400d) { period = 3d * 86400d; }
             bool exact = prop != null && win.T0 - now <= rq.ShortHorizonS;
+            double period = 2d * Math.PI * Math.Sqrt(Math.Pow(1d / Math.Abs((2d / rRel.Magnitude) - (vRel.SqrMagnitude / muA)), 3d) / muA);
+            double phaseSearch = exact ? 30d * 86400d : 3d * 86400d;
+            if (!double.IsFinite(period) || period > phaseSearch) { period = phaseSearch; }
             IShipTrack ship = exact ? (IShipTrack)new NBodyShipTrack(w, prop, rq.From, now, sp, sv) : new KeplerShipTrack(muA, now, rRel, vRel);
             d.Preliminary = !exact && win.T0 - now > rq.ShortHorizonS;
             double from = Math.Max(now + rq.LeadTimeS, win.T0 - period);
             if (!ShipDeparture.Find(leg1, muA, minPer, ship, win.T1, from, Math.Max(from + period, win.T0 + period), 600, out DeparturePlan dep)) { d.Note = "Не удалось построить отлёт с текущей орбиты."; yield break; }
-            d.PatchedDv = dep.Burn.Dv + win.ArrDv + win.Flyby.PoweredDv;
             d.DepartTime = dep.BurnTime;
 
             // 2) пролёт: v∞ на входе от дуги этого отлёта, на выходе — из решения
             spec.Via.TryEvaluate(win.T1, out _, out Vector3d vG);
             Vector3d vInfIn = dep.Transfer.VTransferArr - vG, vInfOut = win.VInfOut;
             FlybyResult fl = FlybyGeometry.Evaluate(spec.MuVia, spec.ViaMinPeriapsis, spec.ViaSoiRadius, vInfIn, vInfOut);
-            if (!fl.Feasible) { d.Note = "С вашей орбиты пролёт не стыкуется (недобор поворота). Пересчитайте окно."; yield break; }
+            // Оптимум гравманёвра всегда лежит на стенке rp = rpMin (больше поворота — дешевле),
+            // поэтому дуга от НАСТОЯЩЕЙ орбиты корабля может попросить на тысячные доли градуса
+            // больше, чем даёт стенка. Такой недобор стоит миллиметры в секунду и закрывается
+            // КОРРЕКЦИЕЙ 2 — из-за него нельзя выбрасывать весь план. Реальный недобор (сотни м/с)
+            // по-прежнему отменяет план.
+            double deficitTol = FlybyDeficitToleranceM + (1e-4d * (dep.Burn.Dv + win.ArrDv));
+            if (!fl.Feasible && fl.DeficitDv > deficitTol)
+            {
+                d.Note = "С вашей орбиты пролёт не стыкуется (недобор поворота " + fl.DeficitDv.ToString("F0") + " м/с). Пересчитайте окно.";
+                yield break;
+            }
+
+            // Цена патч-коник считается по ФАКТИЧЕСКОЙ дуге отлёта и ФАКТИЧЕСКОМУ пролёту
+            // (fl), а не по идеальным значениям окна: иначе подпись «ПАТЧ-КОНИКИ» расходится
+            // со списком импульсов ниже.
+            d.PatchedDv = dep.Burn.Dv + fl.PoweredDv + win.ArrDv;
+            if (!fl.Feasible)
+            {
+                d.Note = "Недобор поворота " + fl.DeficitDv.ToString("0.###") + " м/с закрывается КОРРЕКЦИЕЙ 2.";
+            }
+
             d.FlybyPeriapsisRadius = fl.PeriapsisRadius;
             var inHyp = new HyperbolaAtPeriapsis { Valid = true, AxisX = fl.PeriapsisDir, MotionY = fl.MotionDir, Rp = fl.PeriapsisRadius, Vp = fl.SpeedPeriIn, Normal = Vector3d.Cross(fl.PeriapsisDir, fl.MotionDir) };
             Vector3d dvDep = dep.Burn.DvWorld;
@@ -461,8 +551,12 @@ namespace Galilego.Planning
             d.Refined = refined;
             if (!refined)
             {
-                // патч-коники: состояния из дуг Ламберта
+                // патч-коники: состояния из дуг Ламберта. Импульсы отлёта и пролёта тоже возвращаем к патч-коникам:
+                // если участок 1 сошёлся, а участок 2 нет, иначе в плане останется смесь n-body-импульсов с
+                // патч-коническими состояниями (цена/подпись «ПАТЧ-КОНИКИ» перестают соответствовать плану).
                 dvTcm1 = dvTcm2 = Vector3d.Zero;
+                dvDep = dep.Burn.DvWorld;
+                dvFly = fl.MotionDir * (fl.SpeedPeriOut - fl.SpeedPeriIn);
                 UniversalKepler.TryPropagate(spec.MuCentral, dep.Transfer.RFrom, dep.Transfer.VTransferDep, tTcm1 - dep.BurnTime, out Vector3d r1, out Vector3d vv1);
                 w.TryBodyState(parent, tTcm1, out Vector3d pp1, out Vector3d pv1); wpT1 = pp1 + r1; wvT1 = pv1 + vv1;
                 w.TryBodyState(rq.Via, win.T1, out Vector3d bpG, out Vector3d bvG); wpFly = bpG + inHyp.PeriapsisPosition; wvFly = bvG + inHyp.PeriapsisVelocity;
@@ -483,10 +577,14 @@ namespace Galilego.Planning
             Add(ImpulseRole.Correction, tTcm1, parent, dvTcm1, "КОРРЕКЦИЯ 1", wpT1, wvT1);
             Add(ImpulseRole.FlybyBurn, win.T1, rq.Via, dvFly, "ПЕРИАПСИС У ГИГАНТА", wpFly, wvFly);
             Add(ImpulseRole.Correction, tTcm2, parent, dvTcm2, "КОРРЕКЦИЯ 2", wpT2, wvT2);
-            w.TryBodyState(rq.To, win.T2, out Vector3d bpC, out Vector3d bvC);
-            Vector3d vRelC = wvCap - bvC, rRelC = wpCap - bpC;
-            double vT = rq.Capture == CaptureKind.Elliptic ? Math.Sqrt(spec.MuTo * (1d + rq.CaptureEccentricity) / rRelC.Magnitude) : Math.Sqrt(spec.MuTo / rRelC.Magnitude);
-            Add(ImpulseRole.Capture, win.T2, rq.To, vRelC.Normalized * (vT - vRelC.Magnitude), "ЗАХВАТ", wpCap, wvCap);
+            // CaptureKind.None — пролёт мимо конечной цели: прицеливание в aimB остаётся, торможения в плане нет.
+            if (rq.Capture != CaptureKind.None)
+            {
+                w.TryBodyState(rq.To, win.T2, out Vector3d bpC, out Vector3d bvC);
+                Vector3d vRelC = wvCap - bvC, rRelC = wpCap - bpC;
+                double vT = rq.Capture == CaptureKind.Elliptic ? Math.Sqrt(spec.MuTo * (1d + rq.CaptureEccentricity) / rRelC.Magnitude) : Math.Sqrt(spec.MuTo / rRelC.Magnitude);
+                Add(ImpulseRole.Capture, win.T2, rq.To, PlannerEngine.CaptureBurn(rRelC, vRelC, vT), "ЗАХВАТ", wpCap, wvCap);
+            }
             d.RefinedDv = d.TotalDv;
             d.Valid = true;
             yield break;
@@ -526,3 +624,4 @@ namespace Galilego.Planning
         }
     }
 }
+
