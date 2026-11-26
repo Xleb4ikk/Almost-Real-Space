@@ -72,6 +72,7 @@ namespace Galilego.Tablet
         private const double PreviewMapIntervalSeconds = 0.5d;
         private bool mapErrorLogged;
         private bool framePinned;
+        private PlannerController planner;
         private int lastTextureVersion = -1;
         private float nextInteractiveMapRedraw;
         private float interactiveUntil;
@@ -183,7 +184,9 @@ namespace Galilego.Tablet
             view.Configure(document, card);
             view.FrameChanged += _ =>
             {
-                framePinned = true;
+                // A frame switch made by the planner itself does not pin the
+                // reference frame to the player's choice.
+                if (!view.FrameChangeFromPlanner) { framePinned = true; }
                 // Keep the wheel zoom across an ИСК change: resetting it to the
                 // planet close-up made the orbit the player was looking at vanish,
                 // which read as "the orbit did not appear when I changed the ISK".
@@ -264,6 +267,7 @@ namespace Galilego.Tablet
                 return;
             }
 
+            AttachPlannerOnce();
             FeedBodies();
             AutoFrame();
 
@@ -1062,6 +1066,21 @@ namespace Galilego.Tablet
         }
 
         /// <summary>
+        /// Creates the maneuver planner once, when both the view and the simulation
+        /// exist. Its world and n-body propagation run on top of the game's
+        /// <see cref="StarSystem"/> and <see cref="SpacecraftPhysics"/>, so the plan is
+        /// checked with the same physics as the map forecast.
+        /// </summary>
+        private void AttachPlannerOnce()
+        {
+            if (planner != null || view == null || !view.Bound || runner == null || runner.SystemState == null) { return; }
+            var world = new GamePlannerWorld(runner.SystemState, () => runner.TimeSeconds, () => runner.Ship);
+            var physics = new GamePlannerPropagator(runner.SystemState, () => world.ShipMass);
+            planner = new PlannerController { World = world, Propagator = physics };
+            view.AttachPlanner(planner, () => double.NaN);
+        }
+
+        /// <summary>
         /// By default the map's inertial frame follows the body the ship is actually
         /// orbiting (the dominant body, chosen by the simulation). As soon as the player
         /// presses "ИСК" in the reference-frame table, the choice is pinned and is not
@@ -1069,7 +1088,7 @@ namespace Galilego.Tablet
         /// </summary>
         private void AutoFrame()
         {
-            if (framePinned || view == null || !view.Bound || runner == null || runner.SystemState == null)
+            if (framePinned || view == null || !view.Bound || view.PlannerOpen || runner == null || runner.SystemState == null)
             {
                 return;
             }

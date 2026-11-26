@@ -318,7 +318,13 @@ namespace Galilego.Core
             double y = r1 + r2 + (aParameter * ((z * s) - 1d) / Math.Sqrt(c));
             if (y <= 0d)
             {
-                return double.PositiveInfinity;
+                // y(z) ≤ 0 lies beyond the edge of the family. For the short path
+                // (A > 0) that is the z → −∞ side, where the time of flight → 0
+                // (too small); for the long one (A < 0) it is z → 4π², where the
+                // time of flight is too large. A single +∞ broke the monotone
+                // bisection bracket for fast hyperbolic arcs (they were rejected
+                // as "time too small").
+                return aParameter > 0d ? 0d : double.PositiveInfinity;
             }
 
             double x = Math.Sqrt(y / c);

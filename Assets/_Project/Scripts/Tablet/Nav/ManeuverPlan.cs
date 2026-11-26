@@ -1,8 +1,19 @@
 using System;
 using System.Collections.Generic;
+using Galilego.Core;
+using Galilego.Planning;
 
 namespace Galilego.Tablet
 {
+    /// <summary>Роль манёвра на карточке; Manual — созданный игроком вручную.</summary>
+    public enum ManeuverRole { Manual = 0, PrepOrbit = 1, Departure = 2, Correction = 3, FlybyBurn = 4, Capture = 5 }
+
+    /// <summary>Состояние тела в мировой СК (для пересчёта осей манёвра при смене системы координат).</summary>
+    public interface IBodyStateSource
+    {
+        bool TryGetBodyState(int bodyIndex, double universeTimeS, out Vector3d position, out Vector3d velocity);
+    }
+
     /// <summary>One impulsive maneuver. Axes are tangent / normal / binormal in the frame of <see cref="FrameBody"/>.</summary>
     public sealed class Maneuver
     {
@@ -23,6 +34,31 @@ namespace Galilego.Tablet
 
         /// <summary>Burn duration, filled by <see cref="ManeuverPlan.ComputeBurns"/>.</summary>
         public double BurnTimeS;
+
+        /// <summary>0 — ручной манёвр; иначе номер решения планировщика, создавшего его.</summary>
+        public int PlannerId;
+
+        public ManeuverRole Role;
+
+        /// <summary>
+        /// СК манёвра задана планировщиком (отлёт — тело старта, захват — тело цели, коррекция — родитель). Общий селектор
+        /// «СИСТЕМА КООРДИНАТ МАНЁВРА» такой манёвр не трогает; смена идёт через <see cref="ManeuverPlan.ReframeManeuver"/>,
+        /// которая пересчитывает T/N/B так, чтобы физический импульс остался прежним.
+        /// </summary>
+        public bool FrameLocked;
+
+        /// <summary>Решение планировщика (не зависит от СК): импульс в инерциальных осях и момент старта на часах плана.</summary>
+        public Vector3d PlannedDvWorld;
+        public double PlannedStartClockS;
+
+        /// <summary>
+        /// Состояние корабля в момент импульса по последнему прогнозу (заполняет NavMapModel.ApplyBurn): мировое и
+        /// относительно тела FrameBody. По нему T/N/B пересчитываются в мировой вектор и обратно.
+        /// </summary>
+        public bool NodeValid;
+        public double NodeTimeUniverseS;
+        public Vector3d NodeWorldPos, NodeWorldVel;
+        public Vector3d NodeRelPos, NodeRelVel;
 
         public double DvMagnitude
         {
@@ -52,7 +88,8 @@ namespace Galilego.Tablet
     {
         /// <summary>Earliest allowed start. 0 would execute immediately and delete the maneuver.</summary>
         public const double MinStartS = 5d;
-        public const double MaxDvPerAxis = 6000d;
+        /// <summary>Предела нет: межпланетные манёвры (≫ 6 км/с) нельзя обрезать. Защита только от NaN/∞.</summary>
+        public const double MaxDvPerAxis = double.MaxValue;
         public const double StandardGravity = 9.80665d;
 
         private readonly List<Maneuver> items = new List<Maneuver>();
@@ -60,6 +97,9 @@ namespace Galilego.Tablet
         public IList<Maneuver> Items { get { return items.AsReadOnly(); } }
         public int Count { get { return items.Count; } }
         public int Version { get; private set; }
+
+        /// <summary>Часы плана: растут вместе с AdvanceTime. StartClock = ClockS + TimeToStartS не меняется при обратном отсчёте.</summary>
+        public double ClockS { get; private set; }
 
         /// <summary>Lowest list index edited since <see cref="ClearDirty"/>; int.MaxValue when nothing changed.</summary>
         public int DirtyFrom { get; private set; } = int.MaxValue;
@@ -156,7 +196,7 @@ namespace Galilego.Tablet
 
         public void SetDv(int i, int axis, double v)
         {
-            if (double.IsNaN(v)) { return; }
+            if (!double.IsFinite(v)) { return; }
             items[i].SetDvRaw(axis, Math.Max(-MaxDvPerAxis, Math.Min(MaxDvPerAxis, v)));
             Touch(i);
         }
@@ -166,11 +206,112 @@ namespace Galilego.Tablet
             SetDv(i, axis, 0d);
         }
 
-        /// <summary>Maneuver frame (the "СИСТЕМА КООРДИНАТ МАНЁВРА" selector) applies to every maneuver.</summary>
+        /// <summary>
+        /// Общий селектор «СИСТЕМА КООРДИНАТ МАНЁВРА»: применяется к РУЧНЫМ манёврам (как раньше). Манёвры планировщика
+        /// (FrameLocked) не трогаются: молча сменив им СК, мы изменили бы физический импульс и сломали решение.
+        /// </summary>
         public void SetFrameBody(int body)
         {
-            for (int i = 0; i < items.Count; i++) { items[i].FrameBody = body; }
-            if (items.Count > 0) { Touch(0); }
+            bool any = false;
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (items[i].FrameLocked) { continue; }
+                items[i].FrameBody = body;
+                any = true;
+            }
+
+            if (any) { Touch(0); }
+        }
+
+        public double StartClockS(Maneuver m) { return ClockS + m.TimeToStartS; }
+
+        /// <summary>Мировой вектор импульса по текущим T/N/B и последнему состоянию узла. false — состояния ещё нет.</summary>
+        public static bool TryGetDvWorld(Maneuver m, out Vector3d dvWorld)
+        {
+            dvWorld = Vector3d.Zero;
+            return m.NodeValid && ManeuverAxes.TryToWorld(m.NodeRelPos, m.NodeRelVel, new Vector3d(0d, 0d, 1d), m.Tangent, m.Normal, m.Binormal, out dvWorld);
+        }
+
+        /// <summary>Манёвр планировщика, который игрок изменил (время или импульс). Ручной — всегда false.</summary>
+        public bool IsEdited(Maneuver m)
+        {
+            if (m.PlannerId == 0) { return false; }
+            if (Math.Abs(StartClockS(m) - m.PlannedStartClockS) > 1d) { return true; }
+            return TryGetDvWorld(m, out Vector3d dv) && (dv - m.PlannedDvWorld).Magnitude > 0.05d;
+        }
+
+        /// <summary>
+        /// Добавляет манёвр решения планировщика в порядке времени. Оси T/N/B считаются по состоянию узла из модели
+        /// планировщика (до первого прогноза); прогноз потом заменит его своим (NodeValid обновится в ApplyBurn).
+        /// </summary>
+        public Maneuver AddPlanned(ManeuverRole role, int plannerId, int frameBody, double timeToStartS,
+            Vector3d dvWorld, Vector3d nodeRelPos, Vector3d nodeRelVel, Vector3d nodeWorldPos, Vector3d nodeWorldVel, double nodeTimeUniverseS)
+        {
+            var m = new Maneuver
+            {
+                TimeToStartS = Math.Max(MinStartS, timeToStartS), FrameBody = frameBody, PlannerId = plannerId, Role = role,
+                FrameLocked = true, PlannedDvWorld = dvWorld, NodeValid = true, NodeTimeUniverseS = nodeTimeUniverseS,
+                NodeRelPos = nodeRelPos, NodeRelVel = nodeRelVel, NodeWorldPos = nodeWorldPos, NodeWorldVel = nodeWorldVel,
+            };
+            if (dvWorld.Magnitude > 0d && ManeuverAxes.TryToComponents(nodeRelPos, nodeRelVel, new Vector3d(0d, 0d, 1d), dvWorld, out double t, out double n, out double b))
+            {
+                m.Tangent = t; m.Normal = n; m.Binormal = b;
+            }
+
+            m.PlannedStartClockS = StartClockS(m);
+            int at = items.Count;
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (items[i].TimeToStartS > m.TimeToStartS) { at = i; break; }
+            }
+
+            items.Insert(at, m);
+            Touch(at);
+            return m;
+        }
+
+        /// <summary>Удаляет все манёвры решения (при пересчёте планировщиком).</summary>
+        public int RemoveByPlanner(int plannerId)
+        {
+            int removed = 0, first = int.MaxValue;
+            for (int i = items.Count - 1; i >= 0; i--)
+            {
+                if (items[i].PlannerId != plannerId) { continue; }
+                items.RemoveAt(i); removed++; first = Math.Min(first, i);
+            }
+
+            if (removed > 0) { Touch(first); }
+            return removed;
+        }
+
+        /// <summary>«ВЕРНУТЬ РЕШЕНИЕ»: время и импульс как в решении, в текущей СК манёвра.</summary>
+        public bool RestorePlanned(int i)
+        {
+            Maneuver m = items[i];
+            if (m.PlannerId == 0 || !m.NodeValid) { return false; }
+            if (!ManeuverAxes.TryToComponents(m.NodeRelPos, m.NodeRelVel, new Vector3d(0d, 0d, 1d), m.PlannedDvWorld, out double t, out double n, out double b)) { return false; }
+            m.Tangent = t; m.Normal = n; m.Binormal = b;
+            m.TimeToStartS = Math.Max(MinStartS, m.PlannedStartClockS - ClockS);
+            Touch(i);
+            return true;
+        }
+
+        /// <summary>
+        /// Смена СК ОДНОГО манёвра с сохранением физического импульса: мировой ΔV из старых осей → новые T/N/B
+        /// относительно нового тела по тому же состоянию узла. false — нет состояния узла или тела.
+        /// </summary>
+        public bool ReframeManeuver(int i, int newBody, IBodyStateSource bodies)
+        {
+            Maneuver m = items[i];
+            if (m.FrameBody == newBody) { return true; }
+            if (bodies == null || !m.NodeValid || !TryGetDvWorld(m, out Vector3d dv)) { return false; }
+            if (!bodies.TryGetBodyState(newBody, m.NodeTimeUniverseS, out Vector3d bp, out Vector3d bv)) { return false; }
+            Vector3d r = m.NodeWorldPos - bp, v = m.NodeWorldVel - bv;
+            if (!ManeuverAxes.TryToComponents(r, v, new Vector3d(0d, 0d, 1d), dv, out double t, out double n, out double b)) { return false; }
+            m.Tangent = t; m.Normal = n; m.Binormal = b;
+            m.FrameBody = newBody; m.NodeRelPos = r; m.NodeRelVel = v;
+            Touch(i);
+            return true;
         }
 
         /// <summary>
@@ -180,6 +321,7 @@ namespace Galilego.Tablet
         public List<Maneuver> AdvanceTime(double dt)
         {
             var due = new List<Maneuver>();
+            if (dt > 0d) { ClockS += dt; }
             if (dt <= 0d || items.Count == 0) { return due; }
             for (int i = 0; i < items.Count; i++) { items[i].TimeToStartS -= dt; }
             int valid = ValidCount;

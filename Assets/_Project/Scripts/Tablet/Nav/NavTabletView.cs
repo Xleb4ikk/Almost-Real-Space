@@ -52,6 +52,12 @@ namespace Galilego.Tablet
             public readonly TextField[] FieldDv = new TextField[3];
             public RateSliderElement SlT;
             public readonly RateSliderElement[] SlDv = new RateSliderElement[3];
+
+            // Строка манёвра планировщика (создаётся кодом, в карточке UXML её нет): подпись, СК манёвра, «вернуть решение».
+            public VisualElement PlannerRow;
+            public Label PlannerInfo;
+            public DropdownField PlannerFrame;
+            public Button PlannerRestore;
         }
 
         private readonly List<Card> cards = new List<Card>();
@@ -66,6 +72,10 @@ namespace Galilego.Tablet
         private RateSliderElement slForecast, slHistory;
         private DropdownField mFrame;
         private int maneuverFrame;
+        private PlannerController plannerController;
+        private PlannerView planner;
+        private Func<double> plannerShipDv;
+        private Button plannerButton;
         private bool bound;
         private float refreshTimer;
         private Texture lastMapTexture;
@@ -115,7 +125,60 @@ namespace Galilego.Tablet
             {
                 TryBind();
             }
+
+            if (planner != null) { planner.Tick(); }
         }
+
+        // ------------------------------------------------------------------ planner window
+
+        /// <summary>
+        /// Подключает планировщик (вызывает станция после создания мира: нужны StarSystem и корабль). Окно строится кодом
+        /// при ближайшей возможности; кнопка «ПЛАНИРОВЩИК» добавляется над списком манёвров.
+        /// </summary>
+        public void AttachPlanner(PlannerController controller, Func<double> shipDvAvailable)
+        {
+            plannerController = controller;
+            plannerShipDv = shipDvAvailable;
+            EnsurePlanner();
+        }
+
+        private void EnsurePlanner()
+        {
+            if (!bound || plannerController == null || planner != null) { return; }
+            planner = new PlannerView(plannerController, () => State.Plan, plannerShipDv, SetViewFrame,
+                () => new[] { State.FrameIndex, State.CenterIndex }, RebuildCards);
+            root.Add(planner);
+            plannerButton = new Button(() => { if (planner.IsOpen) { planner.Close(); } else { planner.Open(); } }) { text = "ПЛАНИРОВЩИК" };
+            plannerButton.AddToClassList("btn");
+            VisualElement host = planList != null ? planList.parent : null;
+            if (host != null) { host.Insert(host.IndexOf(planList), plannerButton); } else { root.Add(plannerButton); }
+        }
+
+        /// <summary>
+        /// Система отсчёта и центр карты — тем же путём, что и клик «ИСК»/«⌖» в таблице систем отсчёта (события
+        /// FrameChanged/CenterChanged доходят до карты). Планировщик переключает вид на родителя общего уровня и
+        /// возвращает прежний, если игрок не менял его сам.
+        /// </summary>
+        public void SetViewFrame(int frameId, int centerId)
+        {
+            FrameChangeFromPlanner = true;
+            try
+            {
+                State.SetFrame(frameId);
+                if (FrameChanged != null) { FrameChanged(frameId); }
+                State.SetCenter(centerId);
+                if (CenterChanged != null) { CenterChanged(centerId); }
+            }
+            finally { FrameChangeFromPlanner = false; }
+
+            RebuildFrames();
+        }
+
+        /// <summary>true на время события FrameChanged, вызванного планировщиком (станция не закрепляет такую СК за игроком).</summary>
+        public bool FrameChangeFromPlanner { get; private set; }
+
+        /// <summary>Окно планировщика открыто: автовыбор системы отсчёта карты не должен перебивать его вид.</summary>
+        public bool PlannerOpen { get { return planner != null && planner.IsOpen; } }
 
         private void TryBind()
         {
@@ -205,6 +268,7 @@ namespace Galilego.Tablet
             SetBodies(State.BodyNames);
             RebuildCards();
             ApplyForecastAvailability();
+            EnsurePlanner();
         }
 
         private void ApplyForecastAvailability()
@@ -526,7 +590,56 @@ namespace Galilego.Tablet
                 });
             }
 
+            if (m.PlannerId != 0) { BuildPlannerRow(c); }
             return c;
+        }
+
+        /// <summary>
+        /// Манёвр решения планировщика: подпись роли, ВЫПАДАЮЩИЙ СПИСОК СК этого манёвра и «ВЕРНУТЬ РЕШЕНИЕ». Смена СК здесь
+        /// пересчитывает T/N/B так, что физический импульс остаётся прежним (общий селектор СК такие манёвры не трогает).
+        /// Правка времени и T/N/B обычными полями работает как у любого манёвра; отклонение от решения помечается в заголовке.
+        /// </summary>
+        private void BuildPlannerRow(Card c)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.Center;
+            c.PlannerInfo = new Label();
+            c.PlannerInfo.style.flexGrow = 1;
+            row.Add(c.PlannerInfo);
+
+            c.PlannerFrame = new DropdownField(new List<string>(State.BodyNames), Mathf.Clamp(c.M.FrameBody, 0, Mathf.Max(0, State.BodyNames.Length - 1)));
+            c.PlannerFrame.tooltip = "СК манёвра (импульс сохраняется)";
+            c.PlannerFrame.RegisterValueChangedCallback(e =>
+            {
+                int idx = State.Plan.Items.IndexOf(c.M);
+                int body = c.PlannerFrame.index;
+                var bodies = plannerController != null ? plannerController.World as IBodyStateSource : null;
+                if (idx < 0 || State.Plan.ReframeManeuver(idx, body, bodies)) { return; }
+                c.PlannerFrame.SetValueWithoutNotify(State.BodyNames[Mathf.Clamp(c.M.FrameBody, 0, State.BodyNames.Length - 1)]);   // no node state yet (forecast not built) — roll back
+            });
+            row.Add(c.PlannerFrame);
+
+            c.PlannerRestore = new Button(() => State.Plan.RestorePlanned(State.Plan.Items.IndexOf(c.M))) { text = "ВЕРНУТЬ" };
+            c.PlannerRestore.AddToClassList("btn");
+            c.PlannerRestore.tooltip = "Вернуть время и импульс решения планировщика";
+            row.Add(c.PlannerRestore);
+
+            c.PlannerRow = row;
+            c.Root.Add(row);
+        }
+
+        private static string RoleTitle(ManeuverRole role)
+        {
+            switch (role)
+            {
+                case ManeuverRole.PrepOrbit: return "ПОДГОТОВКА ОРБИТЫ";
+                case ManeuverRole.Departure: return "ОТЛЁТ";
+                case ManeuverRole.FlybyBurn: return "ПЕРИАПСИС ГРАВ. МАНЁВРА";
+                case ManeuverRole.Capture: return "ЗАХВАТ";
+                case ManeuverRole.Correction: return "КОРРЕКЦИЯ";
+                default: return "МАНЁВР";
+            }
         }
 
         private void TickCardSliders(float dt)
@@ -550,7 +663,7 @@ namespace Galilego.Tablet
                     double cd = c.SlDv[a].Model.Tick(dt);
                     if (cd != 0d)
                     {
-                        plan.SetDv(idx, a, RateSlider.AdvanceLinear(c.M.GetDv(a), cd, 160d, dt, -ManeuverPlan.MaxDvPerAxis, ManeuverPlan.MaxDvPerAxis));
+                        plan.SetDv(idx, a, RateSlider.AdvanceLinear(c.M.GetDv(a), cd, Math.Max(160d, Math.Abs(c.M.GetDv(a)) * 0.25d), dt, -ManeuverPlan.MaxDvPerAxis, ManeuverPlan.MaxDvPerAxis));
                     }
 
                     c.SlDv[a].Sync();
@@ -577,7 +690,20 @@ namespace Galilego.Tablet
             {
                 Card c = cards[i];
                 c.Root.EnableInClassList("mc--bad", i == conflict);
-                c.Title.text = "МАНЁВР " + (i + 1).ToString(CultureInfo.InvariantCulture);
+                bool fromPlanner = c.M.PlannerId != 0;
+                c.Title.text = (fromPlanner ? RoleTitle(c.M.Role) : "МАНЁВР") + " " + (i + 1).ToString(CultureInfo.InvariantCulture);
+                if (fromPlanner)
+                {
+                    bool edited = plan.IsEdited(c.M);
+                    c.PlannerInfo.text = edited ? "ИЗМЕНЁН ВРУЧНУЮ" : "РЕШЕНИЕ ПЛАНИРОВЩИКА";
+                    c.PlannerInfo.style.color = edited ? (Color)TabletTheme.Warn : (Color)TabletTheme.Dim;
+                    c.PlannerRestore.SetEnabled(edited);
+                    if (c.PlannerFrame.index != c.M.FrameBody && c.M.FrameBody >= 0 && c.M.FrameBody < State.BodyNames.Length)
+                    {
+                        c.PlannerFrame.SetValueWithoutNotify(State.BodyNames[c.M.FrameBody]);
+                    }
+                }
+
                 SetField(c.FieldT, TabletTime.Field(c.M.TimeToStartS));
                 for (int a = 0; a < 3; a++) { SetField(c.FieldDv[a], c.M.GetDv(a).ToString("F2", CultureInfo.InvariantCulture)); }
                 c.Dv.text = c.M.DvMagnitude.ToString("F2", CultureInfo.InvariantCulture) + " М/С";

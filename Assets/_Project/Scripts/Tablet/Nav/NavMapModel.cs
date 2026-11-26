@@ -2063,15 +2063,25 @@ namespace Galilego.Tablet
             // exist before the impulse (and therefore before the dashed orbit).
             AddBurnMarker(mapFrame, probe, burn, t, referenceIndex);
 
+            // The node state is written even for a zero ΔV: the planner and the
+            // maneuver frame switch need the world impulse expressed in T/N/B, and
+            // that is only defined together with the ship state at the burn.
+            reference.EvaluateWorldState(t, out Vector3d bodyPosition, out Vector3d bodyVelocity);
+            Vector3d r = probe.Position - bodyPosition;
+            Vector3d v = probe.Velocity - bodyVelocity;
+            maneuver.NodeValid = true;
+            maneuver.NodeTimeUniverseS = t;
+            maneuver.NodeWorldPos = probe.Position;
+            maneuver.NodeWorldVel = probe.Velocity;
+            maneuver.NodeRelPos = r;
+            maneuver.NodeRelVel = v;
+
             double dv = maneuver.DvMagnitude;
             if (!(dv > 1e-9d))
             {
                 return false;
             }
 
-            reference.EvaluateWorldState(t, out Vector3d bodyPosition, out Vector3d bodyVelocity);
-            Vector3d r = probe.Position - bodyPosition;
-            Vector3d v = probe.Velocity - bodyVelocity;
             Vector3d tangent = v.Normalized;
             if (!tangent.IsFinite || !(tangent.SqrMagnitude > 0.5d))
             {
